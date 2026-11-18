@@ -1,0 +1,3 @@
+payout_id,status,amount_inr,currency,payout_date,settlement_window,notes
+PAY-001,confirmed,2600.00,INR,2026-10-08,2026-10-01..2026-10-07,Settled to bank
+PAY-002,in_transit,300.00,INR,2026-10-10,2026-10-01..2026-10-07,Clearing T+2 timing difference

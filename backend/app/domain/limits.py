@@ -1,0 +1,130 @@
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class DataLimits:
+    max_uploaded_file_bytes: int = 40_000_000
+    max_normalized_source_bytes: int = 40_000_000
+    max_workspace_retained_raw_bytes: int = 200_000_000
+    max_published_snapshot_bytes: int = 512 * 1024 * 1024
+    max_rows_per_dataset: int = 1_000_000
+    max_columns_per_dataset: int = 200
+    max_workbook_sheets: int = 20
+    max_chars_per_cell: int = 1_000_000
+    max_expanded_xlsx_bytes: int = 200_000_000
+    ingestion_deadline_seconds: int = 300
+    max_preview_rows: int = 1_000
+    max_chart_points: int = 2_000
+    max_export_bytes: int = 10 * 1024 * 1024
+    arrow_batch_max_rows: int = 4_096
+
+    rest_max_completed_pages: int = 50
+    rest_max_http_attempts: int = 100
+    rest_max_decoded_bytes_per_response: int = 10_000_000
+    rest_max_decoded_bytes_per_job: int = 80_000_000
+    rest_connect_timeout_seconds: int = 5
+    rest_response_timeout_seconds: int = 15
+    rest_max_attempts_per_request: int = 3
+
+    def to_safe_dict(self) -> dict[str, int]:
+        return {
+            "max_uploaded_file_bytes": self.max_uploaded_file_bytes,
+            "max_normalized_source_bytes": self.max_normalized_source_bytes,
+            "max_workspace_retained_raw_bytes": self.max_workspace_retained_raw_bytes,
+            "max_published_snapshot_bytes": self.max_published_snapshot_bytes,
+            "max_rows_per_dataset": self.max_rows_per_dataset,
+            "max_columns_per_dataset": self.max_columns_per_dataset,
+            "max_workbook_sheets": self.max_workbook_sheets,
+            "max_chars_per_cell": self.max_chars_per_cell,
+            "max_expanded_xlsx_bytes": self.max_expanded_xlsx_bytes,
+            "ingestion_deadline_seconds": self.ingestion_deadline_seconds,
+            "max_preview_rows": self.max_preview_rows,
+            "max_chart_points": self.max_chart_points,
+            "max_export_bytes": self.max_export_bytes,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class RunBudgetLimits:
+    mode: str
+    active_seconds: int
+    total_model_attempts: int
+    analytical_calls: int
+    accepted_dag_tasks: int
+    concurrent_specialists: int
+    lifetime_specialist_instances: int
+    max_depth: int
+    max_replans: int
+    max_tool_invocations: int
+
+
+QUICK_BUDGET_LIMITS = RunBudgetLimits(
+    mode="quick",
+    active_seconds=120,
+    total_model_attempts=6,
+    analytical_calls=4,
+    accepted_dag_tasks=4,
+    concurrent_specialists=1,
+    lifetime_specialist_instances=4,
+    max_depth=1,
+    max_replans=0,
+    max_tool_invocations=16,
+)
+
+DEEP_BUDGET_LIMITS = RunBudgetLimits(
+    mode="deep",
+    active_seconds=600,
+    total_model_attempts=24,
+    analytical_calls=16,
+    accepted_dag_tasks=12,
+    concurrent_specialists=2,
+    lifetime_specialist_instances=6,
+    max_depth=1,
+    max_replans=2,
+    max_tool_invocations=64,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class GlobalLimits:
+    max_active_root_runs: int = 1
+    max_queued_runs: int = 10
+    max_active_query_runners: int = 1
+    query_timeout_seconds: int = 15
+    query_terminate_grace_seconds: int = 5
+    max_attempts_per_logical_step: int = 3
+    max_schema_repairs_per_step: int = 1
+    max_proposed_tool_calls_per_response: int = 8
+    max_model_tool_result_bytes: int = 64 * 1024
+    clarification_expiry_days: int = 7
+    sse_event_retention_days: int = 7
+    idempotency_key_retention_hours: int = 24
+
+
+@dataclass(frozen=True, slots=True)
+class RunnerResourceProfile:
+    name: str
+    vcpu: int
+    memory_gib: int
+    duckdb_memory_gib: int | None
+    temp_budget_gib: int
+
+
+QUERY_EXPORT_RUNNER_PROFILE = RunnerResourceProfile(
+    name="query_export",
+    vcpu=1,
+    memory_gib=2,
+    duckdb_memory_gib=1,
+    temp_budget_gib=1,
+)
+
+INGEST_BUILD_RUNNER_PROFILE = RunnerResourceProfile(
+    name="ingest_build",
+    vcpu=2,
+    memory_gib=4,
+    duckdb_memory_gib=None,
+    temp_budget_gib=2,
+)
+
+DEFAULT_DATA_LIMITS = DataLimits()
+DEFAULT_GLOBAL_LIMITS = GlobalLimits()

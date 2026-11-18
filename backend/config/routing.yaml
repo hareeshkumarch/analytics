@@ -1,0 +1,102 @@
+routing:
+  policy_version: 1
+  preset: balanced
+  fallback_enabled: true
+  hard_cost_ceiling_usd: "2.00"
+  allowed_providers:
+    - openai
+    - anthropic
+    - gemini
+    - groq
+    - xai
+    - kimi
+    - nvidia_nim
+  role_routes:
+    planner:
+      - gpt-4o-2024-11-20
+      - claude-sonnet-4-5-20250929
+      - gemini-2.5-flash
+      - claude-opus-5-5
+      - claude-sonnet-5-5
+      - gpt-6.1-sol
+      - gpt-6-astra
+      - grok-4.7
+      - gemini-2.5-pro
+      - grok-4.3
+      - gpt-6.1-terra
+      - grok-3-mini
+      - kimi-k3
+      - openai/gpt-oss-120b
+    data_specialist:
+      - gemini-2.5-flash
+      - gpt-4o-2024-11-20
+      - claude-sonnet-4-5-20250929
+      - claude-sonnet-5-5
+      - gpt-6.1-sol
+      - claude-opus-5-5
+      - grok-4.7
+      - gemini-2.5-pro
+      - gpt-6.1-terra
+      - grok-4.3
+      - llama-3.3-70b-versatile
+      - grok-3-mini
+      - kimi-k3
+      - meta/llama-3.3-70b-instruct
+      - grok-4.20-0309-non-reasoning
+      - claude-haiku-5-5
+      - gpt-6-luna
+      - gemini-2.5-flash-lite
+      - openai/gpt-oss-120b
+      - openai/gpt-oss-20b
+    reconciliation_specialist:
+      - claude-sonnet-4-5-20250929
+      - gpt-4o-2024-11-20
+      - claude-opus-5-5
+      - gpt-6.1-sol
+      - claude-sonnet-5-5
+      - gpt-6-astra
+      - grok-4.7
+      - gpt-6.1-terra
+      - gemini-2.5-pro
+    evidence_reviewer:
+      - claude-sonnet-4-5-20250929
+      - gpt-4o-2024-11-20
+      - claude-opus-5-5
+      - gpt-6.1-sol
+      - claude-sonnet-5-5
+      - gpt-6-astra
+      - grok-4.7
+      - gpt-6.1-terra
+      - gemini-2.5-pro
+    answer_composer:
+      - gpt-4o-2024-11-20
+      - gemini-2.5-flash
+      - claude-sonnet-4-5-20250929
+      - claude-sonnet-5-5
+      - gpt-6.1-sol
+      - claude-opus-5-5
+      - grok-4.7
+      - gpt-6.1-terra
+      - gemini-2.5-pro
+      - grok-4.3
+      - llama-3.3-70b-versatile
+      - grok-3-mini
+      - kimi-k3
+      - meta/llama-3.3-70b-instruct
+      - grok-4.20-0309-non-reasoning
+      - claude-haiku-5-5
+      - gpt-6-luna
+      - gemini-2.5-flash-lite
+      - openai/gpt-oss-120b
+      - openai/gpt-oss-20b
+    semantic_assistant:
+      - gemini-2.5-flash
+      - gpt-4o-2024-11-20
+      - claude-sonnet-5-5
+      - gpt-6.1-terra
+      - grok-4.3
+      - claude-haiku-5-5
+      - gpt-6-luna
+      - grok-4.20-0309-non-reasoning
+      - claude-opus-5-5
+      - gemini-2.5-flash-lite

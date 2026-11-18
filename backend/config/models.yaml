@@ -1,0 +1,351 @@
+models:
+  - model_id: gpt-4o-2024-11-20
+    provider_id: openai
+    api_profile: openai_responses
+    roles: [planner, data_specialist, reconciliation_specialist, evidence_reviewer, answer_composer, semantic_assistant]
+    context_window: 128000
+    max_output_tokens: 16384
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: true
+      reasoning_tokens: false
+    input_price_per_1m: "2.50"
+    output_price_per_1m: "10.00"
+    verification_date: "2026-11-17"
+
+  - model_id: gpt-6-astra
+    provider_id: openai
+    api_profile: openai_responses
+    roles: [planner, data_specialist, reconciliation_specialist, evidence_reviewer, answer_composer, semantic_assistant]
+    context_window: 1050000
+    max_output_tokens: 128000
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: true
+      reasoning_tokens: true
+      sampling_params: false
+    input_price_per_1m: "10.00"
+    output_price_per_1m: "50.00"
+    verification_date: "2026-11-17"
+
+  - model_id: gpt-6.1-sol
+    provider_id: openai
+    api_profile: openai_responses
+    roles: [planner, data_specialist, reconciliation_specialist, evidence_reviewer, answer_composer, semantic_assistant]
+    context_window: 1050000
+    max_output_tokens: 128000
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: true
+      reasoning_tokens: true
+      sampling_params: false
+    input_price_per_1m: "2.00"
+    output_price_per_1m: "10.00"
+    verification_date: "2026-11-17"
+
+  - model_id: gpt-6.1-terra
+    provider_id: openai
+    api_profile: openai_responses
+    roles: [planner, data_specialist, reconciliation_specialist, evidence_reviewer, answer_composer, semantic_assistant]
+    context_window: 1050000
+    max_output_tokens: 128000
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: true
+      reasoning_tokens: true
+      sampling_params: false
+    input_price_per_1m: "1.00"
+    output_price_per_1m: "5.00"
+    verification_date: "2026-11-17"
+
+  - model_id: gpt-6-luna
+    provider_id: openai
+    api_profile: openai_responses
+    roles: [data_specialist, answer_composer, semantic_assistant]
+    context_window: 1050000
+    max_output_tokens: 128000
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: true
+      reasoning_tokens: true
+      sampling_params: false
+    input_price_per_1m: "0.10"
+    output_price_per_1m: "0.50"
+    verification_date: "2026-11-17"
+
+  - model_id: grok-4.7
+    provider_id: xai
+    api_profile: xai_responses
+    roles: [planner, data_specialist, reconciliation_specialist, evidence_reviewer, answer_composer]
+    context_window: 500000
+    max_output_tokens: 16384
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: true
+      reasoning_tokens: true
+      sampling_params: false
+    input_price_per_1m: "2.00"
+    output_price_per_1m: "6.00"
+    verification_date: "2026-11-17"
+
+  - model_id: grok-4.3
+    provider_id: xai
+    api_profile: xai_responses
+    roles: [planner, data_specialist, answer_composer, semantic_assistant]
+    context_window: 1000000
+    max_output_tokens: 16384
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: true
+      reasoning_tokens: true
+      sampling_params: false
+    input_price_per_1m: "1.25"
+    output_price_per_1m: "2.50"
+    verification_date: "2026-11-17"
+
+  - model_id: grok-4.20-0309-non-reasoning
+    provider_id: xai
+    api_profile: xai_responses
+    roles: [data_specialist, answer_composer, semantic_assistant]
+    context_window: 1000000
+    max_output_tokens: 16384
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: true
+      reasoning_tokens: false
+    input_price_per_1m: "1.25"
+    output_price_per_1m: "2.50"
+    verification_date: "2026-11-17"
+
+  - model_id: claude-sonnet-4-5-20250929
+    provider_id: anthropic
+    api_profile: anthropic_messages
+    roles: [planner, data_specialist, reconciliation_specialist, evidence_reviewer, answer_composer, semantic_assistant]
+    context_window: 200000
+    max_output_tokens: 8192
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: true
+      reasoning_tokens: true
+    input_price_per_1m: "3.00"
+    output_price_per_1m: "15.00"
+    verification_date: "2026-11-17"
+
+  - model_id: claude-opus-5-5
+    provider_id: anthropic
+    api_profile: anthropic_messages
+    roles: [planner, data_specialist, reconciliation_specialist, evidence_reviewer, answer_composer, semantic_assistant]
+    context_window: 1000000
+    max_output_tokens: 128000
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: true
+      reasoning_tokens: true
+      sampling_params: false
+      refusal_fallback: true
+    input_price_per_1m: "4.00"
+    output_price_per_1m: "20.00"
+    verification_date: "2026-11-17"
+
+  - model_id: claude-sonnet-5-5
+    provider_id: anthropic
+    api_profile: anthropic_messages
+    roles: [planner, data_specialist, reconciliation_specialist, evidence_reviewer, answer_composer, semantic_assistant]
+    context_window: 1000000
+    max_output_tokens: 128000
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: true
+      reasoning_tokens: true
+      sampling_params: false
+      refusal_fallback: true
+    input_price_per_1m: "2.00"
+    output_price_per_1m: "10.00"
+    verification_date: "2026-11-17"
+
+  - model_id: claude-haiku-5-5
+    provider_id: anthropic
+    api_profile: anthropic_messages
+    roles: [data_specialist, answer_composer, semantic_assistant]
+    context_window: 1000000
+    max_output_tokens: 128000
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: true
+      reasoning_tokens: true
+      sampling_params: false
+    input_price_per_1m: "0.10"
+    output_price_per_1m: "0.50"
+    verification_date: "2026-11-17"
+
+  - model_id: gemini-2.5-pro
+    provider_id: gemini
+    api_profile: gemini_interactions
+    roles: [planner, data_specialist, reconciliation_specialist, evidence_reviewer, answer_composer]
+    context_window: 1000000
+    max_output_tokens: 65536
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: true
+      reasoning_tokens: true
+    input_price_per_1m: "1.25"
+    output_price_per_1m: "10.00"
+    verification_date: "2026-11-17"
+    enabled: false
+
+  - model_id: gemini-2.5-flash-lite
+    provider_id: gemini
+    api_profile: gemini_interactions
+    roles: [data_specialist, answer_composer, semantic_assistant]
+    context_window: 1000000
+    max_output_tokens: 65536
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: true
+      reasoning_tokens: false
+    input_price_per_1m: "0.10"
+    output_price_per_1m: "0.40"
+    verification_date: "2026-11-17"
+    enabled: false
+
+  - model_id: openai/gpt-oss-120b
+    provider_id: groq
+    api_profile: groq_chat
+    roles: [planner, data_specialist, answer_composer]
+    context_window: 131072
+    max_output_tokens: 32768
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: false
+      reasoning_tokens: true
+    input_price_per_1m: "0.15"
+    output_price_per_1m: "0.60"
+    verification_date: "2026-11-17"
+    enabled: false
+
+  - model_id: openai/gpt-oss-20b
+    provider_id: groq
+    api_profile: groq_chat
+    roles: [data_specialist, answer_composer]
+    context_window: 131072
+    max_output_tokens: 32768
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: false
+      reasoning_tokens: true
+    input_price_per_1m: "0.075"
+    output_price_per_1m: "0.30"
+    verification_date: "2026-11-17"
+    enabled: false
+
+  - model_id: gemini-2.5-flash
+    provider_id: gemini
+    api_profile: gemini_interactions
+    roles: [planner, data_specialist, answer_composer, semantic_assistant]
+    context_window: 1000000
+    max_output_tokens: 8192
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: true
+      reasoning_tokens: true
+    input_price_per_1m: "0.15"
+    output_price_per_1m: "0.60"
+    verification_date: "2026-11-17"
+
+  - model_id: llama-3.3-70b-versatile
+    provider_id: groq
+    api_profile: groq_chat
+    roles: [data_specialist, answer_composer]
+    context_window: 128000
+    max_output_tokens: 8192
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: false
+      reasoning_tokens: false
+    input_price_per_1m: "0.59"
+    output_price_per_1m: "0.79"
+    verification_date: "2026-11-17"
+
+  - model_id: grok-3-mini
+    provider_id: xai
+    api_profile: xai_responses
+    roles: [planner, data_specialist, answer_composer]
+    context_window: 131072
+    max_output_tokens: 8192
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: true
+      reasoning_tokens: true
+    input_price_per_1m: "0.30"
+    output_price_per_1m: "0.50"
+    verification_date: "2026-11-17"
+
+  - model_id: kimi-k3
+    provider_id: kimi
+    api_profile: kimi_chat
+    roles: [planner, data_specialist, answer_composer]
+    context_window: 1000000
+    max_output_tokens: 16384
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: false
+      reasoning_tokens: true
+    input_price_per_1m: "3.00"
+    output_price_per_1m: "15.00"
+    verification_date: "2026-11-17"
+
+  - model_id: meta/llama-3.3-70b-instruct
+    provider_id: nvidia_nim
+    api_profile: nvidia_nim_chat
+    roles: [data_specialist, answer_composer]
+    context_window: 128000
+    max_output_tokens: 4096
+    capabilities:
+      structured_output: true
+      tool_calling: true
+      streaming: true
+      structured_with_tools: false
+      reasoning_tokens: false
+    input_price_per_1m: null
+    output_price_per_1m: null
+    verification_date: "2026-11-17"

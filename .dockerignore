@@ -1,0 +1,17 @@
+# Keep secrets, local builds and dependencies out of the Docker build context.
+.env
+.env.*
+!.env.example
+.git
+**/node_modules
+**/.next
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.venv
+backups
+data
+frontend/test-results
+frontend/playwright-report

@@ -1,0 +1,22 @@
+{
+  "currency": "INR",
+  "gross_paid_orders": "6500.00",
+  "cancelled_orders_excluded": "1500.00",
+  "quarantined_duplicate_orders": "2000.00",
+  "total_refunds": "3500.00",
+  "net_sales": "3000.00",
+  "total_fees": "100.00",
+  "eligible_settlement": "2900.00",
+  "confirmed_payouts": "2600.00",
+  "in_transit_payouts": "300.00",
+  "reconciliation_conclusion": "timing_difference",
+  "variants": {
+    "missing_cost": {
+      "profit_answerable": false,
+      "reason": "Missing COGS/cost column prevents computing profit"
+    },
+    "conflicting_evidence": {
+      "payout_discrepancy_must_be_preserved": true
+    }
+  }
+}

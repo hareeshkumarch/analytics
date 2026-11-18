@@ -1,0 +1,63 @@
+providers:
+  - provider_id: openai
+    api_profile: openai_responses
+    endpoint_profile_id: openai_official_v1
+    base_url: https://api.openai.com/v1
+    default_timeout_seconds: 30
+    max_concurrent_requests: 4
+    allow_schema_egress: true
+    allow_raw_record_egress: false
+
+  - provider_id: anthropic
+    api_profile: anthropic_messages
+    endpoint_profile_id: anthropic_official_v1
+    base_url: https://api.anthropic.com
+    default_timeout_seconds: 30
+    max_concurrent_requests: 4
+    allow_schema_egress: true
+    allow_raw_record_egress: false
+
+  - provider_id: gemini
+    api_profile: gemini_interactions
+    endpoint_profile_id: gemini_interactions_v1
+    base_url: https://generativelanguage.googleapis.com
+    default_timeout_seconds: 30
+    max_concurrent_requests: 4
+    allow_schema_egress: true
+    allow_raw_record_egress: false
+
+  - provider_id: groq
+    api_profile: groq_chat
+    endpoint_profile_id: groq_openai_compat_v1
+    base_url: https://api.groq.com/openai/v1
+    default_timeout_seconds: 20
+    max_concurrent_requests: 4
+    allow_schema_egress: true
+    allow_raw_record_egress: false
+
+  - provider_id: xai
+    api_profile: xai_responses
+    endpoint_profile_id: xai_responses_v1
+    base_url: https://api.x.ai/v1
+    default_timeout_seconds: 30
+    max_concurrent_requests: 4
+    allow_schema_egress: true
+    allow_raw_record_egress: false
+
+  - provider_id: kimi
+    api_profile: kimi_chat
+    endpoint_profile_id: moonshot_v1
+    base_url: https://api.moonshot.ai/v1
+    default_timeout_seconds: 30
+    max_concurrent_requests: 4
+    allow_schema_egress: true
+    allow_raw_record_egress: false
+
+  - provider_id: nvidia_nim
+    api_profile: nvidia_nim_chat
+    endpoint_profile_id: nvidia_hosted_nim_v1
+    base_url: https://integrate.api.nvidia.com/v1
+    default_timeout_seconds: 30
+    max_concurrent_requests: 4
+    allow_schema_egress: true
+    allow_raw_record_egress: false

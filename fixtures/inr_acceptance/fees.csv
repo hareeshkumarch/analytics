@@ -1,0 +1,4 @@
+fee_id,order_id,fee_type,amount_inr,currency,fee_date
+FEE-001,00101,gateway,25.00,INR,2026-10-01
+FEE-002,00102,gateway,35.00,INR,2026-10-02
+FEE-003,00103,gateway,40.00,INR,2026-10-03

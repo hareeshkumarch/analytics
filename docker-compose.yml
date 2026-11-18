@@ -1,0 +1,144 @@
+x-provider-keys: &provider_keys
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
+  XAI_API_KEY: ${XAI_API_KEY:-}
+  MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
+  NVIDIA_NIM_API_KEY: ${NVIDIA_NIM_API_KEY:-}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: analytics_poc
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - internal
+
+  # Celery broker for persisted investigation runs.
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "60", "1"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - internal
+
+  # One-shot schema migration; api and worker wait for it so the schema always matches the code.
+  migrate:
+    build:
+      context: .
+      dockerfile: infra/compose/Dockerfile.backend
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      PYTHONPATH: /app
+      DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/analytics_poc
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - internal
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/compose/Dockerfile.backend
+    command: ["uvicorn", "app.api.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *provider_keys
+      PYTHONPATH: /app
+      DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/analytics_poc
+      APP_MASTER_KEY: ${APP_MASTER_KEY:?APP_MASTER_KEY is required}
+      ARTIFACT_ROOT: /data/artifacts
+      AGENT_RUNTIME: ${AGENT_RUNTIME:-deepagents}
+      RUN_EXECUTION_MODE: ${RUN_EXECUTION_MODE:-celery}
+      REDIS_URL: redis://redis:6379/0
+      CORS_ALLOW_ORIGINS: "http://127.0.0.1:3000,http://localhost:3000,http://127.0.0.1:8080,http://localhost:8080"
+    volumes:
+      - artifact_data:/data/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+
+  worker:
+    build:
+      context: .
+      dockerfile: infra/compose/Dockerfile.backend
+    command: ["celery", "-A", "app.jobs.celery_app", "worker", "--concurrency=1", "--loglevel=info"]
+    environment:
+      <<: *provider_keys
+      PYTHONPATH: /app
+      DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/analytics_poc
+      REDIS_URL: redis://redis:6379/0
+      APP_MASTER_KEY: ${APP_MASTER_KEY:?APP_MASTER_KEY is required}
+      ARTIFACT_ROOT: /data/artifacts
+      AGENT_RUNTIME: ${AGENT_RUNTIME:-deepagents}
+      RUN_EXECUTION_MODE: celery
+    volumes:
+      - artifact_data:/data/artifacts
+    depends_on:
+      api:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - internal
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/compose/Dockerfile.frontend
+      args:
+        # Inlined into the browser bundle at build time (a runtime env var would be ignored).
+        NEXT_PUBLIC_API_BASE: http://127.0.0.1:8080/api/v1
+    command: ["npx", "next", "start", "-p", "3000", "-H", "0.0.0.0"]
+    depends_on:
+      - api
+    networks:
+      - internal
+
+  edge:
+    image: caddy:2.8-alpine
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./infra/compose/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - api
+      - web
+    networks:
+      - internal
+
+volumes:
+  pg_data:
+  redis_data:
+  artifact_data:
+
+networks:
+  internal:
+    driver: bridge

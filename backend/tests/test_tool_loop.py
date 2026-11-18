@@ -1,0 +1,425 @@
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+for _key in (
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "GROQ_API_KEY",
+    "XAI_API_KEY",
+    "MOONSHOT_API_KEY",
+    "NVIDIA_NIM_API_KEY",
+):
+    os.environ.pop(_key, None)
+
+import pyarrow as pa
+import pyarrow.ipc as pa_ipc
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from app.adapters.providers.message_format import (
+    parse_arguments,
+    to_anthropic,
+    to_chat_completions,
+    to_gemini_input,
+    to_responses_input,
+)
+from app.adapters.query.snapshot_engine import SnapshotQueryEngine
+from app.adapters.query.sqlglot_compiler import SqlGlotQueryCompiler
+from app.application.ports.providers import ModelRequest, ModelResponse, ToolCallResult
+from app.application.services.analytics_tools import AnalyticsToolbox, ToolBudget
+from app.application.services.orchestration_service import InvestigationOrchestrator
+from app.bootstrap.container import build_container
+from app.domain.models import RunMode
+from app.domain.providers import ModelProfile, ProviderId, ProviderProfile
+from app.domain.query_ir import QueryIRParseError, parse_query_ir
+
+QUERY = {
+    "operation": "aggregate",
+    "purpose": "Total amount by region",
+    "table_id": "orders",
+    "metrics": [{"alias": "total", "func": "sum", "field_id": "amount"}],
+    "group_by": ["region"],
+    "order_by": [{"field_id": "total", "direction": "desc"}],
+}
+
+
+def _publish_orders(container) -> dict:
+    table = pa.table({"region": ["north", "south", "north"], "amount": [10.0, 5.0, 2.5]})
+    sink = pa.BufferOutputStream()
+    with pa_ipc.new_stream(sink, table.schema) as writer:
+        writer.write_table(table)
+    staged = container.artifacts.stage_bytes("job1", "orders.arrow", sink.getvalue().to_pybytes(), "application/octet-stream")
+    container.artifacts.publish_staged("job1", staged, "art1__orders")
+    return {
+        "snapshot_id": "snap1",
+        "table_artifacts": {"orders": "art1__orders"},
+        "table_details": [
+            {
+                "name": "orders",
+                "row_count": 3,
+                "columns": [
+                    {"name": "region", "type": "string", "nullable": True},
+                    {"name": "amount", "type": "double", "nullable": True},
+                ],
+            }
+        ],
+    }
+
+
+class ToolCallingGateway:
+    def __init__(self) -> None:
+        self.provider_id = ProviderId.OPENAI
+        self.requests: list[ModelRequest] = []
+
+    def invoke(self, request: ModelRequest, provider_profile: ProviderProfile, model_profile: ModelProfile, api_key: str) -> ModelResponse:
+        self.requests.append(request)
+        tool_msgs = [m for m in request.messages if m.get("role") == "tool"]
+        if request.tools and not tool_msgs:
+            return ModelResponse(
+                provider_id=self.provider_id,
+                model_id=model_profile.model_id,
+                text="",
+                tool_calls=(
+                    ToolCallResult("c1", "inspect_schema", {}),
+                    ToolCallResult("c2", "run_query_ir", QUERY),
+                ),
+                continuation_state={"note": "x"},
+            )
+        return ModelResponse(
+            provider_id=self.provider_id,
+            model_id=model_profile.model_id,
+            text=f"North leads. Saw {len(tool_msgs)} tool results.",
+        )
+
+
+class AlwaysToolsGateway(ToolCallingGateway):
+    def invoke(self, request: ModelRequest, provider_profile: ProviderProfile, model_profile: ModelProfile, api_key: str) -> ModelResponse:
+        self.requests.append(request)
+        if request.tool_choice == "none":
+            return ModelResponse(provider_id=self.provider_id, model_id=model_profile.model_id, text="Final answer.")
+        return ModelResponse(
+            provider_id=self.provider_id,
+            model_id=model_profile.model_id,
+            text="",
+            tool_calls=(ToolCallResult(f"c{len(self.requests)}", "run_query_ir", QUERY),),
+        )
+
+
+class TestQueryIRParsing(unittest.TestCase):
+    def test_parses_aggregate(self) -> None:
+        ir = parse_query_ir(QUERY)
+        self.assertEqual(ir.operation, "aggregate")
+
+    def test_rejects_unknown_operation(self) -> None:
+        with self.assertRaises(QueryIRParseError):
+            parse_query_ir({"operation": "drop_table", "purpose": "x"})
+
+
+class TestMessageFormat(unittest.TestCase):
+    def setUp(self) -> None:
+        self.history = [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "q"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{"id": "c1", "name": "inspect_schema", "arguments": {}}, {"id": "c2", "name": "run_query_ir", "arguments": {"a": 1}}],
+            },
+            {"role": "tool", "tool_call_id": "c1", "name": "inspect_schema", "content": "{}"},
+            {"role": "tool", "tool_call_id": "c2", "name": "run_query_ir", "content": "{}", "is_error": True},
+        ]
+
+    def test_anthropic_merges_tool_results(self) -> None:
+        system, msgs = to_anthropic(self.history)
+        self.assertEqual(system, "sys")
+        self.assertEqual([m["role"] for m in msgs], ["user", "assistant", "user"])
+        self.assertEqual(len(msgs[2]["content"]), 2)
+        self.assertTrue(msgs[2]["content"][1]["is_error"])
+
+    def test_responses_items(self) -> None:
+        items = to_responses_input(self.history)
+        types = [i.get("type") for i in items]
+        self.assertEqual(types.count("function_call"), 2)
+        self.assertEqual(types.count("function_call_output"), 2)
+
+    def test_chat_completions(self) -> None:
+        msgs = to_chat_completions(self.history, "groq")
+        self.assertEqual(msgs[2]["tool_calls"][1]["function"]["arguments"], '{"a": 1}')
+        self.assertEqual(msgs[3]["role"], "tool")
+
+    def test_gemini_uses_typed_steps_and_system_instruction(self) -> None:
+        system, steps = to_gemini_input(self.history)
+        self.assertEqual(system, "sys")
+        self.assertEqual(
+            [s["type"] for s in steps],
+            ["user_input", "function_call", "function_call", "function_result", "function_result"],
+        )
+        _, plain = to_gemini_input([{"role": "user", "content": "hi"}])
+        self.assertEqual(plain, [{"type": "user_input", "content": [{"type": "text", "text": "hi"}]}])
+
+    def test_responses_replays_native_output_for_same_provider(self) -> None:
+        native = [
+            {"type": "reasoning", "id": "rs_1", "encrypted_content": "enc"},
+            {"type": "reasoning", "id": "rs_2"},
+            {"type": "function_call", "id": "fc_1", "call_id": "c1", "name": "inspect_schema", "arguments": "{}"},
+        ]
+        history = list(self.history)
+        history[2] = {**history[2], "provider_state": {"provider": "openai", "continuation": {"output": native}}}
+        items = to_responses_input(history, "openai")
+        self.assertIn({"type": "reasoning", "id": "rs_1", "encrypted_content": "enc"}, items)
+        self.assertNotIn({"type": "reasoning", "id": "rs_2"}, items)
+        foreign = to_responses_input(history, "xai")
+        self.assertFalse(any(i.get("type") == "reasoning" for i in foreign))
+
+    def test_anthropic_sanitizes_foreign_ids(self) -> None:
+        history = [
+            {"role": "user", "content": "q"},
+            {"role": "assistant", "content": "", "tool_calls": [{"id": "functions.run_query_ir:0", "name": "run_query_ir", "arguments": {}}]},
+            {"role": "tool", "tool_call_id": "functions.run_query_ir:0", "name": "run_query_ir", "content": "{}"},
+        ]
+        _, msgs = to_anthropic(history)
+        self.assertEqual(msgs[1]["content"][0]["id"], "functions_run_query_ir_0")
+        self.assertEqual(msgs[2]["content"][0]["tool_use_id"], "functions_run_query_ir_0")
+
+    def test_parse_arguments_tolerates_bad_json(self) -> None:
+        self.assertEqual(parse_arguments('{"x": 1}'), {"x": 1})
+        self.assertIn("_invalid_arguments", parse_arguments("{bad"))
+        self.assertEqual(parse_arguments(None), {})
+
+
+class TestToolLoop(unittest.TestCase):
+    def setUp(self) -> None:
+        self._agent_runtime = os.environ.get("AGENT_RUNTIME")
+        os.environ["AGENT_RUNTIME"] = "legacy"
+
+    def tearDown(self) -> None:
+        if self._agent_runtime is None:
+            os.environ.pop("AGENT_RUNTIME", None)
+        else:
+            os.environ["AGENT_RUNTIME"] = self._agent_runtime
+
+    def test_toolbox_runs_query_and_returns_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            c = build_container(artifact_root=td)
+            snapshot = _publish_orders(c)
+            box = AnalyticsToolbox(
+                engine=SnapshotQueryEngine(c.artifacts, SqlGlotQueryCompiler()),
+                snapshot=snapshot,
+                semantics=None,
+                budget=ToolBudget(4, 2),
+            )
+            out = box.execute(ToolCallResult("c", "run_query_ir", QUERY))
+            self.assertFalse(out.is_error, out.content)
+            self.assertTrue(out.evidence["evidence_id"].startswith("ev_"))
+            self.assertIn("north", out.content)
+            bad = box.execute(ToolCallResult("c", "run_query_ir", {**QUERY, "table_id": "nope"}))
+            self.assertTrue(bad.is_error)
+            self.assertIn("not counted", bad.content)
+            self.assertFalse(box.execute(ToolCallResult("c", "run_query_ir", QUERY)).is_error)
+            self.assertTrue(box.execute(ToolCallResult("c", "run_query_ir", QUERY)).is_error)
+
+    def test_specialist_loop_executes_tools_and_cites_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            c = build_container(artifact_root=td)
+            gw = ToolCallingGateway()
+            c.providers.register(gw)
+            c.routing_service._api_keys[ProviderId.OPENAI] = "test-key"
+            snapshot = _publish_orders(c)
+            events = []
+            ans = InvestigationOrchestrator(c).execute_local(
+                run_id="run_tools",
+                workspace_id="ws1",
+                question="Which region has the most sales?",
+                mode=RunMode.QUICK,
+                snapshot_id="snap1",
+                snapshot=snapshot,
+                emit_event=events.append,
+            )
+            tool_events = [e for e in events if e.type.value == "tool.result"]
+            self.assertEqual([e.payload["tool"] for e in tool_events], ["inspect_schema", "run_query_ir"])
+            self.assertTrue(all(e.payload["ok"] for e in tool_events))
+            self.assertIn("2 tool results", ans.summary_markdown)
+            ev = tool_events[1].payload["evidence_id"]
+            self.assertEqual(ans.claims[0].evidence_ids, (ev,))
+            second = gw.requests[1]
+            assistant = [m for m in second.messages if m.get("role") == "assistant"][0]
+            self.assertEqual(assistant["provider_state"]["continuation"], {"note": "x"})
+
+    def test_final_round_disables_tools_and_model_is_pinned(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            c = build_container(artifact_root=td)
+            gw = AlwaysToolsGateway()
+            c.providers.register(gw)
+            c.routing_service._api_keys[ProviderId.OPENAI] = "test-key"
+            snapshot = _publish_orders(c)
+            ans = InvestigationOrchestrator(c).execute_local(
+                run_id="run_final",
+                workspace_id="ws1",
+                question="q",
+                mode=RunMode.QUICK,
+                snapshot_id="snap1",
+                snapshot=snapshot,
+            )
+            self.assertIn("Final answer.", ans.summary_markdown)
+            self.assertEqual(gw.requests[-1].tool_choice, "none")
+            self.assertTrue(all(r.tool_choice is None for r in gw.requests[:-1]))
+            first_model = gw.requests[0].model_id
+            self.assertTrue(all(r.model_id for r in gw.requests[1:]))
+            self.assertEqual(gw.requests[0].max_output_tokens, 12_000)
+            self.assertEqual(first_model, "")
+
+    def test_time_budget_stops_run(self) -> None:
+        import app.application.services.orchestration_service as orch_mod
+
+        with tempfile.TemporaryDirectory() as td:
+            c = build_container(artifact_root=td)
+            c.providers.register(ToolCallingGateway())
+            c.routing_service._api_keys[ProviderId.OPENAI] = "test-key"
+            events = []
+            real_monotonic = orch_mod.time.monotonic
+            planned = lambda: any(e.type.value == "plan.updated" for e in events)  # noqa: E731
+            orch_mod.time.monotonic = lambda: real_monotonic() + 10_000 if planned() else real_monotonic()
+            try:
+                InvestigationOrchestrator(c).execute_local(
+                    run_id="run_slow", workspace_id="ws1", question="q", mode=RunMode.QUICK, emit_event=events.append
+                )
+            finally:
+                orch_mod.time.monotonic = real_monotonic
+            finished = [e for e in events if e.type.value == "run.finished"][0].payload
+            self.assertEqual(finished["status"], "failed")
+            self.assertIn("Time budget", finished["error"])
+
+    def test_older_tool_results_are_trimmed(self) -> None:
+        import json as _json
+        from app.application.services.orchestration_service import _compact_older_results
+
+        big = _json.dumps({"evidence_id": "ev_x", "rows": [[i, "x" * 200] for i in range(50)], "row_count": 50})
+        msgs = [{"role": "tool", "tool_call_id": "c1", "name": "run_query_ir", "content": big}]
+        _compact_older_results(msgs, 1)
+        data = _json.loads(msgs[0]["content"])
+        self.assertEqual(len(data["rows"]), 10)
+        self.assertEqual(data["evidence_id"], "ev_x")
+        self.assertTrue(data["older_result_trimmed"])
+
+    def test_evidence_verdict_flags_uncited_claims_once(self) -> None:
+        from app.application.services.orchestration_service import _evidence_verdict
+        from app.domain.models import Claim
+
+        def claim(cid: str, ev: tuple[str, ...]) -> Claim:
+            return Claim(claim_id=cid, label="x", statement="s", value=None, unit=None, currency=None, evidence_ids=ev)
+
+        flagged: set[str] = set()
+        claims = [claim("clm_t1_analyze", ()), claim("clm_t1_reconcile", ("ev_1",)), claim("clm_t2_review", ())]
+        verdict = _evidence_verdict(claims, flagged)
+        self.assertFalse(verdict.approved)
+        self.assertEqual(len(verdict.gaps), 1)
+        self.assertTrue(_evidence_verdict(claims, flagged).approved)
+
+    def _toolbox(self, c, budget=(20, 20)) -> AnalyticsToolbox:
+        return AnalyticsToolbox(
+            engine=SnapshotQueryEngine(c.artifacts, SqlGlotQueryCompiler()),
+            snapshot=_publish_orders(c),
+            semantics=None,
+            budget=ToolBudget(*budget),
+        )
+
+    def test_distribution_histogram_and_unique_evidence_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            box = self._toolbox(build_container(artifact_root=td))
+            hist = box.execute(
+                ToolCallResult("c", "run_query_ir", {"operation": "distribution", "purpose": "spread", "table_id": "orders", "field_id": "amount", "buckets": 2})
+            )
+            self.assertFalse(hist.is_error, hist.content)
+            self.assertIn("bucket", hist.evidence["columns"])
+            self.assertEqual(sum(r[hist.evidence["columns"].index("row_count")] for r in hist.evidence["rows"]), 3)
+            a = box.execute(ToolCallResult("c", "run_query_ir", QUERY))
+            b = box.execute(ToolCallResult("c", "run_query_ir", {**QUERY, "purpose": "same result, different purpose"}))
+            self.assertEqual(a.evidence["result_hash"], b.evidence["result_hash"])
+            self.assertNotEqual(a.evidence["evidence_id"], b.evidence["evidence_id"])
+
+    def test_reconciliation_applies_filters(self) -> None:
+        from app.adapters.query.snapshot_engine import table_schemas
+        from app.domain.query_ir import parse_query_ir as parse
+
+        with tempfile.TemporaryDirectory() as td:
+            snap = _publish_orders(build_container(artifact_root=td))
+            ir = parse({
+                "operation": "reconciliation_lookup", "purpose": "x",
+                "left_table_id": "orders", "right_table_id": "orders",
+                "left_key": "region", "right_key": "region",
+                "left_amount_field": "amount", "right_amount_field": "amount",
+                "filters": [{"field_id": "region", "op": "eq", "value": "north"}],
+            })
+            compiled = SqlGlotQueryCompiler().compile(ir, table_schemas(snap), 100)
+            self.assertEqual(compiled.sql.count("WHERE"), 2)
+            self.assertEqual(compiled.parameters, ("north", "north"))
+
+    def test_tool_calls_per_turn_are_capped_and_evidence_is_streamed(self) -> None:
+        class ManyCalls(ToolCallingGateway):
+            def invoke(self, request, provider_profile, model_profile, api_key):
+                self.requests.append(request)
+                if any(m.get("role") == "tool" for m in request.messages):
+                    return ModelResponse(provider_id=self.provider_id, model_id=model_profile.model_id, text="done")
+                calls = tuple(ToolCallResult(f"c{i}", "inspect_schema", {}) for i in range(10))
+                return ModelResponse(provider_id=self.provider_id, model_id=model_profile.model_id, text="", tool_calls=calls)
+
+        with tempfile.TemporaryDirectory() as td:
+            c = build_container(artifact_root=td)
+            gw = ManyCalls()
+            c.providers.register(gw)
+            c.routing_service._api_keys[ProviderId.OPENAI] = "test-key"
+            events, sink = [], []
+            InvestigationOrchestrator(c).execute_local(
+                run_id="run_many", workspace_id="ws1", question="q", mode=RunMode.QUICK,
+                snapshot_id="snap1", snapshot=_publish_orders(c), emit_event=events.append, on_evidence=sink.append,
+            )
+            tool_events = [e.payload for e in events if e.type.value == "tool.result"]
+            self.assertEqual(len(tool_events), 10)
+            self.assertEqual(sum(1 for p in tool_events if p["ok"]), 8)
+            self.assertEqual(sink, [])
+            seqs = [e.sequence for e in events]
+            self.assertEqual(seqs, sorted(seqs))
+
+    def test_token_estimate_counts_provider_state_and_tools(self) -> None:
+        from app.adapters.orchestration.deep_agents_bridge import estimate_input_tokens
+        from app.application.services.analytics_tools import RUN_QUERY_TOOL
+
+        plain = ({"role": "user", "content": "q"},)
+        with_state = plain + (
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{"id": "c1", "name": "inspect_schema", "arguments": {}}],
+                "provider_state": {"provider": "openai", "continuation": {"output": [{"type": "reasoning", "encrypted_content": "x" * 30_000}]}},
+            },
+        )
+        self.assertGreaterEqual(estimate_input_tokens(with_state), 10_000)
+        self.assertGreater(estimate_input_tokens(plain, (RUN_QUERY_TOOL,)), estimate_input_tokens(plain))
+
+    def test_table_artifact_ids_are_path_safe(self) -> None:
+        from app.application.services.ingestion import table_artifact_id
+
+        aid = table_artifact_id("art1", "../weird/name\\x")
+        self.assertNotIn("/", aid)
+        self.assertNotIn("\\", aid)
+        self.assertNotIn("..", aid)
+
+    def test_no_snapshot_offers_no_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            c = build_container(artifact_root=td)
+            gw = ToolCallingGateway()
+            c.providers.register(gw)
+            c.routing_service._api_keys[ProviderId.OPENAI] = "test-key"
+            InvestigationOrchestrator(c).execute_local(
+                run_id="run_nodata", workspace_id="ws1", question="q", mode=RunMode.QUICK
+            )
+            self.assertEqual(gw.requests[0].tools, ())
+            self.assertEqual(len(gw.requests), 1)
+
+
+if __name__ == "__main__":
+    unittest.main()
