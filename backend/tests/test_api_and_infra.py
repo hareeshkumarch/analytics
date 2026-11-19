@@ -24,55 +24,54 @@ class TestApiAndInfra(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             container = build_container(artifact_root=td)
             app = create_app(container)
-            client = TestClient(app)
+            with TestClient(app) as client:
+                r_health = client.get("/api/v1/health")
+                self.assertEqual(r_health.status_code, 200)
+                body = r_health.json()
+                for family in (
+                    "uploaded_file",
+                    "uploaded_sqlite",
+                    "uploaded_duckdb",
+                    "remote_file",
+                    "postgresql",
+                    "mysql",
+                    "google_sheets",
+                    "rest_json",
+                    "airtable",
+                    "bigquery",
+                ):
+                    self.assertIn(family, body["connectors"])
+                self.assertEqual(len(body["providers"]), 7)
 
-            r_health = client.get("/api/v1/health")
-            self.assertEqual(r_health.status_code, 200)
-            body = r_health.json()
-            for family in (
-                "uploaded_file",
-                "uploaded_sqlite",
-                "uploaded_duckdb",
-                "remote_file",
-                "postgresql",
-                "mysql",
-                "google_sheets",
-                "rest_json",
-                "airtable",
-                "bigquery",
-            ):
-                self.assertIn(family, body["connectors"])
-            self.assertEqual(len(body["providers"]), 7)
+                r_prov = client.get("/api/v1/workspaces/ws1/providers")
+                self.assertEqual(r_prov.status_code, 200)
+                self.assertEqual(len(r_prov.json()["providers"]), 7)
 
-            r_prov = client.get("/api/v1/workspaces/ws1/providers")
-            self.assertEqual(r_prov.status_code, 200)
-            self.assertEqual(len(r_prov.json()["providers"]), 7)
+                r1 = client.post(
+                    "/api/v1/workspaces/ws1/runs",
+                    headers={"Idempotency-Key": "idem-1"},
+                    json={"question": "Reconcile INR orders", "mode": "quick"},
+                )
+                self.assertEqual(r1.status_code, 202)
+                run_id = r1.json()["run_id"]
 
-            r1 = client.post(
-                "/api/v1/workspaces/ws1/runs",
-                headers={"Idempotency-Key": "idem-1"},
-                json={"question": "Reconcile INR orders", "mode": "quick"},
-            )
-            self.assertEqual(r1.status_code, 202)
-            run_id = r1.json()["run_id"]
+                r2 = client.post(
+                    "/api/v1/workspaces/ws1/runs",
+                    headers={"Idempotency-Key": "idem-1"},
+                    json={"question": "Reconcile INR orders", "mode": "quick"},
+                )
+                self.assertEqual(r2.json()["run_id"], run_id)
 
-            r2 = client.post(
-                "/api/v1/workspaces/ws1/runs",
-                headers={"Idempotency-Key": "idem-1"},
-                json={"question": "Reconcile INR orders", "mode": "quick"},
-            )
-            self.assertEqual(r2.json()["run_id"], run_id)
+                r3 = client.post(
+                    "/api/v1/workspaces/ws1/runs",
+                    headers={"Idempotency-Key": "idem-1"},
+                    json={"question": "Different question", "mode": "deep"},
+                )
+                self.assertEqual(r3.status_code, 409)
 
-            r3 = client.post(
-                "/api/v1/workspaces/ws1/runs",
-                headers={"Idempotency-Key": "idem-1"},
-                json={"question": "Different question", "mode": "deep"},
-            )
-            self.assertEqual(r3.status_code, 409)
-
-            r_sse = client.get(f"/api/v1/workspaces/ws1/runs/{run_id}/events?after=0")
-            self.assertEqual(r_sse.status_code, 200)
-            self.assertIn("run.status", r_sse.text)
+                r_sse = client.get(f"/api/v1/workspaces/ws1/runs/{run_id}/events?after=0")
+                self.assertEqual(r_sse.status_code, 200)
+                self.assertIn("run.status", r_sse.text)
 
     def test_credential_cipher_requires_master_key(self) -> None:
         with self.assertRaises(SecurityPolicyError):
