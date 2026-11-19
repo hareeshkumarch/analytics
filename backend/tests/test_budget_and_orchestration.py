@@ -48,6 +48,55 @@ class TestBudgetAndOrchestration(unittest.TestCase):
         self.assertEqual(len(successes), 2)
         self.assertEqual(len(failures), 3)
 
+    def test_release_unresolved_frees_tokens_cost_and_attempts(self) -> None:
+        ledger = AtomicBudgetLedger()
+        ledger.configure_run("run_rel", max_attempts=2, max_tokens=100_000, max_cost_usd=Decimal("1.00"))
+
+        res = ledger.reserve(
+            "run_rel", "op_1", "att_1",
+            estimated_tokens=1000, estimated_cost_usd=Decimal("0.40"),
+            cost_is_unknown=False, hard_cost_ceiling_usd=Decimal("1.00"),
+        )
+        totals = ledger.get_run_totals("run_rel")
+        self.assertEqual(totals["used_attempts"], 1)
+        self.assertEqual(totals["total_tokens"], 1000)
+        self.assertEqual(totals["total_cost_usd"], "0.40")
+
+        ledger.release_unresolved(res.reservation_id, "boom")
+        totals = ledger.get_run_totals("run_rel")
+        self.assertEqual(totals["used_attempts"], 0)
+        self.assertEqual(totals["total_tokens"], 0)
+        self.assertEqual(totals["total_cost_usd"], "0")
+        self.assertTrue(totals["incomplete"])
+
+        # Releasing twice, or settling a released reservation, changes nothing.
+        ledger.release_unresolved(res.reservation_id, "boom again")
+        settled = ledger.settle(res.reservation_id, 500, Decimal("0.10"))
+        self.assertTrue(settled.settled)
+        self.assertEqual(ledger.get_run_totals("run_rel")["total_tokens"], 0)
+
+        # The freed budget admits two fresh attempts that the leak would
+        # have rejected (attempts 3 > 2 and cost 1.20 > 1.00).
+        for i in (2, 3):
+            ledger.reserve(
+                "run_rel", f"op_{i}", f"att_{i}",
+                estimated_tokens=1000, estimated_cost_usd=Decimal("0.40"),
+                cost_is_unknown=False, hard_cost_ceiling_usd=Decimal("1.00"),
+            )
+        totals = ledger.get_run_totals("run_rel")
+        self.assertEqual(totals["used_attempts"], 2)
+        self.assertEqual(totals["total_cost_usd"], "0.80")
+
+    def test_settle_preserves_real_cost_when_reserved_cost_was_none(self) -> None:
+        ledger = AtomicBudgetLedger()
+        res = ledger.reserve(
+            "run_unc", "op_1", "att_1",
+            estimated_tokens=1000, estimated_cost_usd=None,
+            cost_is_unknown=True, hard_cost_ceiling_usd=None,
+        )
+        ledger.settle(res.reservation_id, 1200, Decimal("0.05"))
+        self.assertEqual(ledger.get_run_totals("run_unc")["total_cost_usd"], "0.05")
+
     def test_unknown_pricing_rejected_under_hard_ceiling(self) -> None:
         ledger = AtomicBudgetLedger()
         with self.assertRaises(BudgetExhaustedError):

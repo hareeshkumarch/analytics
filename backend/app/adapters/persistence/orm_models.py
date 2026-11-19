@@ -111,6 +111,14 @@ class RunRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 
+class RunBudgetConfigRow(Base):
+    __tablename__ = "run_budget_configs"
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.run_id"), primary_key=True)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+
+
 class BudgetReservationRow(Base):
     __tablename__ = "budget_reservations"
     __table_args__ = (UniqueConstraint("run_id", "operation_id", "attempt_id", name="uq_budget_op_attempt"),)

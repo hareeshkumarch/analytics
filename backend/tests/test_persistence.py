@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 
 from app.adapters.persistence.crypto import CredentialCipher
 from app.adapters.persistence.database import create_db_engine, create_session_factory
+from app.adapters.persistence.pg_repositories import PgBudgetLedger, PgRunRepository
+from app.domain.errors import BudgetExhaustedError
 from app.api.main import create_app
 from app.bootstrap.container import build_container
 from app.domain.models import Answer, Claim, RunStatus
@@ -155,6 +157,75 @@ class TestPersistence(unittest.TestCase):
             r_events = client2.get(f"/api/v1/workspaces/ws_persist/runs/{run_id}/events?after=0")
             self.assertEqual(r_events.status_code, 200)
             self.assertIn("run.status", r_events.text)
+
+    def test_budget_ledger_release_frees_budget_and_config_survives(self) -> None:
+        engine = create_db_engine("sqlite:///:memory:")
+        sf = create_session_factory(engine)
+        runs = PgRunRepository(sf)
+        ledger = PgBudgetLedger(sf)
+
+        runs.create_run(
+            run_id="run_bud", workspace_id="ws_bud", conversation_id="conv_bud",
+            mode="quick", status="running", question="budget?",
+        )
+        ledger.configure_run("run_bud", max_attempts=2, max_tokens=2000, max_cost_usd=Decimal("1.00"))
+
+        res = ledger.reserve(
+            "run_bud", "op_1", "att_1",
+            estimated_tokens=1000, estimated_cost_usd=Decimal("0.40"),
+            cost_is_unknown=False, hard_cost_ceiling_usd=Decimal("1.00"),
+        )
+        totals = ledger.get_run_totals("run_bud")
+        self.assertEqual(totals["used_attempts"], 1)
+        self.assertEqual(totals["total_tokens"], 1000)
+        self.assertEqual(Decimal(totals["total_cost_usd"]), Decimal("0.40"))
+
+        # A second reservation would breach the configured 2000-token ceiling.
+        with self.assertRaises(BudgetExhaustedError):
+            ledger.reserve(
+                "run_bud", "op_2", "att_2",
+                estimated_tokens=1500, estimated_cost_usd=Decimal("0.10"),
+                cost_is_unknown=False, hard_cost_ceiling_usd=Decimal("1.00"),
+            )
+
+        ledger.release_unresolved(res.reservation_id, "boom")
+        totals = ledger.get_run_totals("run_bud")
+        self.assertEqual(totals["used_attempts"], 0)
+        self.assertEqual(totals["total_tokens"], 0)
+        self.assertEqual(totals["total_cost_usd"], "0")
+        self.assertTrue(totals["incomplete"])
+
+        # The freed budget admits two fresh attempts that the leak would
+        # have rejected (attempts 3 > 2 and cost 1.20 > 1.00).
+        for i in (2, 3):
+            ledger.reserve(
+                "run_bud", f"op_{i}", f"att_{i}",
+                estimated_tokens=1000, estimated_cost_usd=Decimal("0.40"),
+                cost_is_unknown=False, hard_cost_ceiling_usd=Decimal("1.00"),
+            )
+        totals = ledger.get_run_totals("run_bud")
+        self.assertEqual(totals["used_attempts"], 2)
+        self.assertEqual(Decimal(totals["total_cost_usd"]), Decimal("0.80"))
+
+        # The configured limits live in the database, not in the ledger
+        # instance: a fresh ledger still enforces the $1.00 ceiling.
+        runs.create_run(
+            run_id="run_bud2", workspace_id="ws_bud", conversation_id="conv_bud",
+            mode="quick", status="running", question="budget 2?",
+        )
+        ledger.configure_run("run_bud2", max_attempts=10, max_tokens=100_000, max_cost_usd=Decimal("1.00"))
+        ledger2 = PgBudgetLedger(sf)
+        ledger2.reserve(
+            "run_bud2", "op_1", "att_1",
+            estimated_tokens=100, estimated_cost_usd=Decimal("0.80"),
+            cost_is_unknown=False, hard_cost_ceiling_usd=Decimal("1.00"),
+        )
+        with self.assertRaises(BudgetExhaustedError):
+            ledger2.reserve(
+                "run_bud2", "op_2", "att_2",
+                estimated_tokens=100, estimated_cost_usd=Decimal("0.50"),
+                cost_is_unknown=False, hard_cost_ceiling_usd=Decimal("1.00"),
+            )
 
 
 if __name__ == "__main__":
