@@ -16,6 +16,7 @@ from app.adapters.persistence.orm_models import (
     OutboxJobRow,
     PinRow,
     RoutingPolicyRow,
+    RunBudgetConfigRow,
     RunEventRow,
     RunEvidenceRow,
     RunRow,
@@ -854,6 +855,11 @@ class PgPinRepository:
                 return res.rowcount > 0
 
 
+# Token ceiling used when a run was never configured; mirrors the
+# BudgetLedger port default (and AtomicBudgetLedger.DEFAULT_MAX_TOKENS).
+DEFAULT_MAX_TOKENS = 500_000
+
+
 class PgBudgetLedger:
     def __init__(self, session_factory: sessionmaker[Session], max_attempts_default: int = 24) -> None:
         self._sf = session_factory
@@ -867,9 +873,28 @@ class PgBudgetLedger:
         max_tokens: int = 500_000,
         max_cost_usd: Decimal | None = None,
     ) -> None:
-        # Mode limits are read from the durable run row in reserve(); per-call cost ceilings
-        # are passed through RoutingService and enforced transactionally there.
-        del run_id, max_attempts, max_tokens, max_cost_usd
+        # Persist the per-run limits so reserve() can enforce them, including
+        # across restarts. This is the durable counterpart of
+        # AtomicBudgetLedger.configure_run.
+        with self._sf() as db:
+            with db.begin():
+                run_row = db.get(RunRow, run_id, with_for_update=True)
+                if not run_row:
+                    raise NotFoundError(f"Run {run_id} not found")
+                cfg = db.get(RunBudgetConfigRow, run_id)
+                if cfg is None:
+                    db.add(
+                        RunBudgetConfigRow(
+                            run_id=run_id,
+                            max_attempts=max_attempts,
+                            max_tokens=max_tokens,
+                            max_cost_usd=max_cost_usd,
+                        )
+                    )
+                else:
+                    cfg.max_attempts = max_attempts
+                    cfg.max_tokens = max_tokens
+                    cfg.max_cost_usd = max_cost_usd
 
     def reserve(
         self,
@@ -881,32 +906,51 @@ class PgBudgetLedger:
         cost_is_unknown: bool,
         hard_cost_ceiling_usd: Decimal | None,
     ) -> BudgetReservation:
-        if hard_cost_ceiling_usd is not None and cost_is_unknown:
-            raise BudgetExhaustedError("Hard monetary ceiling excludes models with unknown pricing")
-
         with self._sf() as db:
             with db.begin():
                 run_row = db.get(RunRow, run_id, with_for_update=True)
                 if not run_row:
                     raise NotFoundError(f"Run {run_id} not found")
 
+                cfg = db.get(RunBudgetConfigRow, run_id)
                 existing = db.scalars(
                     select(BudgetReservationRow).where(BudgetReservationRow.run_id == run_id)
                 ).all()
-                attempt_limit = (
+                # Released reservations (unresolved_reason set) no longer
+                # consume budget; only live and really-settled rows count.
+                live = [r for r in existing if r.unresolved_reason is None]
+
+                mode_attempt_limit = (
                     QUICK_BUDGET_LIMITS.total_model_attempts
                     if run_row.mode == "quick"
                     else DEEP_BUDGET_LIMITS.total_model_attempts
                 )
-                if len(existing) + 1 > min(attempt_limit, self._max_attempts_default):
+                attempt_limit = cfg.max_attempts if cfg is not None else mode_attempt_limit
+                attempt_limit = min(attempt_limit, self._max_attempts_default)
+                if len(live) + 1 > attempt_limit:
                     raise BudgetExhaustedError(f"Run {run_id} exceeded max model attempts")
 
+                max_tokens = cfg.max_tokens if cfg is not None else DEFAULT_MAX_TOKENS
+                cur_tokens = sum(
+                    r.actual_tokens if r.settled and r.actual_tokens is not None else r.reserved_tokens
+                    for r in live
+                )
+                if cur_tokens + estimated_tokens > max_tokens:
+                    raise BudgetExhaustedError(f"Run {run_id} exceeded token budget ({max_tokens})")
+
+                ceiling = (
+                    cfg.max_cost_usd
+                    if cfg is not None and cfg.max_cost_usd is not None
+                    else hard_cost_ceiling_usd
+                )
+                if ceiling is not None and cost_is_unknown:
+                    raise BudgetExhaustedError("Hard monetary ceiling excludes models with unknown pricing")
                 cur_cost = sum(
                     (r.actual_cost_usd if r.settled and r.actual_cost_usd is not None else (r.reserved_cost_usd or Decimal("0")))
-                    for r in existing
+                    for r in live
                 )
                 add_cost = estimated_cost_usd or Decimal("0")
-                if hard_cost_ceiling_usd is not None and cur_cost + add_cost > hard_cost_ceiling_usd:
+                if ceiling is not None and cur_cost + add_cost > ceiling:
                     raise BudgetExhaustedError("Monetary ceiling exceeded")
 
                 res_id = f"res_{uuid.uuid4().hex[:12]}"
@@ -965,6 +1009,13 @@ class PgBudgetLedger:
             with db.begin():
                 row = db.get(BudgetReservationRow, reservation_id, with_for_update=True)
                 if row and not row.settled:
+                    # A failed attempt used nothing: settle it at zero so its
+                    # reservation stops counting against tokens, cost and
+                    # attempts. unresolved_reason marks it as released, not
+                    # as a real settlement.
+                    row.settled = True
+                    row.actual_tokens = 0
+                    row.actual_cost_usd = Decimal("0")
                     row.unresolved_reason = reason[:500]
 
     def get_run_totals(self, run_id: str) -> dict[str, object]:
@@ -972,9 +1023,11 @@ class PgBudgetLedger:
             rows = db.scalars(
                 select(BudgetReservationRow).where(BudgetReservationRow.run_id == run_id)
             ).all()
+        # Released reservations no longer count toward the run's totals.
+        live = [row for row in rows if row.unresolved_reason is None]
         tokens = sum(
             row.actual_tokens if row.settled and row.actual_tokens is not None else row.reserved_tokens
-            for row in rows
+            for row in live
         )
         cost = sum(
             (
@@ -982,12 +1035,12 @@ class PgBudgetLedger:
                 if row.settled and row.actual_cost_usd is not None
                 else row.reserved_cost_usd or Decimal("0")
             )
-            for row in rows
+            for row in live
         )
         return {
             "run_id": run_id,
-            "used_attempts": len(rows),
+            "used_attempts": len(live),
             "total_tokens": tokens,
             "total_cost_usd": str(cost),
-            "incomplete": any(not row.settled for row in rows),
+            "incomplete": any(row.unresolved_reason is not None for row in rows),
         }
