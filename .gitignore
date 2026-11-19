@@ -24,9 +24,10 @@ next-env.d.ts
 test-results/
 playwright-report/
 
-# Local data and backups
-backups/
-data/
+# Local data and backups (root only: a bare "data/" would also ignore
+# frontend/src/app/data/ and frontend/src/features/data/)
+/backups/
+/data/
 *.sqlite
 *.duckdb
 
