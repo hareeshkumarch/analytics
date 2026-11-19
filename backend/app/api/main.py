@@ -78,6 +78,13 @@ TERMINAL_RUN_STATUSES = frozenset(
     {RunStatus.COMPLETED.value, RunStatus.FAILED.value, RunStatus.CANCELLED.value}
 )
 SSE_HEARTBEAT_SECONDS = 15.0
+# A run with no live worker and no new events is stuck; close its SSE stream
+# instead of heartbeating forever. The browser's EventSource reconnects, so a
+# close is recoverable. 20 idle polls x 15s = 300s of silence.
+SSE_MAX_IDLE_POLLS = 20
+# Absolute backstop: no single SSE stream lives longer than 30 minutes, well
+# above the deepest run budget (600s active).
+SSE_MAX_STREAM_SECONDS = 1800.0
 
 logger = logging.getLogger(__name__)
 
@@ -1373,6 +1380,7 @@ def create_app(
         async def event_gen() -> Any:
             live = run_rec.get("status") not in TERMINAL_RUN_STATUSES
             loop = asyncio.get_running_loop()
+            stream_started = loop.time()
             queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
             sub = (loop, queue)
             if live:
@@ -1382,6 +1390,7 @@ def create_app(
                 yield ": heartbeat\n\n"
                 last_seq = cursor
                 finished = False
+                idle_polls = 0
                 past_events = []
                 if hasattr(app.state, "repo_events"):
                     try:
@@ -1398,16 +1407,24 @@ def create_app(
                         finished = finished or evt["type"] == "run.finished"
                         yield _frame(evt)
                 while live and not finished:
+                    if loop.time() - stream_started > SSE_MAX_STREAM_SECONDS:
+                        logger.warning(
+                            "Closing SSE stream for run %s: max stream age reached",
+                            run_id,
+                        )
+                        break
                     try:
                         evt = await asyncio.wait_for(queue.get(), timeout=SSE_HEARTBEAT_SECONDS)
                     except asyncio.TimeoutError:
                         if run_id not in app.state.bg_tasks:
+                            saw_event = False
                             try:
                                 new_events = app.state.repo_events.list_after(run_id, last_seq)
                                 for event in new_events:
                                     evt = _event_dict(event)
                                     last_seq = evt["sequence"]
                                     finished = evt["type"] == "run.finished"
+                                    saw_event = True
                                     yield _frame(evt)
                                 latest = app.state.repo_runs.get_run(run_id)
                                 if latest:
@@ -1418,6 +1435,18 @@ def create_app(
                                 logger.exception("Failed to poll worker events for run %s", run_id)
                             if finished:
                                 break
+                            if saw_event:
+                                idle_polls = 0
+                            else:
+                                idle_polls += 1
+                                if idle_polls >= SSE_MAX_IDLE_POLLS:
+                                    logger.warning(
+                                        "Closing SSE stream for run %s: no worker and no "
+                                        "new events for %s polls",
+                                        run_id,
+                                        idle_polls,
+                                    )
+                                    break
                             yield ": heartbeat\n\n"
                             continue
                         yield ": heartbeat\n\n"
