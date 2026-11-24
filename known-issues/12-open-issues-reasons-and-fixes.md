@@ -23,6 +23,11 @@ The **UX** tag marks items that users directly notice.
   - CI now runs `ruff`, the Playwright suite, and `mypy` as advisory (#43, partly). `make test` uses `pytest`.
   - Fonts are self-hosted from pinned `@fontsource-variable` packages, so `next build` makes no network calls (an intermittent `next/font/google` crash had failed CI builds).
   - Every test has a 120 s timeout (`pytest-timeout`) and every CI job a `timeout-minutes`, after a test race hung CI for 25+ minutes: `test_fastapi_health_providers_and_run_idempotency` used a non-context `TestClient`, so each request ran in a short-lived event loop that destroyed the run's background task.
+- **Indian finance imports (2026-11-24):**
+  - CSV decoding detects UTF-8/UTF-16 byte-order marks, then tries UTF-8, cp1252 and latin-1.
+  - CSV, TSV, XLSX, Google Sheets and REST imports share one inference module (`parsers/inference.py`). Amounts such as `₹1,23,456.78`, `Rs. 1,234`, `INR 1,234.50`, `-₹500` and `(1,234.00)` become decimals with `INR` currency metadata; Indian and Western digit grouping are validated; leading-zero ids stay text; numbers too large for decimal128 stay text.
+  - ISO and day-first (`dd/mm/yyyy`, `dd-mm-yyyy`, `dd.mm.yyyy`) dates become `date32`, date-times become timestamps. Two-digit years are not inferred. A column with both day>12 and month>12 values stays text; all-ambiguous columns are read day-first (no warning is recorded yet).
+  - XLSX files with printer-settings parts are accepted; macros, ActiveX, embedded objects, external links and other binary parts are still rejected.
 - **Privacy and concurrency (2026-11-24):**
   - `allow_raw_record_egress` is enforced: detail-query row values reach the model only when every provider the routing policy allows has it enabled (all default to off). The model gets columns, row count and the evidence id; the rows stay in local evidence.
   - Snapshot versions are allocated on the server (#8).
@@ -75,7 +80,8 @@ The **UX** tag marks items that users directly notice.
 
 ## P1: wrong results or lost data
 
-### #6 API imports store every value as text (UX)
+### #6 API imports store every value as text (UX) (fixed)
+- **Status (2026-11-24):** Fixed. REST records go through the shared column inference in `parsers/inference.py`; nested objects and lists are stored as JSON text and booleans as `true`/`false`.
 - **Reason:** The REST connector converts every value with `str()`. Stripe amounts, HubSpot numbers and GitHub counts can't be summed, and nested objects become Python text like `{'a': 1}`.
 - **How to fix:**
   1. In `rest_connector.py` `extract`, stop calling `str()` on every value.
