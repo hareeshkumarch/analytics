@@ -13,6 +13,7 @@ class CompiledQuery:
     compiler_version: str
     operation: str
     template_name: str
+    row_limit: int
 
 
 @dataclass(frozen=True, slots=True)

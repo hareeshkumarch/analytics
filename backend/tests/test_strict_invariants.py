@@ -161,7 +161,8 @@ class TestStrictInvariants(unittest.TestCase):
             max_rows=1000,
         )
         self.assertNotIn("DROP TABLE", c_det.sql)
-        self.assertIn("LIMIT 1000", c_det.sql)
+        self.assertEqual(c_det.row_limit, 1000)
+        self.assertIn("LIMIT 1001", c_det.sql)
         self.assertEqual(c_det.parameters, (sqli,))
 
         c_cmp = compiler.compile(

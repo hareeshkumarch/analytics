@@ -314,6 +314,11 @@ class AnalyticsToolbox:
             "rows_shown": len(shown),
             "truncated": result.truncated or len(shown) < result.row_count,
         }
+        if result.truncated:
+            payload["note"] = (
+                f"More than {result.row_count} rows matched, so only the first {result.row_count} were returned. "
+                "Totals or counts taken from these rows are incomplete: aggregate in the query or narrow the filters."
+            )
         return ToolOutcome(
             content=_cap(payload),
             is_error=False,

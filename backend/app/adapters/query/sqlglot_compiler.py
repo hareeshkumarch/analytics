@@ -2,6 +2,7 @@ import hashlib
 import json
 import re
 from dataclasses import asdict
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from app.application.ports.query import CompiledQuery
@@ -92,15 +93,24 @@ def _hash_ir(ir: QueryIR) -> str:
 _NUMERIC_TYPE = re.compile(r"^(u?int(8|16|32|64)?|halffloat|float(16|32|64)?|double|decimal(32|64|128|256)?|numeric|real)\b")
 
 
-def _is_numeric(schema: TableSchema, field_id: str) -> bool:
+_TEMPORAL_TYPE = re.compile(r"^(date(32|64)?|timestamp)\b")
+
+
+def _arrow_type(schema: TableSchema, field_id: str) -> str:
     for col in schema.columns:
         if col.name == field_id:
             arrow_type = col.arrow_type.lower().strip()
             dictionary = re.match(r"^dictionary<values=([^,>]+)", arrow_type)
-            if dictionary:
-                arrow_type = dictionary.group(1).strip()
-            return bool(_NUMERIC_TYPE.match(arrow_type))
-    return False
+            return dictionary.group(1).strip() if dictionary else arrow_type
+    return ""
+
+
+def _is_numeric(schema: TableSchema, field_id: str) -> bool:
+    return bool(_NUMERIC_TYPE.match(_arrow_type(schema, field_id)))
+
+
+def _is_temporal(schema: TableSchema, field_id: str) -> bool:
+    return bool(_TEMPORAL_TYPE.match(_arrow_type(schema, field_id)))
 
 
 def validate_sql_ast(sql: str) -> None:
@@ -161,6 +171,34 @@ def validate_sql_ast(sql: str) -> None:
             raise SecurityPolicyError("Only SELECT queries are permitted")
 
 
+def _parse_bound(value: str, label: str) -> date | datetime:
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        pass
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise QueryValidationError(f"{label} must be an ISO date (YYYY-MM-DD) or date-time, got {value!r}") from exc
+    if parsed.tzinfo is not None:
+        raise QueryValidationError(f"{label} must not include a time zone offset, got {value!r}")
+    return parsed
+
+
+def _period_bounds(start: str, end: str, period: str) -> tuple[date | datetime, str, date | datetime]:
+    start_value = _parse_bound(start, f"{period}_start")
+    end_value = _parse_bound(end, f"{period}_end")
+    start_dt = start_value if isinstance(start_value, datetime) else datetime.combine(start_value, time.min)
+    if isinstance(end_value, datetime):
+        end_op, end_bound, valid = "<=", end_value, start_dt <= end_value
+    else:
+        end_op, end_bound = "<", end_value + timedelta(days=1)
+        valid = start_dt < datetime.combine(end_bound, time.min)
+    if not valid:
+        raise QueryValidationError(f"{period}_start must not be after {period}_end")
+    return start_value, end_op, end_bound
+
+
 class SqlGlotQueryCompiler:
     def _validate_field(self, table_id: str, field_id: str, schemas: dict[str, TableSchema]) -> str:
         if table_id not in schemas:
@@ -188,7 +226,7 @@ class SqlGlotQueryCompiler:
                 clauses.append(f"{col_sql} IS NOT NULL")
             elif f.op == FilterOperator.IN:
                 if not isinstance(f.value, list) or not f.value:
-                    raise QueryValidationError("IN filter requires a non-empty list")
+                    raise QueryValidationError(f"Filter on {f.field_id!r} with 'in' needs a non-empty list value")
                 placeholders = ", ".join("?" for _ in f.value)
                 params.extend(f.value)
                 clauses.append(f"{col_sql} IN ({placeholders})")
@@ -201,6 +239,11 @@ class SqlGlotQueryCompiler:
                     FilterOperator.LT: "<",
                     FilterOperator.LTE: "<=",
                 }
+                if f.value is None or isinstance(f.value, (list, dict)):
+                    raise QueryValidationError(
+                        f"Filter on {f.field_id!r} with {f.op.value!r} needs a single value; "
+                        "use is_null or is_not_null to test for missing values"
+                    )
                 sql_op = op_map[f.op]
                 params.append(f.value)
                 clauses.append(f"{col_sql} {sql_op} ?")
@@ -221,7 +264,8 @@ class SqlGlotQueryCompiler:
         max_rows: int = 1000,
     ) -> CompiledQuery:
         params: list[Any] = []
-        limit = min(max(1, getattr(ir, "limit", max_rows)), max_rows)
+        row_limit = min(max(1, getattr(ir, "limit", max_rows)), max_rows)
+        limit = row_limit + 1
         ir_hash = _hash_ir(ir)
 
         if isinstance(ir, AggregateQueryIR):
@@ -269,19 +313,23 @@ class SqlGlotQueryCompiler:
         elif isinstance(ir, ComparePeriodsQueryIR):
             tbl_sql = _quote_ident(ir.table_id)
             date_sql = self._validate_field(ir.table_id, ir.date_field, schemas)
+            if not _is_temporal(schemas[ir.table_id], ir.date_field):
+                date_sql = f"TRY_CAST({date_sql} AS TIMESTAMP)"
             metric_col = self._validate_field(ir.table_id, ir.metric.field_id, schemas)
             agg_fn = ir.metric.func.value.upper()
             if ir.metric.func == AggregateFunction.COUNT_DISTINCT:
                 raise QueryValidationError("compare_periods does not support COUNT_DISTINCT")
-            params.extend([ir.current_start, ir.current_end, ir.previous_start, ir.previous_end])
+            current_start, current_op, current_end = _period_bounds(ir.current_start, ir.current_end, "current")
+            previous_start, previous_op, previous_end = _period_bounds(ir.previous_start, ir.previous_end, "previous")
+            params.extend([current_start, current_end, previous_start, previous_end])
             group_cols = [self._validate_field(ir.table_id, g, schemas) for g in ir.group_by]
             group_prefix = (", ".join(group_cols) + ", ") if group_cols else ""
             group_clause = (" GROUP BY " + ", ".join(group_cols)) if group_cols else ""
             where_sql = self._compile_filters(ir.table_id, ir.filters, schemas, params)
             sql = (
                 f"SELECT {group_prefix}"
-                f"{agg_fn}(CASE WHEN {date_sql} >= ? AND {date_sql} <= ? THEN {metric_col} ELSE NULL END) AS current_value, "
-                f"{agg_fn}(CASE WHEN {date_sql} >= ? AND {date_sql} <= ? THEN {metric_col} ELSE NULL END) AS previous_value "
+                f"{agg_fn}(CASE WHEN {date_sql} >= ? AND {date_sql} {current_op} ? THEN {metric_col} ELSE NULL END) AS current_value, "
+                f"{agg_fn}(CASE WHEN {date_sql} >= ? AND {date_sql} {previous_op} ? THEN {metric_col} ELSE NULL END) AS previous_value "
                 f"FROM {tbl_sql}{where_sql}{group_clause} LIMIT {limit}"
             )
             template_name = "compare_periods_v1"
@@ -364,4 +412,5 @@ class SqlGlotQueryCompiler:
             compiler_version=COMPILER_VERSION,
             operation=ir.operation,
             template_name=template_name,
+            row_limit=row_limit,
         )

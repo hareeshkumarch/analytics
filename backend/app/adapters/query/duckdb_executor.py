@@ -72,11 +72,12 @@ class DuckDbQueryExecutor:
             try:
                 cur = conn.execute(compiled.sql, list(compiled.parameters))
                 columns = tuple(desc[0] for desc in (cur.description or []))
-                fetched = cur.fetchmany(self._max_rows + 1)
+                row_cap = min(self._max_rows, compiled.row_limit)
+                fetched = cur.fetchmany(row_cap + 1)
             except duckdb.InterruptException as exc:
                 raise SecurityPolicyError("Query exceeded execution deadline") from exc
-            truncated = len(fetched) > self._max_rows
-            rows = tuple(tuple(r) for r in fetched[: self._max_rows])
+            truncated = len(fetched) > row_cap
+            rows = tuple(tuple(r) for r in fetched[:row_cap])
 
             elapsed_ms = int((time.monotonic() - start) * 1000)
             if elapsed_ms > timeout_seconds * 1000:
