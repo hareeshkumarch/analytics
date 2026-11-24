@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import tempfile
@@ -407,6 +408,47 @@ class TestToolLoop(unittest.TestCase):
         self.assertNotIn("/", aid)
         self.assertNotIn("\\", aid)
         self.assertNotIn("..", aid)
+
+    def test_detail_rows_are_withheld_from_the_model_by_default(self) -> None:
+        detail = {"operation": "detail", "purpose": "list orders", "table_id": "orders", "select_fields": ["region", "amount"]}
+        with tempfile.TemporaryDirectory() as td:
+            box = self._toolbox(build_container(artifact_root=td))
+            out = box.execute(ToolCallResult("c", "run_query_ir", detail))
+            payload = json.loads(out.content)
+            self.assertEqual(payload["rows"], [])
+            self.assertTrue(payload["rows_withheld"])
+            self.assertIn(payload["evidence_id"], payload["note"])
+            self.assertEqual(payload["row_count"], 3)
+            self.assertEqual(len(out.evidence["rows"]), 3)
+            totals = json.loads(box.execute(ToolCallResult("c", "run_query_ir", QUERY)).content)
+            self.assertTrue(totals["rows"])
+            self.assertNotIn("rows_withheld", totals)
+
+    def test_detail_rows_reach_the_model_when_every_provider_allows_it(self) -> None:
+        detail = {"operation": "detail", "purpose": "list orders", "table_id": "orders", "select_fields": ["region"]}
+        with tempfile.TemporaryDirectory() as td:
+            box = self._toolbox(build_container(artifact_root=td))
+            box.raw_record_egress = True
+            payload = json.loads(box.execute(ToolCallResult("c", "run_query_ir", detail)).content)
+            self.assertEqual(len(payload["rows"]), 3)
+            self.assertNotIn("rows_withheld", payload)
+
+    def test_raw_record_egress_needs_every_allowed_provider_to_permit_it(self) -> None:
+        import dataclasses
+        from app.application.services.orchestration_service import InvestigationOrchestrator
+
+        with tempfile.TemporaryDirectory() as td:
+            c = build_container(artifact_root=td)
+            orch = InvestigationOrchestrator(c)
+            policy = c.default_routing_policy
+            self.assertFalse(orch._raw_record_egress_allowed(policy))
+            c.provider_profiles[ProviderId.OPENAI] = dataclasses.replace(
+                c.provider_profiles[ProviderId.OPENAI], allow_raw_record_egress=True
+            )
+            self.assertFalse(orch._raw_record_egress_allowed(policy))
+            only_openai = dataclasses.replace(policy, allowed_providers=(ProviderId.OPENAI,))
+            self.assertTrue(orch._raw_record_egress_allowed(only_openai))
+            self.assertFalse(orch._raw_record_egress_allowed(dataclasses.replace(policy, allowed_providers=())))
 
     def test_no_snapshot_offers_no_tools(self) -> None:
         with tempfile.TemporaryDirectory() as td:

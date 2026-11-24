@@ -115,7 +115,8 @@ RUN_QUERY_TOOL = ToolDefinition(
     name="run_query_ir",
     description=(
         "Run a read-only, typed query against the bound dataset snapshot and get the result rows plus an "
-        "evidence_id. Use only table and column names returned by inspect_schema. Raw SQL is not accepted."
+        "evidence_id. Use only table and column names returned by inspect_schema. Raw SQL is not accepted. "
+        "Row values from detail queries may be withheld by the data policy; use aggregates for figures."
     ),
     parameters_schema=RUN_QUERY_SCHEMA,
     strict=False,
@@ -207,6 +208,7 @@ class AnalyticsToolbox:
     semantics: dict[str, Any] | None
     budget: ToolBudget
     max_rows_to_model: int = MAX_ROWS_TO_MODEL
+    raw_record_egress: bool = False
     definitions: tuple[ToolDefinition, ...] = field(default=(INSPECT_SCHEMA_TOOL, RUN_QUERY_TOOL))
 
     @property
@@ -306,19 +308,29 @@ class AnalyticsToolbox:
         shown = result.rows[: self.max_rows_to_model]
         evidence["columns"] = list(result.columns)
         evidence["rows"] = json.loads(json.dumps([list(r) for r in shown], default=str))
+        withheld = ir.operation == "detail" and not self.raw_record_egress
         payload = {
             "evidence_id": evidence_id,
             "columns": list(result.columns),
-            "rows": [list(r) for r in shown],
+            "rows": [] if withheld else [list(r) for r in shown],
             "row_count": result.row_count,
-            "rows_shown": len(shown),
+            "rows_shown": 0 if withheld else len(shown),
             "truncated": result.truncated or len(shown) < result.row_count,
         }
+        notes: list[str] = []
+        if withheld:
+            payload["rows_withheld"] = True
+            notes.append(
+                "The data policy keeps raw row values from detail queries out of the model. The user can see these "
+                f"rows in evidence {evidence_id}; cite it, and never guess values. Use aggregate queries for figures."
+            )
         if result.truncated:
-            payload["note"] = (
+            notes.append(
                 f"More than {result.row_count} rows matched, so only the first {result.row_count} were returned. "
                 "Totals or counts taken from these rows are incomplete: aggregate in the query or narrow the filters."
             )
+        if notes:
+            payload["note"] = " ".join(notes)
         return ToolOutcome(
             content=_cap(payload),
             is_error=False,

@@ -649,6 +649,13 @@ class InvestigationOrchestrator:
             task_history_loader=task_history_loader,
         )
 
+    def _raw_record_egress_allowed(self, policy: RoutingPolicy) -> bool:
+        profiles = self._container.provider_profiles
+        return bool(policy.allowed_providers) and all(
+            profiles[provider].allow_raw_record_egress if provider in profiles else False
+            for provider in policy.allowed_providers
+        )
+
     def execute_local(
         self,
         *,
@@ -736,6 +743,7 @@ class InvestigationOrchestrator:
                 used_invocations=initial_tool_invocations,
                 used_analytical=initial_analytical_calls,
             ),
+            raw_record_egress=self._raw_record_egress_allowed(policy),
         )
 
         self._container.budget_ledger.configure_run(
