@@ -793,23 +793,17 @@ def create_app(
 
     @app.post("/api/v1/workspaces/{workspace_id}/semantics/{snapshot_id}/approve")
     async def approve_semantics(workspace_id: str, snapshot_id: str, payload: ApproveSemanticsRequest) -> dict[str, Any]:
-        if hasattr(app.state, "repo_snapshots"):
-            try:
-                res = app.state.repo_snapshots.approve_semantics(snapshot_id, payload.expected_version)
-                app.state.semantics[snapshot_id] = res
-                return res
-            except NotFoundError:
-                raise HTTPException(status_code=404, detail="Semantic version not found")
-            except VersionConflictError:
-                raise HTTPException(status_code=409, detail="Semantic version conflict")
-        sem = app.state.semantics.get(snapshot_id)
-        if not sem:
-            raise HTTPException(status_code=404, detail="Semantic version not found")
-        if payload.expected_version != sem["version"]:
-            raise HTTPException(status_code=409, detail="Semantic version conflict")
-        sem["approved"] = True
-        sem["version"] += 1
-        return sem
+        try:
+            res = app.state.repo_snapshots.approve_semantics(snapshot_id, payload.expected_version)
+        except NotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Semantic version not found") from exc
+        except VersionConflictError as exc:
+            raise HTTPException(status_code=409, detail="Semantic version conflict") from exc
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to approve semantics")
+            raise _db_unavailable("approve the definitions") from exc
+        app.state.semantics[snapshot_id] = res
+        return res
 
     @app.get("/api/v1/workspaces/{workspace_id}/providers")
     def list_providers(workspace_id: str) -> dict[str, Any]:

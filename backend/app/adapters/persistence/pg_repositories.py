@@ -784,30 +784,37 @@ class PgSnapshotRepository:
             return res
 
     def approve_semantics(self, snapshot_id: str, expected_version: int) -> dict[str, Any]:
-        with self._sf() as db:
-            with db.begin():
-                sem = db.scalars(
-                    select(SemanticVersionRow)
-                    .where(SemanticVersionRow.snapshot_id == snapshot_id)
-                    .order_by(SemanticVersionRow.version.desc())
-                ).first()
-                if not sem:
-                    raise NotFoundError("Semantic version not found")
-                if sem.version != expected_version:
-                    raise VersionConflictError("Semantic version conflict")
-                sem.approved = True
-                sem.version += 1
-                defs = dict(sem.definitions_json)
-                defs["approved"] = True
-                defs["version"] = sem.version
-                sem.definitions_json = defs
-                return {
-                    **defs,
-                    "semantic_version_id": sem.semantic_version_id,
-                    "snapshot_id": sem.snapshot_id,
-                    "version": sem.version,
-                    "approved": True,
-                }
+        try:
+            with self._sf() as db:
+                with db.begin():
+                    current = db.scalars(
+                        select(SemanticVersionRow)
+                        .where(SemanticVersionRow.snapshot_id == snapshot_id)
+                        .order_by(SemanticVersionRow.version.desc())
+                    ).first()
+                    if not current:
+                        raise NotFoundError("Semantic version not found")
+                    if current.version != expected_version:
+                        raise VersionConflictError("Semantic version conflict")
+                    approved = SemanticVersionRow(
+                        semantic_version_id=f"sem_{uuid.uuid4().hex[:10]}",
+                        workspace_id=current.workspace_id,
+                        snapshot_id=snapshot_id,
+                        version=current.version + 1,
+                        approved=True,
+                        definitions_json={**current.definitions_json, "approved": True, "version": current.version + 1},
+                    )
+                    db.add(approved)
+                    db.flush()
+                    return {
+                        **approved.definitions_json,
+                        "semantic_version_id": approved.semantic_version_id,
+                        "snapshot_id": snapshot_id,
+                        "version": approved.version,
+                        "approved": True,
+                    }
+        except IntegrityError as exc:
+            raise VersionConflictError("Semantic version conflict") from exc
 
 
 class PgPinRepository:

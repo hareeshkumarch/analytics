@@ -109,7 +109,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** Runs read only `app.state.routing_policies`, which stays empty after a restart until someone calls `GET /routing`. Pin refreshes and API clients run with no cost ceiling.
 - **How to fix:** At run start, load the policy through `app.state.repo_routing.get_policy(workspace_id)`, reusing the conversion in `update_routing_policy`, and cache it.
 
-### #11 Approving definitions has no lock and overwrites history
+### #11 Approving definitions has no lock and overwrites history (fixed)
+- **Status (2026-11-24):** Fixed. Approval inserts a new semantic-version row (the proposed one stays as history) and migration `0006_semantic_version_history` makes `(snapshot_id, version)` unique, so a concurrent second approval of the same version gets 409. Alembic now ignores tables it doesn't manage (the LangGraph checkpoint tables), so autogenerate won't propose dropping them.
 - **Reason:** `approve_semantics` reads, checks and writes without a lock, so two concurrent approvals can both succeed. It also edits the row in place, so a run's `semantic_version_id` doesn't show which definitions it used.
 - **How to fix:** Use `UPDATE … WHERE snapshot_id=:s AND version=:expected RETURNING *` and return 409 when no row comes back. Insert a new semantic-version row on approval.
 

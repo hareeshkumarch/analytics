@@ -74,7 +74,7 @@ class SnapshotManifestRow(Base):
 
 class SemanticVersionRow(Base):
     __tablename__ = "semantic_versions"
-    __table_args__ = (Index("ix_semantic_versions_snapshot_version", "snapshot_id", "version"),)
+    __table_args__ = (UniqueConstraint("snapshot_id", "version", name="uq_semantic_versions_snapshot_version"),)
     semantic_version_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.workspace_id"), nullable=False)
     snapshot_id: Mapped[str] = mapped_column(ForeignKey("snapshot_manifests.snapshot_id"), nullable=False)
