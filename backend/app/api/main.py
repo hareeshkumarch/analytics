@@ -81,6 +81,7 @@ TERMINAL_RUN_STATUSES = frozenset(
     {RunStatus.COMPLETED.value, RunStatus.FAILED.value, RunStatus.CANCELLED.value}
 )
 SSE_HEARTBEAT_SECONDS = 15.0
+SSE_WORKER_POLL_SECONDS = 1.0
 
 logger = logging.getLogger(__name__)
 
@@ -1315,19 +1316,24 @@ def create_app(
                         last_seq = evt["sequence"]
                         finished = finished or evt["type"] == "run.finished"
                         yield _frame(evt)
+                last_sent = time.monotonic()
                 while live and not finished:
+                    worker_run = run_id not in app.state.bg_tasks
                     try:
-                        evt = await asyncio.wait_for(queue.get(), timeout=SSE_HEARTBEAT_SECONDS)
+                        evt = await asyncio.wait_for(
+                            queue.get(), timeout=SSE_WORKER_POLL_SECONDS if worker_run else SSE_HEARTBEAT_SECONDS
+                        )
                     except asyncio.TimeoutError:
-                        if run_id not in app.state.bg_tasks:
+                        if worker_run:
                             try:
-                                new_events = app.state.repo_events.list_after(run_id, last_seq)
+                                new_events = await asyncio.to_thread(app.state.repo_events.list_after, run_id, last_seq)
                                 for event in new_events:
                                     evt = _event_dict(event)
                                     last_seq = evt["sequence"]
                                     finished = evt["type"] == "run.finished"
+                                    last_sent = time.monotonic()
                                     yield _frame(evt)
-                                latest = app.state.repo_runs.get_run(run_id)
+                                latest = await asyncio.to_thread(app.state.repo_runs.get_run, run_id)
                                 if latest:
                                     app.state.runs[run_id] = latest
                                     if latest["status"] in TERMINAL_RUN_STATUSES and not new_events:
@@ -1336,14 +1342,15 @@ def create_app(
                                 logger.exception("Failed to poll worker events for run %s", run_id)
                             if finished:
                                 break
+                        if time.monotonic() - last_sent >= SSE_HEARTBEAT_SECONDS:
+                            last_sent = time.monotonic()
                             yield ": heartbeat\n\n"
-                            continue
-                        yield ": heartbeat\n\n"
                         continue
                     if evt["sequence"] <= last_seq:
                         continue
                     last_seq = evt["sequence"]
                     finished = evt["type"] == "run.finished"
+                    last_sent = time.monotonic()
                     yield _frame(evt)
             finally:
                 if live:
