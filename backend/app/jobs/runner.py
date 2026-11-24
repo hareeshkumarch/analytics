@@ -27,7 +27,7 @@ from app.application.services.orchestration_service import InvestigationOrchestr
 from app.application.services.routing_service import routing_policy_from_saved
 from app.bootstrap.container import build_container
 from app.domain.events import EventType, RunEvent
-from app.domain.errors import ClarificationRequired
+from app.domain.errors import ClarificationRequired, public_message
 from app.domain.models import RunMode, RunStatus
 from app.domain.providers import ProviderId, RoutingPolicy
 
@@ -227,13 +227,13 @@ def execute_persisted_run(run_id: str) -> dict[str, str]:
                     run_id=run_id,
                     type=EventType.RUN_FINISHED,
                     occurred_at=datetime.now(timezone.utc),
-                    payload={"status": RunStatus.FAILED.value, "error": str(exc)[:500]},
+                    payload={"status": RunStatus.FAILED.value, "error": public_message(exc)},
                 )
                 events.append(
                     failure,
                     status=RunStatus.FAILED,
                     outcome="failed",
-                    error=str(exc)[:500],
+                    error=public_message(exc),
                     only_if_not_cancelled=True,
                 )
         latest = runs.get_run(run_id) or run

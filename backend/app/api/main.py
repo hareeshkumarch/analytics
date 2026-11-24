@@ -66,6 +66,7 @@ from app.domain.errors import (
     SecurityPolicyError,
     ValidationError,
     VersionConflictError,
+    public_message,
 )
 from app.domain.limits import (
     DEEP_BUDGET_LIMITS,
@@ -1061,7 +1062,7 @@ def create_app(
             if not _is_cancelled():
                 run_rec["status"] = RunStatus.FAILED.value
                 run_rec["outcome"] = "failed"
-                run_rec["error"] = str(exc)[:500]
+                run_rec["error"] = public_message(exc)
                 try:
                     app.state.repo_runs.update_status(
                         run_id, RunStatus.FAILED, outcome="failed", error=run_rec["error"]

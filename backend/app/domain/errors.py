@@ -54,6 +54,12 @@ class DomainError(Exception):
         )
 
 
+def public_message(exc: BaseException) -> str:
+    if isinstance(exc, DomainError):
+        return str(exc)[:500]
+    return f"The step failed with an unexpected {exc.__class__.__name__}; details are in the server log."
+
+
 class ValidationError(DomainError):
     code = "validation_error"
     http_status = 422

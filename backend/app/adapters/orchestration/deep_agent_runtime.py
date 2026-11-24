@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 import hashlib
 import json
+import logging
 import re
 import threading
 import time
@@ -31,8 +32,11 @@ from app.adapters.providers.langchain_gateway import GatewayChatModel
 from app.application.ports.providers import ModelResponse, ToolCallResult, ToolDefinition
 from app.application.services.analytics_tools import AnalyticsToolbox, ToolOutcome
 from app.application.services.routing_service import RoutingService
+from app.domain.errors import public_message
 from app.domain.models import Claim, TaskNode
 from app.domain.providers import AgentRole, RoutingPolicy
+
+logger = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 6
 _EVIDENCE_ID_RE = re.compile(r"ev_[0-9a-f]{12}")
@@ -514,7 +518,8 @@ class DeepAgentTaskRunner:
             if not text.strip():
                 raise RuntimeError("The model returned an empty answer")
         except Exception as exc:  # noqa: BLE001
-            error = str(exc) or exc.__class__.__name__
+            logger.warning("Task %s failed", task.task_id, exc_info=True)
+            error = public_message(exc)
             if should_cancel is not None and should_cancel():
                 stopped_early = "cancelled"
             elif deadline is not None and time.monotonic() >= deadline:

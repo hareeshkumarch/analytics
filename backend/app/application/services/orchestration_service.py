@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import hashlib
 import json
+import logging
 import os
 import re
 import threading
@@ -29,11 +30,13 @@ from app.adapters.query.snapshot_engine import SnapshotQueryEngine
 from app.adapters.query.sqlglot_compiler import SqlGlotQueryCompiler
 from app.application.ports.query import SnapshotQueryPort
 from app.application.services.analytics_tools import AnalyticsToolbox, ToolBudget
-from app.domain.errors import BudgetExhaustedError, ClarificationRequired
+from app.domain.errors import BudgetExhaustedError, ClarificationRequired, public_message
 from app.domain.events import EventType, RunEvent
 from app.domain.limits import DEFAULT_GLOBAL_LIMITS, REPLAN_TASKS
 from app.domain.models import Answer, Claim, PlanDAG, RunMode, RunStatus, TaskNode, TaskStatus
 from app.domain.providers import AgentRole, RoutingPolicy
+
+logger = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 6
 TOOL_ROUND_MAX_OUTPUT_TOKENS = 12_000
@@ -492,7 +495,7 @@ class InvestigationOrchestrator:
                         except Exception as retry_exc:  # noqa: BLE001
                             exc = retry_exc
                     if resp is None:
-                        stopped_early = str(exc) or exc.__class__.__name__
+                        stopped_early = public_message(exc)
                         break
                 provider_str = resp.provider_id.value
                 model_str = resp.model_id
@@ -526,7 +529,7 @@ class InvestigationOrchestrator:
                         try:
                             outcome = toolbox.execute(raw)
                         except Exception as exc:  # noqa: BLE001
-                            outcome = toolbox.failure(raw.tool_name, f"Tool failed: {exc}"[:500])
+                            outcome = toolbox.failure(raw.tool_name, f"Tool failed: {public_message(exc)}")
                     messages.append(
                         {
                             "role": "tool",
@@ -564,7 +567,8 @@ class InvestigationOrchestrator:
             elif not text.strip():
                 raise RuntimeError("The model returned an empty answer")
         except Exception as exc:  # noqa: BLE001
-            error = str(exc) or exc.__class__.__name__
+            logger.warning("Task %s failed", task.task_id, exc_info=True)
+            error = public_message(exc)
             text = ""
             provider_str = "none"
             model_str = "setup_required"

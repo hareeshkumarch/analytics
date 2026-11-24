@@ -1,8 +1,11 @@
 from email.utils import parsedate_to_datetime
 import json
+import logging
 from typing import Any
 
 from app.domain.errors import ProviderError
+
+logger = logging.getLogger(__name__)
 
 
 def parse_retry_after(value: str | None) -> float | None:
@@ -21,10 +24,10 @@ def parse_retry_after(value: str | None) -> float | None:
 
 
 def classify_http_error(status_code: int, body_text: str, provider_name: str) -> ProviderError:
-    safe_msg = body_text[:300]
+    logger.warning("%s returned HTTP %s: %s", provider_name, status_code, body_text[:300])
     if status_code == 429 or status_code >= 500:
         return ProviderError(
-            f"{provider_name} transient HTTP {status_code}: {safe_msg}",
+            f"{provider_name} is temporarily unavailable (HTTP {status_code})",
             code="provider_transient_error",
             retryable=True,
         )
@@ -36,7 +39,7 @@ def classify_http_error(status_code: int, body_text: str, provider_name: str) ->
             remediation="Verify provider API key in Settings.",
         )
     return ProviderError(
-        f"{provider_name} request rejected ({status_code}): {safe_msg}",
+        f"{provider_name} rejected the request (HTTP {status_code})",
         code="provider_invalid_request",
         retryable=False,
     )

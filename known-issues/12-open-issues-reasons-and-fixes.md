@@ -137,7 +137,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** A comparison filter without a value binds NULL and silently returns 0 rows. `compare_periods` accepts any string as a date, and its inclusive end drops most of the last day for timestamps.
 - **How to fix:** Require `value` for comparison operators, parse ISO dates, and use a half-open `< end + 1 day` bound.
 
-### #19 Raw provider errors are sent to the browser
+### #19 Raw provider errors are sent to the browser (fixed)
+- **Status (2026-11-24):** Fixed. Provider response bodies are logged on the server and no longer embedded in `ProviderError` messages. Step, tool and run failures go through `public_message()`: our own domain errors keep their text, anything else becomes a generic message that points to the server log. A structured `{code, message, remediation}` payload is still open.
 - **Reason:** `task.status.error`, `tool.result.error` and `run.finished.error` carry raw exception text and parts of provider responses. The UI hides it, but it is still in the event log and the API.
 - **How to fix:** Send `{code, message, remediation}` built from `DomainError`, and log the raw text on the server only.
 
