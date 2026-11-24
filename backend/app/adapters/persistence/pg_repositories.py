@@ -4,7 +4,7 @@ from decimal import Decimal
 import uuid
 from typing import Any
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -615,6 +615,53 @@ class PgSnapshotRepository:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._sf = session_factory
 
+    def reserve_snapshot_version(
+        self,
+        workspace_id: str,
+        source_id: str,
+        source_family: str,
+        source_name: str,
+        source_config: dict[str, Any],
+    ) -> int:
+        try:
+            return self._increment_source_version(workspace_id, source_id, source_family, source_name, source_config)
+        except IntegrityError:
+            return self._increment_source_version(workspace_id, source_id, source_family, source_name, source_config)
+
+    def _increment_source_version(
+        self,
+        workspace_id: str,
+        source_id: str,
+        source_family: str,
+        source_name: str,
+        source_config: dict[str, Any],
+    ) -> int:
+        with self._sf() as db:
+            with db.begin():
+                version = db.execute(
+                    update(SourceRow)
+                    .where(SourceRow.source_id == source_id, SourceRow.workspace_id == workspace_id)
+                    .values(last_version=SourceRow.last_version + 1)
+                    .returning(SourceRow.last_version)
+                ).scalar_one_or_none()
+                if version is not None:
+                    return int(version)
+                if db.get(SourceRow, source_id) is not None:
+                    raise ValidationError("Source belongs to a different workspace.")
+                ensure_workspace(db, workspace_id)
+                db.add(
+                    SourceRow(
+                        source_id=source_id,
+                        workspace_id=workspace_id,
+                        family=source_family,
+                        name=source_name,
+                        config_json=source_config,
+                        last_version=1,
+                    )
+                )
+                db.flush()
+                return 1
+
     def save_snapshot(
         self,
         workspace_id: str,
@@ -625,29 +672,16 @@ class PgSnapshotRepository:
         manifest_json: dict[str, Any],
         artifact_id: str,
         sha256: str,
-        source_family: str = "uploaded_file",
-        source_name: str = "upload",
         source_config: dict[str, Any] | None = None,
         semantics_json: dict[str, Any] | None = None,
     ) -> None:
         with self._sf() as db:
             with db.begin():
-                ensure_workspace(db, workspace_id)
                 src = db.get(SourceRow, source_id)
-                if not src:
-                    src = SourceRow(
-                        source_id=source_id,
-                        workspace_id=workspace_id,
-                        family=source_family,
-                        name=source_name,
-                        config_json=source_config or {},
-                        current_snapshot_id=snapshot_id,
-                    )
-                    db.add(src)
-                else:
-                    if src.workspace_id != workspace_id:
-                        raise ValidationError("Source belongs to a different workspace.")
-                    src.current_snapshot_id = snapshot_id
+                if src is None or src.workspace_id != workspace_id:
+                    raise ValidationError("Reserve a snapshot version for this source before saving it.")
+                src.current_snapshot_id = snapshot_id
+                src.config_json = source_config or src.config_json
                 db.flush()
 
                 manifest_row = db.get(SnapshotManifestRow, snapshot_id)

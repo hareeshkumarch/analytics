@@ -219,7 +219,6 @@ class ConnectorExtractRequest(StrictApiModel):
     credentials: dict[str, str] = Field(default_factory=dict)
     selected_tables: list[str] = Field(default_factory=list)
     selected_columns: dict[str, list[str]] = Field(default_factory=dict)
-    version: int = Field(1, ge=1)
 
 
 class ApproveSemanticsRequest(StrictApiModel):

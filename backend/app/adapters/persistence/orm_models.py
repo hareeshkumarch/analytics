@@ -51,6 +51,7 @@ class SourceRow(Base):
     config_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     credential_id: Mapped[str | None] = mapped_column(ForeignKey("credential_refs.credential_id"), nullable=True)
     current_snapshot_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 
@@ -58,7 +59,7 @@ class SnapshotManifestRow(Base):
     __tablename__ = "snapshot_manifests"
     __table_args__ = (
         Index("ix_snapshot_manifests_ws_created", "workspace_id", "created_at"),
-        Index("ix_snapshot_manifests_source_version", "source_id", "version"),
+        UniqueConstraint("source_id", "version", name="uq_snapshot_manifests_source_version"),
     )
     snapshot_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.workspace_id"), nullable=False)

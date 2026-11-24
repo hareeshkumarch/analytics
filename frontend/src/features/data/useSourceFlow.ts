@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, errorHint, errorMessage } from "@/lib/api/client";
-import { DiscoveredTable, ExtractResult, discoverSource, extractSource, nextSourceVersion, probeSource } from "@/lib/api/connectors";
+import { DiscoveredTable, ExtractResult, discoverSource, extractSource, probeSource } from "@/lib/api/connectors";
 import { semanticsKey } from "@/lib/api/semantics";
 import type { SourcePayload } from "@/lib/connectors";
-import { useSnapshots, useWorkspace } from "@/lib/workspace";
+import { useWorkspace } from "@/lib/workspace";
 
 export type FlowPhase = "details" | "probing" | "discovering" | "tables" | "importing" | "done";
 
@@ -31,7 +31,6 @@ function toFlowError(err: unknown, fallback: string): FlowError {
 export function useSourceFlow(onImported: (result: ExtractResult) => void) {
   const ws = useWorkspace();
   const qc = useQueryClient();
-  const snapshots = useSnapshots();
   const [phase, setPhase] = useState<FlowPhase>("details");
   const [tables, setTables] = useState<DiscoveredTable[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
@@ -97,10 +96,8 @@ export function useSourceFlow(onImported: (result: ExtractResult) => void) {
     if (!ctrl) return;
     const payload = tableName ? { ...base, config: { ...base.config, table_name: tableName } } : base;
     try {
-      const latest = await snapshots.refetch();
-      const target = await nextSourceVersion(payload, latest.data?.snapshots ?? []);
       const selectedTables = tableName ? [tableName] : selected;
-      const res = await extractSource(ws.id, { ...payload, ...target, selected_tables: selectedTables }, ctrl.signal);
+      const res = await extractSource(ws.id, { ...payload, selected_tables: selectedTables }, ctrl.signal);
       payloadRef.current = null;
       qc.setQueryData(semanticsKey(ws.id, res.snapshot.snapshot_id), res.semantics);
       await qc.invalidateQueries({ queryKey: ["snapshots", ws.id] });

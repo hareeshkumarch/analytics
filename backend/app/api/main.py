@@ -511,12 +511,26 @@ def create_app(
         job_id = f"job_{uuid.uuid4().hex[:10]}"
         workspace_namespace = hashlib.sha256(workspace_id.encode("utf-8")).hexdigest()[:12]
         source_prefix = f"src_{workspace_namespace}_"
-        requested_source_id = payload.source_id or f"src_{uuid.uuid4().hex[:16]}"
+        source_config = _redacted_source_config(dict(payload.config))
+        requested_source_id = payload.source_id or "src_" + hashlib.sha256(
+            json.dumps([payload.family.value, source_config], sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()[:24]
         source_id = (
             requested_source_id
             if requested_source_id.startswith(source_prefix)
             else f"{source_prefix}{requested_source_id.removeprefix('src_')[:42]}"
         )
+        try:
+            version = app.state.repo_snapshots.reserve_snapshot_version(
+                workspace_id,
+                source_id,
+                payload.family.value,
+                payload.selected_tables[0] if payload.selected_tables else "upload",
+                source_config,
+            )
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to reserve a snapshot version")
+            raise _db_unavailable("start the import") from exc
         req = ExtractionRequest(
             workspace_id=workspace_id,
             source_id=source_id,
@@ -524,7 +538,7 @@ def create_app(
             selected_tables=tuple(payload.selected_tables),
             selected_columns={k: tuple(v) for k, v in payload.selected_columns.items()},
             limits=DEFAULT_DATA_LIMITS,
-            version=payload.version,
+            version=version,
         )
         with _materialized_connector_config(payload.family, payload.config) as cfg:
             batches, manifest = await _call_connector(
@@ -626,9 +640,7 @@ def create_app(
                 manifest_json=snap_dict,
                 artifact_id=manifest.artifact_id,
                 sha256=content_hash.hexdigest(),
-                source_family=payload.family.value,
-                source_name=payload.selected_tables[0] if payload.selected_tables else "upload",
-                source_config=_redacted_source_config(dict(payload.config)),
+                source_config=source_config,
                 semantics_json=sem_dict,
             )
         except SQLAlchemyError as exc:
