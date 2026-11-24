@@ -1,7 +1,7 @@
 from decimal import Decimal
 import re
 import threading
-from typing import Any, Callable
+from typing import Any
 import uuid
 
 from app.adapters.providers.registry import ProviderRegistry
@@ -243,7 +243,6 @@ class RoutingService:
         policy: RoutingPolicy,
         estimated_input_tokens: int,
         manual_model_id: str | None = None,
-        on_answer_reset: Callable[[dict[str, str]], None] | None = None,
     ) -> ModelResponse:
         candidates = self.select_candidates(
             role=request.role,
@@ -266,8 +265,6 @@ class RoutingService:
         attempts_used = 0
         repairs_used = 0
         last_error: Exception | None = None
-        prev_draft_id: str | None = None
-        prev_attempt_id: str | None = None
 
         for idx, model in enumerate(candidates):
             if attempts_used >= max_attempts:
@@ -289,17 +286,6 @@ class RoutingService:
             while attempts_used < max_attempts:
                 attempts_used += 1
                 attempt_id = f"att_{uuid.uuid4().hex[:12]}"
-                draft_id = f"drf_{uuid.uuid4().hex[:10]}"
-                if prev_draft_id is not None and prev_attempt_id is not None and on_answer_reset is not None:
-                    on_answer_reset(
-                        {
-                            "superseded_draft_id": prev_draft_id,
-                            "superseded_attempt_id": prev_attempt_id,
-                            "replacement_draft_id": draft_id,
-                            "replacement_attempt_id": attempt_id,
-                        }
-                    )
-
                 op_id = f"op_{request.request_id}"
                 max_tokens = estimated_input_tokens + min(request.max_output_tokens, model.max_output_tokens)
                 cost_unknown = model.input_price_per_1m is None or model.output_price_per_1m is None
@@ -332,8 +318,6 @@ class RoutingService:
                     resp = gateway.invoke(current_request, prov_profile, model, api_key)
                 except ProviderError as exc:
                     last_error = exc
-                    prev_draft_id = draft_id
-                    prev_attempt_id = attempt_id
                     self._ledger.release_unresolved(reservation.reservation_id, str(exc))
                     if exc.code == "schema_mismatch" and repairs_used < max_repairs and attempts_used < max_attempts:
                         repairs_used += 1
@@ -362,8 +346,6 @@ class RoutingService:
                     raise
                 except Exception as exc:  # noqa: BLE001
                     last_error = exc
-                    prev_draft_id = draft_id
-                    prev_attempt_id = attempt_id
                     self._ledger.release_unresolved(reservation.reservation_id, str(exc))
                     self._circuits.record_transient_failure(cb_key)
                     break

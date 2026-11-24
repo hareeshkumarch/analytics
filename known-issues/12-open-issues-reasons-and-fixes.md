@@ -144,7 +144,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** `task.status.error`, `tool.result.error` and `run.finished.error` carry raw exception text and parts of provider responses. The UI hides it, but it is still in the event log and the API.
 - **How to fix:** Send `{code, message, remediation}` built from `DomainError`, and log the raw text on the server only.
 
-### #21 The "reset answer" update is never sent
+### #21 The "reset answer" update is never sent (closed)
+- **Status (2026-11-24):** Closed by removing the hook. Adapters don't stream, and answer text is emitted only after a step finishes, so a failed attempt never shows partial text and the routing-level `on_answer_reset` callback had nothing to reset. It was removed as dead code. The composer's `answer.reset` (replacing step findings with the final answer) is unchanged. Wire a per-draft reset if token streaming is added.
 - **Reason:** `RoutingService.on_answer_reset` is never passed in. If wired up as is, its `drf_…` ids wouldn't match `draft_<task_id>`, and the UI would clear the whole answer.
 - **How to fix:** Wire the callback with the task's draft id, and make `AskView.tsx` replace only that step's text.
 

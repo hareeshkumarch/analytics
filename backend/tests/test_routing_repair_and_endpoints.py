@@ -75,16 +75,14 @@ class TestRoutingRepairAndEndpoints(unittest.TestCase):
             api_keys={ProviderId.OPENAI: "sk-test"},
             semaphores=CredentialSemaphorePool(),
         )
-        resets: list[dict[str, str]] = []
         policy = RoutingPolicy(1, RoutingPreset.BALANCED, True, {AgentRole.PLANNER: ("gpt-4o-2024-11-20",)}, (ProviderId.OPENAI,))
         req = ModelRequest(
             "r1", "run1", AgentRole.PLANNER, "gpt-4o-2024-11-20", ({"role": "user", "content": "hi"},),
             structured_schema={"type": "object", "properties": {"answer": {"type": "string"}}, "required": ["answer"]},
         )
-        resp = routing.execute_step(request=req, policy=policy, estimated_input_tokens=50, on_answer_reset=resets.append)
+        resp = routing.execute_step(request=req, policy=policy, estimated_input_tokens=50)
         self.assertEqual(resp.structured_output, {"answer": "fixed"})
         self.assertEqual(calls["n"], 2)
-        self.assertEqual(len(resets), 1)
 
     def test_provider_test_routing_version_and_clarify_endpoints(self) -> None:
         with tempfile.TemporaryDirectory() as td:
