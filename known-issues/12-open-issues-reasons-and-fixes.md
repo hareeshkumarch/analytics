@@ -21,6 +21,15 @@ The **UX** tag marks items that users directly notice.
   - Lock files are committed (#1, [05](05-python-dependency-lock.md)): `frontend/package-lock.json` plus hash-pinned `backend/requirements.lock` and `requirements-dev.lock`. CI and Docker install from them.
   - Deep runs no longer crash on a second replan. The default plan plus two replans needed 7 specialist instances against a limit of 6, and the planner could propose 8 tasks; the resulting `BudgetExhaustedError` escaped the graph and failed the run. Deep runs now allow 8 instances, `RunBudgetLimits.planner_task_limit` reserves room for every replan (checked at construction), replans are skipped when instances or model calls can't cover them, one model call stays reserved for the composer, and an exhausted budget cancels pending tasks with a limitation instead of failing.
   - CI now runs `ruff`, the Playwright suite, and `mypy` as advisory (#43, partly). `make test` uses `pytest`.
+  - Fonts are self-hosted from pinned `@fontsource-variable` packages, so `next build` makes no network calls (an intermittent `next/font/google` crash had failed CI builds).
+  - Every test has a 120 s timeout (`pytest-timeout`) and every CI job a `timeout-minutes`, after a test race hung CI for 25+ minutes: `test_fastapi_health_providers_and_run_idempotency` used a non-context `TestClient`, so each request ran in a short-lived event loop that destroyed the run's background task.
+- **Wrong results and lost data (2026-11-24):**
+  - Database errors are reported (#9). Writes (runs, datasets, pins, provider keys, routing policies) and reads (runs, pins, usage, providers, routing, queue counts) return `503 persistence_unavailable` with a remediation instead of reporting success or answering from memory; memory caches update only after the commit. A run whose failure can't be recorded still sends `run.finished`.
+  - `DATABASE_URL` is required (#28). The API fails at startup without it unless `TESTING=1`; tests use a throwaway file-backed SQLite database so concurrent requests no longer share one connection.
+  - One routing-policy loader (`routing_policy_from_saved`) serves the API, the Celery worker and the Settings screen (#10). A run fails closed with a clear error if the cost policy can't be loaded, and a removed cost ceiling now stays removed after a restart instead of showing the default.
+  - Cut-off results are flagged (#14). The compiler asks for one row past the limit and the executor sets `truncated`; the model is told that totals over the returned rows are incomplete.
+  - Query arguments are checked (#18). Comparison filters need a single value; `compare_periods` takes ISO dates or date-times (no time zone offsets), rejects reversed periods, uses `< end + 1 day` for date-only ends, binds typed values, and compares text date columns through `TRY_CAST(... AS TIMESTAMP)`. Before this, it failed on real timestamp columns.
+
 
 - **Quick fixes:**
   - Pin refresh runs every time (#2).
@@ -82,11 +91,11 @@ The **UX** tag marks items that users directly notice.
   2. Add a migration that de-duplicates, then adds a unique constraint on `(source_id, version)`.
   3. Remove the version and `sessionStorage` logic from `ConnectSource.tsx`.
 
-### #9 Database errors silently fall back to memory
+### #9 Database errors silently fall back to memory (fixed)
 - **Reason:** `main.py` catches database exceptions and keeps snapshots, runs, pins, provider keys and events only in memory, then reports success. That data disappears on restart. `update_status` at run start sits outside the `try`, so a database error kills the task and no `run.finished` is sent.
 - **How to fix:** Make Postgres the source of truth: return 503 on database errors, update memory caches only after the commit, and wrap the run-start status update in the task's error handling.
 
-### #10 The saved cost limit is skipped after a restart
+### #10 The saved cost limit is skipped after a restart (fixed)
 - **Reason:** Runs read only `app.state.routing_policies`, which stays empty after a restart until someone calls `GET /routing`. Pin refreshes and API clients run with no cost ceiling.
 - **How to fix:** At run start, load the policy through `app.state.repo_routing.get_policy(workspace_id)`, reusing the conversion in `update_routing_policy`, and cache it.
 
@@ -101,7 +110,7 @@ The **UX** tag marks items that users directly notice.
 ### #13 Durable evidence persistence (implemented)
 - **Status:** Evidence records now have a PostgreSQL table and repository. The API and Celery worker persist evidence, and evidence endpoints read the durable records. `app.state.evidence` remains a cache/fallback.
 
-### #14 Results never say they were cut off (UX)
+### #14 Results never say they were cut off (UX) (fixed)
 - **Reason:** The compiler caps `LIMIT` at 1000 and the executor checks against the same cap, so `truncated` is never true. Users and the model treat "1,000 rows" as the total.
 - **How to fix:** Compile `LIMIT n+1`, set `truncated = len(rows) > n`, and drop the extra row. Optionally add `COUNT(*) OVER()` for the true total.
 
@@ -113,7 +122,7 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** `inspect_schema` output is capped at 64 KB and can only trim rows, which a schema doesn't have.
 - **How to fix:** Shrink in stages (fewer fields per column, then table names only), and add an optional `table_id` argument.
 
-### #18 Loose query argument checks
+### #18 Loose query argument checks (fixed)
 - **Reason:** A comparison filter without a value binds NULL and silently returns 0 rows. `compare_periods` accepts any string as a date, and its inclusive end drops most of the last day for timestamps.
 - **How to fix:** Require `value` for comparison operators, parse ISO dates, and use a half-open `< end + 1 day` bound.
 
@@ -153,7 +162,7 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** Each running answer holds an `EventSource`, and HTTP/1.1 allows about 6 connections per host.
 - **How to fix:** Serve over HTTP/2 (TLS in Caddy), or multiplex a workspace's runs on one stream.
 
-### #28 A missing database setting only warns
+### #28 A missing database setting only warns (fixed)
 - **Reason:** Without `DATABASE_URL` the API uses throwaway in-memory SQLite.
 - **How to fix:** Fail at startup unless `TESTING=1`, and set `TESTING=1` in tests and CI.
 

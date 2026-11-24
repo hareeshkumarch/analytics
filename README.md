@@ -25,7 +25,7 @@ Docs:
 | Data governance | **Good idea, thin** | Snapshots are immutable and definitions must be approved, but definitions are auto-proposed and can only be approved, not edited. |
 | Connectors | **Good breadth** | 24 catalog entries over 10 backend families. Snapshot-only, capped at 40 MB, and not yet tested against live systems. |
 | Analysis depth | **Basic** | Aggregates, breakdowns, period comparisons, distributions and reconciliation. No joins across sources, charts, follow-up questions, forecasting or statistics. |
-| Reliability and operations | **Weak** | Runs execute inside the API process, and some state is lost on restart. Some database errors fall back silently to memory. There is no tracing. CI lints the backend and installs from lock files, but doesn't run end-to-end tests yet. |
+| Reliability and operations | **Weak** | Runs execute inside the API process, and some state is lost on restart. Database errors are reported as 503s instead of falling back to memory. There is no tracing. CI lints the backend, installs from lock files and runs the Playwright suite. |
 | Product and platform | **Early** | No login, one workspace, no sharing, and no alerts or scheduled refresh. |
 
 ## Roadmap: from prototype to an advanced product
