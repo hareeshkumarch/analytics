@@ -1,4 +1,4 @@
-.PHONY: doctor dev stop migrate test lint build smoke backup-dev restore-dev
+.PHONY: doctor dev stop migrate test lint lock build smoke backup-dev restore-dev
 
 COMPOSE=docker compose
 
@@ -15,10 +15,15 @@ migrate:
 	$(COMPOSE) exec api alembic upgrade head
 
 test:
-	cd backend && python3 -m unittest discover -s tests -p "test_*.py" -v
+	cd backend && python3 -m pytest -v
 
 lint:
 	cd backend && ruff check app tests && mypy app
+
+lock:
+	cd backend && uv pip compile pyproject.toml --universal --generate-hashes -q -o requirements.lock
+	cd backend && uv pip compile pyproject.toml --extra dev --universal --generate-hashes -q -o requirements-dev.lock
+	cd frontend && npm install --package-lock-only
 
 build:
 	$(COMPOSE) build

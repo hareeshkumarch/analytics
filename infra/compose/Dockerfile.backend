@@ -7,8 +7,10 @@ RUN apt-get update \
 RUN useradd --create-home --shell /bin/bash appuser
 WORKDIR /app
 
+COPY backend/requirements.lock /app/requirements.lock
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 COPY backend /app
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir --no-deps . && pip check
 
 ENV PYTHONPATH=/app
 

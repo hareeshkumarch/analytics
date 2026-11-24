@@ -25,7 +25,7 @@ Docs:
 | Data governance | **Good idea, thin** | Snapshots are immutable and definitions must be approved, but definitions are auto-proposed and can only be approved, not edited. |
 | Connectors | **Good breadth** | 24 catalog entries over 10 backend families. Snapshot-only, capped at 40 MB, and not yet tested against live systems. |
 | Analysis depth | **Basic** | Aggregates, breakdowns, period comparisons, distributions and reconciliation. No joins across sources, charts, follow-up questions, forecasting or statistics. |
-| Reliability and operations | **Weak** | Runs execute inside the API process, and some state is lost on restart. Some database errors fall back silently to memory. There is no tracing, and CI doesn't lint or run end-to-end tests. |
+| Reliability and operations | **Weak** | Runs execute inside the API process, and some state is lost on restart. Some database errors fall back silently to memory. There is no tracing. CI lints the backend and installs from lock files, but doesn't run end-to-end tests yet. |
 | Product and platform | **Early** | No login, one workspace, no sharing, and no alerts or scheduled refresh. |
 
 ## Roadmap: from prototype to an advanced product
@@ -77,7 +77,7 @@ All known problems and deferred fixes live in their own folder: **[`known-issues
 | [README.md](known-issues/README.md) | Index, top priorities, verification commands |
 | [02](known-issues/02-specialists-do-not-query-data.md) | Tool loop over snapshot data: how it works, what's open, what to test |
 | [03](known-issues/03-replanning-never-triggers.md) | Structured deep-mode review and bounded replanning |
-| [05](known-issues/05-python-dependency-lock.md) | Missing reproducible dependency lock |
+| [05](known-issues/05-python-dependency-lock.md) | Python dependency lock (fixed) |
 | [06](known-issues/06-celery-worker-and-dispatcher.md) | Celery execution is connected; live-stack reliability checks remain |
 | [07](known-issues/07-in-memory-state.md) | State lost on API restart |
 | [08](known-issues/08-frontend-gaps.md) | UI features waiting on the backend |
