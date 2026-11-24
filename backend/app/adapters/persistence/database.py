@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.persistence.orm_models import Base, ConversationRow, WorkspaceRow
 
+LOCK_TIMEOUT_MS = 5_000
+STATEMENT_TIMEOUT_MS = 30_000
+
 
 def create_db_engine(database_url: str | None = None) -> Any:
     url = database_url
@@ -36,6 +39,7 @@ def create_db_engine(database_url: str | None = None) -> Any:
 
     return create_engine(
         url,
+        connect_args={"options": f"-c lock_timeout={LOCK_TIMEOUT_MS} -c statement_timeout={STATEMENT_TIMEOUT_MS}"},
         pool_pre_ping=True,
         pool_size=10,
         max_overflow=20,

@@ -161,7 +161,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** Files travel as base64 JSON (about 1.33× their size) to both discover and extract, and links are downloaded twice.
 - **How to fix:** `POST /uploads` (multipart) returns an `upload_id` that discover and extract use. Cache link downloads per job.
 
-### #24 Blocking database calls stall live answers
+### #24 Blocking database calls stall live answers (partly fixed)
+- **Status (2026-11-24):** Partly fixed. Approve, routing save, pin create and provider-key save are plain `def` endpoints (run in the thread pool); run creation and the SSE endpoint's database calls run in `asyncio.to_thread`; PostgreSQL sessions set `lock_timeout=5s` and `statement_timeout=30s`. Still open: `clarify_run` and `cancel_run` (they schedule or cancel tasks, so they stay async) make synchronous calls, and inline-mode event persistence still happens under the global event lock.
 - **Reason:** Several `async def` endpoints make synchronous SQLAlchemy calls, and events are persisted under the global lock with no `lock_timeout`.
 - **How to fix:** Use plain `def` endpoints or `asyncio.to_thread`, persist events outside the lock, and set `lock_timeout` and `statement_timeout`.
 

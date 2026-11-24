@@ -793,7 +793,7 @@ def create_app(
         return sem
 
     @app.post("/api/v1/workspaces/{workspace_id}/semantics/{snapshot_id}/approve")
-    async def approve_semantics(workspace_id: str, snapshot_id: str, payload: ApproveSemanticsRequest) -> dict[str, Any]:
+    def approve_semantics(workspace_id: str, snapshot_id: str, payload: ApproveSemanticsRequest) -> dict[str, Any]:
         try:
             res = app.state.repo_snapshots.approve_semantics(snapshot_id, payload.expected_version)
         except NotFoundError as exc:
@@ -893,7 +893,7 @@ def create_app(
         }
 
     @app.put("/api/v1/workspaces/{workspace_id}/routing")
-    async def update_routing_policy(workspace_id: str, payload: UpdateRoutingRequest) -> dict[str, Any]:
+    def update_routing_policy(workspace_id: str, payload: UpdateRoutingRequest) -> dict[str, Any]:
         c: AppContainer = app.state.container
         current = _policy_for_workspace(workspace_id)
 
@@ -1111,7 +1111,7 @@ def create_app(
                 detail="Celery run execution requires PostgreSQL-backed persistence.",
             )
         try:
-            queued_count = app.state.repo_runs.count_queued_runs()
+            queued_count = await asyncio.to_thread(app.state.repo_runs.count_queued_runs)
         except SQLAlchemyError as exc:
             logger.exception("Could not count queued runs in DB")
             raise _db_unavailable("check the run queue") from exc
@@ -1120,14 +1120,15 @@ def create_app(
                 f"Global queue limit ({DEFAULT_GLOBAL_LIMITS.max_queued_runs} queued runs) reached."
             )
 
-        snapshot_id, semantic_version_id = _resolve_binding(
-            workspace_id, payload.snapshot_id, payload.semantic_version_id
+        snapshot_id, semantic_version_id = await asyncio.to_thread(
+            _resolve_binding, workspace_id, payload.snapshot_id, payload.semantic_version_id
         )
         run_id = f"run_{uuid.uuid4().hex[:12]}"
         now = datetime.now(timezone.utc).isoformat()
         conv_id = f"conv_{workspace_id}"
         try:
-            run_rec = app.state.repo_runs.create_run(
+            run_rec = await asyncio.to_thread(
+                app.state.repo_runs.create_run,
                 run_id=run_id,
                 workspace_id=workspace_id,
                 conversation_id=conv_id,
@@ -1258,7 +1259,7 @@ def create_app(
         last_event_id: str | None = Header(default=None),
         after: int = 0,
     ) -> StreamingResponse:
-        run_rec = app.state.repo_runs.get_run(run_id)
+        run_rec = await asyncio.to_thread(app.state.repo_runs.get_run, run_id)
         if run_rec:
             app.state.runs[run_id] = run_rec
         else:
@@ -1299,7 +1300,7 @@ def create_app(
                 past_events = []
                 if hasattr(app.state, "repo_events"):
                     try:
-                        db_evts = app.state.repo_events.list_after(run_id, cursor)
+                        db_evts = await asyncio.to_thread(app.state.repo_events.list_after, run_id, cursor)
                         past_events = [_event_dict(event) for event in db_evts]
                     except Exception:
                         logger.exception("Failed to query past events from DB")
@@ -1470,7 +1471,7 @@ def create_app(
             raise _db_unavailable("load pinned answers") from exc
 
     @app.post("/api/v1/workspaces/{workspace_id}/pins", status_code=201)
-    async def create_pin(workspace_id: str, payload: CreatePinRequest) -> dict[str, Any]:
+    def create_pin(workspace_id: str, payload: CreatePinRequest) -> dict[str, Any]:
         run_rec = app.state.repo_runs.get_run(payload.run_id)
         if run_rec:
             app.state.runs[payload.run_id] = run_rec
@@ -1650,7 +1651,7 @@ def create_app(
         return {"workspace_id": workspace_id, "run_count": len(ws_runs), "runs": totals}
 
     @app.put("/api/v1/workspaces/{workspace_id}/settings/provider-key")
-    async def save_provider_key(workspace_id: str, payload: SaveProviderKeyRequest) -> dict[str, str]:
+    def save_provider_key(workspace_id: str, payload: SaveProviderKeyRequest) -> dict[str, str]:
         cipher = CredentialCipher()
         encrypted = cipher.encrypt(payload.api_key)
         try:
