@@ -35,3 +35,6 @@ playwright-report/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local agent worktrees
+/.claude/worktrees/
