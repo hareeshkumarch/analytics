@@ -1,41 +1,37 @@
+import codecs
 import csv
 import io
-import re
 from typing import Any
 
-import pyarrow as pa
 
+from app.adapters.parsers.inference import infer_table
 from app.adapters.parsers.registry import ParsedTable, serialize_arrow_ipc_checked
 from app.domain.errors import LimitExceededError, ValidationError
 from app.domain.limits import DataLimits
-from app.domain.models import ColumnSchema
 
-_LEADING_ZERO_RE = re.compile(r"^0[0-9]+$")
-_INT_RE = re.compile(r"^-?[1-9][0-9]*$|^0$")
-_DECIMAL_RE = re.compile(r"^-?[0-9]+\.[0-9]+$")
+_BOM_ENCODINGS = (
+    (codecs.BOM_UTF8, "utf-8-sig"),
+    (codecs.BOM_UTF16_LE, "utf-16"),
+    (codecs.BOM_UTF16_BE, "utf-16"),
+)
+_FALLBACK_ENCODINGS = ("utf-8", "cp1252", "latin-1")
 
 
-def _infer_column_values(values: list[str | None]) -> tuple[pa.Array, str, bool]:
-    non_empty = [v for v in values if v is not None and v != ""]
-    if not non_empty:
-        return pa.array([None if v == "" else v for v in values], type=pa.string()), "string", False
+def _candidate_encodings(raw_bytes: bytes, requested: str | None) -> tuple[str, ...]:
+    if requested:
+        return (requested,)
+    bom_encoding = next((enc for bom, enc in _BOM_ENCODINGS if raw_bytes.startswith(bom)), None)
+    return (bom_encoding,) if bom_encoding else _FALLBACK_ENCODINGS
 
-    has_leading_zero = any(_LEADING_ZERO_RE.match(v) for v in non_empty)
-    if has_leading_zero:
-        return pa.array([None if v == "" else v for v in values], type=pa.string()), "string", True
 
-    if all(_INT_RE.match(v) for v in non_empty):
-        parsed = [int(v) if (v is not None and v != "") else None for v in values]
-        return pa.array(parsed, type=pa.int64()), "int64", False
-
-    if all(_INT_RE.match(v) or _DECIMAL_RE.match(v) for v in non_empty):
-        from decimal import Decimal
-        parsed_dec = [Decimal(v) if (v is not None and v != "") else None for v in values]
-        max_scale = max((len(v.split(".")[1]) if "." in v else 0) for v in non_empty)
-        scale = min(max(max_scale, 2), 18)
-        return pa.array(parsed_dec, type=pa.decimal128(38, scale)), f"decimal128(38,{scale})", False
-
-    return pa.array([None if v == "" else v for v in values], type=pa.string()), "string", False
+def _decode(raw_bytes: bytes, requested: str | None) -> str:
+    encodings = _candidate_encodings(raw_bytes, requested)
+    for encoding in encodings:
+        try:
+            return raw_bytes.decode(encoding)
+        except UnicodeDecodeError as exc:
+            failure = exc
+    raise ValidationError(f"Unable to decode CSV using {encodings[-1]}: {failure}") from failure
 
 
 class CsvFileParser:
@@ -53,11 +49,7 @@ class CsvFileParser:
                 f"Uploaded CSV exceeds max_uploaded_file_bytes ({len(raw_bytes)} > {limits.max_uploaded_file_bytes})"
             )
         opts = options or {}
-        encoding = opts.get("encoding", "utf-8-sig")
-        try:
-            text = raw_bytes.decode(encoding)
-        except UnicodeDecodeError as exc:
-            raise ValidationError(f"Unable to decode CSV using {encoding}: {exc}") from exc
+        text = _decode(raw_bytes, opts.get("encoding"))
 
         delimiter = opts.get("delimiter")
         if delimiter is None:
@@ -106,27 +98,13 @@ class CsvFileParser:
                     raise LimitExceededError(f"Cell at row {r_idx + 2}, col {c_idx + 1} exceeds max_chars_per_cell")
                 col_lists[c_idx].append(val)
 
-        arrays: list[pa.Array] = []
-        col_schemas: list[ColumnSchema] = []
-        for header, vals in zip(headers, col_lists):
-            arr, arrow_type, is_lz = _infer_column_values(vals)
-            arrays.append(arr)
-            col_schemas.append(
-                ColumnSchema(
-                    name=header,
-                    arrow_type=arrow_type,
-                    nullable=True,
-                    is_leading_zero_id=is_lz,
-                )
-            )
-
-        arrow_table = pa.table(dict(zip(headers, arrays)))
+        arrow_table, col_schemas = infer_table(headers, col_lists)
         ipc_bytes = serialize_arrow_ipc_checked(arrow_table, limits)
         return [
             ParsedTable(
                 table_name=table_name,
                 arrow_table=arrow_table,
-                columns=tuple(col_schemas),
+                columns=col_schemas,
                 ipc_bytes=ipc_bytes,
             )
         ]

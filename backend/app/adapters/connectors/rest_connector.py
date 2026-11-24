@@ -1,4 +1,5 @@
 import hashlib
+import json
 import random
 import re
 import time
@@ -9,6 +10,7 @@ import httpx
 import pyarrow as pa
 
 from app.adapters.connectors.destination_policy import DestinationPolicy, validate_http_url
+from app.adapters.parsers.inference import infer_table
 from app.adapters.parsers.registry import serialize_arrow_ipc_checked
 from app.application.ports.clock import Clock
 from app.application.ports.connectors import (
@@ -69,6 +71,16 @@ class _PinnedAddressTransport(httpx.BaseTransport):
 
     def close(self) -> None:
         self._delegate.close()
+
+
+def _cell_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, sort_keys=True, default=str)
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
 
 
 class RestJsonConnector:
@@ -292,16 +304,12 @@ class RestJsonConnector:
 
         tname = str(config.get("table_name") or (request.selected_tables[0] if request.selected_tables else "rest_records"))
         keys = list(dict.fromkeys(k for r in all_records for k in r.keys()))
-        col_dict = {
-            k: pa.array([None if r.get(k) is None else str(r.get(k)) for r in all_records])
-            for k in keys
-        }
-        arrow_table = pa.table(col_dict) if keys else pa.table({"_empty": pa.array([], type=pa.string())})
+        if keys:
+            arrow_table, col_schemas = infer_table(keys, [[_cell_text(r.get(k)) for r in all_records] for k in keys])
+        else:
+            arrow_table = pa.table({"_empty": pa.array([], type=pa.string())})
+            col_schemas = (ColumnSchema(name="_empty", arrow_type="string", nullable=True),)
         ipc_bytes = serialize_arrow_ipc_checked(arrow_table, request.limits)
-        col_schemas = tuple(
-            ColumnSchema(name=f.name, arrow_type=str(f.type), nullable=True)
-            for f in arrow_table.schema
-        )
         digest = hashlib.sha256(ipc_bytes).hexdigest()
         completed_at = self._clock.now()
 

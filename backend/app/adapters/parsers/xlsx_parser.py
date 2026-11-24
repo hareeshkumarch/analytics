@@ -1,15 +1,27 @@
 import io
+import re
 import zipfile
 from typing import Any
 
 import openpyxl
-import pyarrow as pa
 
-from app.adapters.parsers.csv_parser import _infer_column_values
+from app.adapters.parsers.inference import infer_table
 from app.adapters.parsers.registry import ParsedTable, serialize_arrow_ipc_checked
 from app.domain.errors import LimitExceededError, SecurityPolicyError, ValidationError
 from app.domain.limits import DataLimits
-from app.domain.models import ColumnSchema
+
+_PRINTER_SETTINGS_PART = re.compile(r"xl/printersettings/printersettings\d+\.bin")
+_EMBEDDED_OBJECT_DIRS = ("xl/activex/", "xl/embeddings/")
+
+
+def _reject_unsafe_part(lower_name: str) -> None:
+    if "vbaproject" in lower_name or lower_name.startswith("xl/macrosheets/"):
+        raise SecurityPolicyError("Macro-enabled workbooks (.xlsm/vbaProject.bin) are rejected")
+    if "externallinks" in lower_name:
+        raise SecurityPolicyError("Workbooks with external links are rejected")
+    is_binary = lower_name.endswith(".bin") and not _PRINTER_SETTINGS_PART.fullmatch(lower_name)
+    if is_binary or lower_name.startswith(_EMBEDDED_OBJECT_DIRS):
+        raise SecurityPolicyError("Workbooks with embedded binary, ActiveX or OLE objects are rejected")
 
 
 def _validate_xlsx_zip_safety(raw_bytes: bytes, limits: DataLimits) -> None:
@@ -21,11 +33,7 @@ def _validate_xlsx_zip_safety(raw_bytes: bytes, limits: DataLimits) -> None:
         with zipfile.ZipFile(io.BytesIO(raw_bytes)) as zf:
             total_uncompressed = 0
             for info in zf.infolist():
-                lower_name = info.filename.lower()
-                if "vbaproject.bin" in lower_name or lower_name.endswith(".bin"):
-                    raise SecurityPolicyError("Macro-enabled workbooks (.xlsm/vbaProject.bin) are rejected")
-                if "externallinks" in lower_name:
-                    raise SecurityPolicyError("Workbooks with external links are rejected")
+                _reject_unsafe_part(info.filename.lower())
                 total_uncompressed += info.file_size
                 if total_uncompressed > limits.max_expanded_xlsx_bytes:
                     raise LimitExceededError(
@@ -103,21 +111,7 @@ class XlsxFileParser:
                             else:
                                 col_lists[c_idx].append(s_val)
 
-                arrays: list[pa.Array] = []
-                col_schemas: list[ColumnSchema] = []
-                for header, vals in zip(headers, col_lists):
-                    arr, arrow_type, is_lz = _infer_column_values(vals)
-                    arrays.append(arr)
-                    col_schemas.append(
-                        ColumnSchema(
-                            name=header,
-                            arrow_type=arrow_type,
-                            nullable=True,
-                            is_leading_zero_id=is_lz,
-                        )
-                    )
-
-                arrow_table = pa.table(dict(zip(headers, arrays)))
+                arrow_table, col_schemas = infer_table(headers, col_lists)
                 ipc_bytes = serialize_arrow_ipc_checked(arrow_table, limits, cumulative_bytes)
                 cumulative_bytes += len(ipc_bytes)
                 resolved_name = f"{table_name}__{sheet_name}" if len(sheet_names) > 1 else table_name
@@ -125,7 +119,7 @@ class XlsxFileParser:
                     ParsedTable(
                         table_name=resolved_name,
                         arrow_table=arrow_table,
-                        columns=tuple(col_schemas),
+                        columns=col_schemas,
                         ipc_bytes=ipc_bytes,
                     )
                 )

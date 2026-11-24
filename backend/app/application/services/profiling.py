@@ -3,7 +3,7 @@ import re
 
 import pyarrow as pa
 
-from app.domain.models import ChartSpec, ColumnProfile, MetricDefinition, TableSchema
+from app.domain.models import ChartSpec, ColumnProfile, ColumnSchema, MetricDefinition, TableSchema
 
 ISO_CURRENCIES = frozenset(
     {
@@ -36,10 +36,12 @@ def _is_numeric(arrow_type: str) -> bool:
     return any(hint in lowered for hint in NUMERIC_TYPE_HINTS)
 
 
-def _is_measure(column_name: str, arrow_type: str) -> bool:
-    tokens = _tokens(column_name)
+def _is_measure(col: ColumnSchema) -> bool:
+    if col.currency_code and _is_numeric(col.arrow_type):
+        return True
+    tokens = _tokens(col.name)
     named_like_measure = any(hint in token for token in tokens for hint in MEASURE_HINTS)
-    return named_like_measure and (_is_numeric(arrow_type) or arrow_type.lower() in ("string", "utf8", "large_string"))
+    return named_like_measure and (_is_numeric(col.arrow_type) or col.arrow_type.lower() in ("string", "utf8", "large_string"))
 
 
 def _identifier_column(schema: TableSchema) -> str | None:
@@ -92,7 +94,7 @@ def profile_arrow_table(table: pa.Table, is_sampled: bool = False) -> tuple[Colu
 def propose_metrics_from_schema(schema: TableSchema) -> tuple[MetricDefinition, ...]:
     proposals: list[MetricDefinition] = []
     for col in schema.columns:
-        if not _is_measure(col.name, col.arrow_type):
+        if not _is_measure(col):
             continue
         currency = detect_currency(col.name, col.currency_code)
         proposals.append(

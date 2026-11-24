@@ -162,6 +162,26 @@ class TestRestPagination(unittest.TestCase):
         self.assertEqual(manifest.total_rows, 3)
 
 
+    def test_records_keep_numeric_types_and_json_for_nested_values(self) -> None:
+        records = [
+            {"id": "ch_1", "amount": 125000, "paid": True, "metadata": {"order": "00101"}},
+            {"id": "ch_2", "amount": 50000, "paid": False, "metadata": {"order": "00102"}},
+            {"id": "ch_3", "amount": None, "paid": True},
+        ]
+        conn = RestJsonConnector(
+            SystemClock(), policy=LOCAL_POLICY, transport=httpx.MockTransport(lambda req: httpx.Response(200, json=records))
+        )
+        config = {"url": "http://localhost:8080/charges", "collection_path": "$", "safe_get_documented": True}
+        batches, manifest = conn.extract(config, {}, _request(("rest_records",)), lambda: False)
+        types = {c.name: c.arrow_type for c in manifest.tables[0].columns}
+        self.assertEqual(types["amount"], "int64")
+        self.assertEqual(types["paid"], "string")
+        table = pa_ipc.open_stream(list(batches)[0].arrow_ipc_bytes).read_all()
+        self.assertEqual(table["amount"].to_pylist(), [125000, 50000, None])
+        self.assertEqual(table["paid"].to_pylist(), ["true", "false", "true"])
+        self.assertEqual(table["metadata"].to_pylist()[0], '{"order": "00101"}')
+
+
 class TestDuckDbUpload(unittest.TestCase):
     def test_imports_base_tables_and_ignores_views(self) -> None:
         import duckdb

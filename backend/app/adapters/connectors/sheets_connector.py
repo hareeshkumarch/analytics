@@ -4,9 +4,8 @@ import random
 import time
 from typing import Any, Callable, Iterable
 
-import pyarrow as pa
 
-from app.adapters.parsers.csv_parser import _infer_column_values
+from app.adapters.parsers.inference import infer_table
 from app.adapters.parsers.registry import serialize_arrow_ipc_checked
 from app.application.ports.clock import Clock
 from app.application.ports.connectors import (
@@ -17,7 +16,6 @@ from app.application.ports.connectors import (
 )
 from app.domain.errors import ConnectorError, LimitExceededError, ValidationError
 from app.domain.models import (
-    ColumnSchema,
     ConnectorFamily,
     ConsistencyLevel,
     ExtractionCapabilities,
@@ -165,13 +163,7 @@ class GoogleSheetsConnector:
                 for i in range(len(headers)):
                     v = row[i] if i < len(row) else None
                     col_lists[i].append(None if v is None else str(v))
-            arrays = []
-            col_schemas = []
-            for h, vals in zip(headers, col_lists):
-                arr, atype, is_lz = _infer_column_values(vals)
-                arrays.append(arr)
-                col_schemas.append(ColumnSchema(name=h, arrow_type=atype, nullable=True, is_leading_zero_id=is_lz))
-            arrow_table = pa.table(dict(zip(headers, arrays)))
+            arrow_table, col_schemas = infer_table(headers, col_lists)
             ipc_bytes = serialize_arrow_ipc_checked(arrow_table, request.limits, total_bytes)
             batches.append(
                 ExtractionBatch(
