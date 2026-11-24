@@ -7,6 +7,7 @@ import uuid
 from app.adapters.providers.registry import ProviderRegistry
 from app.application.ports.clock import Clock
 from app.application.ports.providers import BudgetLedger, ModelRequest, ModelResponse
+from app.application.services.budget_service import DEFAULT_MAX_TOKENS
 from app.domain.errors import CircuitOpenError, ProviderError
 from app.domain.limits import DEFAULT_GLOBAL_LIMITS
 from app.domain.providers import (
@@ -181,6 +182,9 @@ class RoutingService:
 
     def set_budget_ledger(self, budget_ledger: BudgetLedger) -> None:
         self._ledger = budget_ledger
+
+    def tokens_left(self, run_id: str) -> int:
+        return DEFAULT_MAX_TOKENS - int(str(self._ledger.get_run_totals(run_id).get("total_tokens", 0)))
 
     def select_candidates(
         self,

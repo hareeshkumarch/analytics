@@ -17,6 +17,7 @@ from app.adapters.orchestration.deep_agents_bridge import (
     GatewayChatModelBridge,
     build_restricted_deep_agent_config,
     compact_child_context,
+    estimate_input_tokens,
 )
 from app.adapters.orchestration.deep_agent_runtime import DeepAgentTaskRunner
 from app.adapters.persistence.langgraph_checkpointer import open_langgraph_checkpointer
@@ -464,6 +465,8 @@ class InvestigationOrchestrator:
                         toolbox.budget.exhausted
                         or toolbox.budget.analytical_exhausted
                         or self._attempts_left(run_id, max_model_attempts) <= 1
+                        or self._container.routing_service.tokens_left(run_id)
+                        < 2 * (estimate_input_tokens(tuple(messages), tools) + TOOL_ROUND_MAX_OUTPUT_TOKENS)
                         or (deadline is not None and time.monotonic() >= deadline - DEADLINE_MARGIN_SECONDS)
                     )
                 )

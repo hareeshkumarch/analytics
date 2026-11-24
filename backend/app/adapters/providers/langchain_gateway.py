@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import replace
-import json
 import threading
 import uuid
 from typing import Any
@@ -17,10 +16,12 @@ from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import ConfigDict, Field, PrivateAttr
 
+from app.adapters.orchestration.deep_agents_bridge import estimate_input_tokens
 from app.application.ports.providers import ModelRequest, ModelResponse, ToolDefinition
 from app.application.services.routing_service import RoutingService
 from app.domain.providers import AgentRole, RoutingPolicy
 
+LOW_TOKEN_FACTOR = 2
 _FINAL_TOOL_ROUND_PROMPT = (
     "The specialist tool-round limit is used up. Give your final answer now using only the results "
     "already available, and do not call any more tools."
@@ -149,11 +150,17 @@ class GatewayChatModel(BaseChatModel):
         tool_choice = kwargs.get("tool_choice")
         structured_schema = kwargs.get("structured_schema")
         timeout = self.timeout_provider() if self.timeout_provider else self.timeout_seconds
+        gateway_messages = [_message_to_gateway(message) for message in messages]
+        estimated_input_tokens = estimate_input_tokens(tuple(gateway_messages), tools)
+        max_output_tokens = int(kwargs.get("max_output_tokens", self.max_output_tokens))
         tool_rounds_exhausted = False
         if tools:
             with self._tool_round_lock:
                 tool_rounds_exhausted = self._tool_rounds >= self.max_tool_rounds
-        gateway_messages = [_message_to_gateway(message) for message in messages]
+            tool_rounds_exhausted = tool_rounds_exhausted or (
+                self.routing_service.tokens_left(self.run_id)
+                < LOW_TOKEN_FACTOR * (estimated_input_tokens + max_output_tokens)
+            )
         if tool_rounds_exhausted:
             gateway_messages.append({"role": "user", "content": _FINAL_TOOL_ROUND_PROMPT})
 
@@ -165,7 +172,7 @@ class GatewayChatModel(BaseChatModel):
             messages=tuple(gateway_messages),
             tools=tools,
             structured_schema=structured_schema if isinstance(structured_schema, dict) else None,
-            max_output_tokens=int(kwargs.get("max_output_tokens", self.max_output_tokens)),
+            max_output_tokens=max_output_tokens,
             timeout_seconds=max(1, int(timeout)),
             tool_choice=(
                 "none"
@@ -176,26 +183,7 @@ class GatewayChatModel(BaseChatModel):
         response = self.routing_service.execute_step(
             request=request,
             policy=self.policy,
-            estimated_input_tokens=max(
-                256,
-                len(
-                    json.dumps(
-                        {
-                            "messages": request.messages,
-                            "tools": [
-                                {
-                                    "name": tool.name,
-                                    "description": tool.description,
-                                    "schema": tool.parameters_schema,
-                                }
-                                for tool in tools
-                            ],
-                        },
-                        default=str,
-                    )
-                )
-                // 3,
-            ),
+            estimated_input_tokens=estimated_input_tokens,
         )
         if response.tool_calls and tools:
             with self._tool_round_lock:

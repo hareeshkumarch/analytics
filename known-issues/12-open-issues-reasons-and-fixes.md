@@ -125,7 +125,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** The compiler caps `LIMIT` at 1000 and the executor checks against the same cap, so `truncated` is never true. Users and the model treat "1,000 rows" as the total.
 - **How to fix:** Compile `LIMIT n+1`, set `truncated = len(rows) > n`, and drop the extra row. Optionally add `COUNT(*) OVER()` for the true total.
 
-### #15 A step can end with no answer text (UX)
+### #15 A step can end with no answer text (UX) (fixed)
+- **Status (2026-11-24):** Fixed. Both runtimes take the answer-only final round when the run's remaining tokens are below twice the next call's reservation (estimated input plus output tokens); `RoutingService.tokens_left()` reads the ledger. The gateway now reuses `estimate_input_tokens` instead of its own copy.
 - **Reason:** The final-round decision ignores the token budget, so a step can run out of tokens and show only "stopped early".
 - **How to fix:** In `orchestration_service.py` (`final_round`), also take the final round when the tokens left are below about twice the estimated next call, and keep a reserve for that call.
 

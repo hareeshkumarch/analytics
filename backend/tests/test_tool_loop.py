@@ -273,6 +273,26 @@ class TestToolLoop(unittest.TestCase):
             self.assertEqual(gw.requests[0].max_output_tokens, 12_000)
             self.assertEqual(first_model, "")
 
+    def test_low_token_budget_forces_an_answer_round(self) -> None:
+        from decimal import Decimal
+        from app.application.services.budget_service import DEFAULT_MAX_TOKENS
+
+        with tempfile.TemporaryDirectory() as td:
+            c = build_container(artifact_root=td)
+            gw = AlwaysToolsGateway()
+            c.providers.register(gw)
+            c.routing_service._api_keys[ProviderId.OPENAI] = "test-key"
+            c.budget_ledger.reserve("run_tokens", "seed", "seed", DEFAULT_MAX_TOKENS - 20_000, Decimal("0"), False, None)
+            os.environ["AGENT_RUNTIME"] = "deepagents"
+            ans = InvestigationOrchestrator(c).execute_local(
+                run_id="run_tokens", workspace_id="ws1", question="q", mode=RunMode.QUICK,
+                snapshot_id="snap1", snapshot=_publish_orders(c),
+            )
+            specialist = [r for r in gw.requests if r.role.value == "data_specialist"]
+            self.assertTrue(specialist)
+            self.assertTrue(all(r.tool_choice == "none" for r in specialist))
+            self.assertIn("Final answer.", ans.summary_markdown)
+
     def test_time_budget_stops_run(self) -> None:
         import app.application.services.orchestration_service as orch_mod
 
