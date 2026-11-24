@@ -1,5 +1,5 @@
 import io
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 import pyarrow as pa
 import pyarrow.ipc as pa_ipc

@@ -1,5 +1,4 @@
 import io
-import json
 import sqlite3
 import sys
 import tempfile

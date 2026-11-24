@@ -1,5 +1,4 @@
 from decimal import Decimal
-import json
 from typing import Any
 
 import httpx

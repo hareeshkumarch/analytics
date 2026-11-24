@@ -13,7 +13,6 @@ import pyarrow.parquet as pq
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.adapters.connectors.destination_policy import DestinationPolicy, validate_http_url, validate_ip_address
-from app.adapters.connectors.rest_connector import RestJsonConnector
 from app.adapters.connectors.sqlite_connector import UploadedSqliteConnector
 from app.adapters.parsers.csv_parser import CsvFileParser
 from app.adapters.parsers.json_parser import JsonFileParser

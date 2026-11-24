@@ -1,4 +1,3 @@
-import json
 import sys
 import unittest
 from decimal import Decimal
@@ -14,13 +13,11 @@ from app.adapters.providers.groq_adapter import GroqChatAdapter
 from app.adapters.providers.kimi_adapter import KimiChatAdapter
 from app.adapters.providers.nim_adapter import NvidiaNimAdapter
 from app.adapters.providers.openai_adapter import OpenAiResponsesAdapter
-from app.adapters.providers.registry import ProviderRegistry
 from app.adapters.providers.xai_adapter import XaiResponsesAdapter
 from app.application.ports.clock import SystemClock
 from app.application.ports.providers import ModelRequest, ToolDefinition
-from app.application.services.budget_service import AtomicBudgetLedger
-from app.application.services.routing_service import CircuitBreakerManager, RoutingService
-from app.domain.errors import ProviderError, ValidationError
+from app.application.services.routing_service import CircuitBreakerManager
+from app.domain.errors import ValidationError
 from app.domain.providers import (
     AgentRole,
     ApiProfile,
@@ -29,8 +26,6 @@ from app.domain.providers import (
     ModelProfile,
     ProviderId,
     ProviderProfile,
-    RoutingPolicy,
-    RoutingPreset,
 )
 
 

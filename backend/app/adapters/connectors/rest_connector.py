@@ -1,10 +1,9 @@
 import hashlib
-import json
 import random
 import re
 import time
 from typing import Any, Callable, Iterable
-from urllib.parse import urlencode, urljoin, urlparse
+from urllib.parse import urlencode, urljoin
 
 import httpx
 import pyarrow as pa

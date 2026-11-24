@@ -4,14 +4,13 @@ from decimal import Decimal
 import uuid
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.persistence.database import ensure_conversation, ensure_workspace
 from app.adapters.persistence.orm_models import (
     BudgetReservationRow,
-    ConversationRow,
     CredentialRefRow,
     OutboxJobRow,
     PinRow,
@@ -22,11 +21,10 @@ from app.adapters.persistence.orm_models import (
     SemanticVersionRow,
     SnapshotManifestRow,
     SourceRow,
-    WorkspaceRow,
 )
 from app.domain.errors import BudgetExhaustedError, NotFoundError, ValidationError, VersionConflictError
 from app.domain.events import EventType, RunEvent
-from app.domain.models import Answer, RunStatus, SemanticVersion, SnapshotManifest
+from app.domain.models import Answer, RunStatus
 from app.domain.limits import DEEP_BUDGET_LIMITS, QUICK_BUDGET_LIMITS
 from app.domain.providers import BudgetReservation
 
@@ -529,7 +527,7 @@ class PgCredentialRepository:
 
     def list_active_credentials(self, workspace_id: str | None = None) -> list[dict[str, Any]]:
         with self._sf() as db:
-            stmt = select(CredentialRefRow).where(CredentialRefRow.revoked == False)
+            stmt = select(CredentialRefRow).where(CredentialRefRow.revoked.is_(False))
             if workspace_id:
                 stmt = stmt.where(CredentialRefRow.workspace_id == workspace_id)
             rows = db.scalars(stmt).all()

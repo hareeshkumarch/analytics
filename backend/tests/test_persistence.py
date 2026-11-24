@@ -2,17 +2,15 @@ import os
 import tempfile
 import unittest
 from decimal import Decimal
-from pathlib import Path
 
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
-from app.adapters.persistence.crypto import CredentialCipher
 from app.adapters.persistence.database import create_db_engine, create_session_factory
 from app.api.main import create_app
 from app.bootstrap.container import build_container
-from app.domain.models import Answer, Claim, RunStatus
-from app.domain.providers import ProviderId, RoutingPreset
+from app.domain.models import Answer, Claim
+from app.domain.providers import ProviderId
 
 
 class TestPersistence(unittest.TestCase):
