@@ -129,7 +129,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** The final-round decision ignores the token budget, so a step can run out of tokens and show only "stopped early".
 - **How to fix:** In `orchestration_service.py` (`final_round`), also take the final round when the tokens left are below about twice the estimated next call, and keep a reserve for that call.
 
-### #16 Very wide spreadsheets hide every column from the model
+### #16 Very wide spreadsheets hide every column from the model (fixed)
+- **Status (2026-11-24):** Fixed. `inspect_schema` shrinks in stages (full, then `name:type` columns, then table names with column counts) and accepts an optional `table_id`.
 - **Reason:** `inspect_schema` output is capped at 64 KB and can only trim rows, which a schema doesn't have.
 - **How to fix:** Shrink in stages (fewer fields per column, then table names only), and add an optional `table_id` argument.
 

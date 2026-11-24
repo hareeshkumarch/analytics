@@ -450,6 +450,36 @@ class TestToolLoop(unittest.TestCase):
             self.assertTrue(orch._raw_record_egress_allowed(only_openai))
             self.assertFalse(orch._raw_record_egress_allowed(dataclasses.replace(policy, allowed_providers=())))
 
+    def _wide_toolbox(self, tables: int, columns: int, name_len: int) -> AnalyticsToolbox:
+        snapshot = {
+            "snapshot_id": "snap_wide",
+            "table_details": [
+                {
+                    "name": f"sheet_{t}",
+                    "row_count": 10,
+                    "columns": [{"name": f"c{i}_" + "x" * name_len, "type": "string"} for i in range(columns)],
+                }
+                for t in range(tables)
+            ],
+        }
+        return AnalyticsToolbox(engine=None, snapshot=snapshot, semantics=None, budget=ToolBudget(20, 20))
+
+    def test_wide_schema_is_compacted_before_columns_are_dropped(self) -> None:
+        payload = json.loads(self._wide_toolbox(4, 200, 40).execute(ToolCallResult("c", "inspect_schema", {})).content)
+        self.assertTrue(payload["schema_compacted"])
+        self.assertEqual(len(payload["tables"][0]["columns"]), 200)
+
+    def test_very_wide_schema_lists_tables_and_can_be_inspected_per_table(self) -> None:
+        box = self._wide_toolbox(20, 200, 40)
+        listed = json.loads(box.execute(ToolCallResult("c", "inspect_schema", {})).content)
+        self.assertEqual(len(listed["tables"]), 20)
+        self.assertEqual(listed["tables"][0]["column_count"], 200)
+        self.assertIn("table_id", listed["note"])
+        one = json.loads(box.execute(ToolCallResult("c", "inspect_schema", {"table_id": "sheet_3"})).content)
+        self.assertEqual([t["table_id"] for t in one["tables"]], ["sheet_3"])
+        self.assertEqual(len(one["tables"][0]["columns"]), 200)
+        self.assertTrue(box.execute(ToolCallResult("c", "inspect_schema", {"table_id": "nope"})).is_error)
+
     def test_no_snapshot_offers_no_tools(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             c = build_container(artifact_root=td)

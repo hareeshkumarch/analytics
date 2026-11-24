@@ -105,9 +105,13 @@ INSPECT_SCHEMA_TOOL = ToolDefinition(
     name="inspect_schema",
     description=(
         "List the tables in the dataset snapshot bound to this run, with column names, types, row counts and "
-        "any approved metric definitions. Call this before writing queries."
+        "any approved metric definitions. Call this before writing queries. Pass table_id to see one table "
+        "when the full schema is too large."
     ),
-    parameters_schema={"type": "object", "properties": {}},
+    parameters_schema={
+        "type": "object",
+        "properties": {"table_id": {"type": "string", "description": "Only describe this table."}},
+    },
     strict=False,
 )
 
@@ -181,16 +185,19 @@ class ToolOutcome:
     evidence: dict[str, Any] | None = None
 
 
+def _fits(raw: str) -> bool:
+    return len(raw.encode("utf-8")) <= DEFAULT_GLOBAL_LIMITS.max_model_tool_result_bytes
+
+
 def _cap(payload: dict[str, Any]) -> str:
     raw = json.dumps(payload, default=str)
-    limit = DEFAULT_GLOBAL_LIMITS.max_model_tool_result_bytes
-    if len(raw.encode("utf-8")) <= limit:
+    if _fits(raw):
         return raw
     rows = list(payload.get("rows") or [])
-    while rows and len(raw.encode("utf-8")) > limit:
+    while rows and not _fits(raw):
         rows = rows[: len(rows) // 2]
         raw = json.dumps({**payload, "rows": rows, "rows_shown": len(rows), "trimmed_for_size": True}, default=str)
-    if len(raw.encode("utf-8")) <= limit:
+    if _fits(raw):
         return raw
     return json.dumps(
         {
@@ -198,6 +205,33 @@ def _cap(payload: dict[str, Any]) -> str:
             "row_count": payload.get("row_count"),
             "error": "Result too large to show. Narrow the query with filters, fewer columns or a lower limit.",
         }
+    )
+
+
+def _cap_schema(payload: dict[str, Any]) -> str:
+    raw = json.dumps(payload, default=str)
+    if _fits(raw):
+        return raw
+    compact = [
+        {
+            "table_id": t["table_id"],
+            "row_count": t["row_count"],
+            "columns": [f"{c['name']}:{c['type']}" + (f":{c['currency']}" if c.get("currency") else "") for c in t["columns"]],
+        }
+        for t in payload["tables"]
+    ]
+    raw = json.dumps({**payload, "tables": compact, "schema_compacted": True}, default=str)
+    if _fits(raw):
+        return raw
+    listed = [{"table_id": t["table_id"], "row_count": t["row_count"], "column_count": len(t["columns"])} for t in payload["tables"]]
+    return json.dumps(
+        {
+            "snapshot_id": payload.get("snapshot_id"),
+            "definitions_approved": payload.get("definitions_approved"),
+            "tables": listed,
+            "note": "The full schema is too large. Call inspect_schema with a table_id to see that table's columns.",
+        },
+        default=str,
     )
 
 
@@ -233,12 +267,18 @@ class AnalyticsToolbox:
             return self._error(name, "No dataset snapshot is bound to this run.")
         if not self.budget.take(analytical=name == RUN_QUERY_TOOL.name):
             return self._error(name, "Tool budget for this run is used up. Answer with the results you already have.")
+        arguments = call.arguments if isinstance(call.arguments, dict) else {}
         if name == INSPECT_SCHEMA_TOOL.name:
-            return self._inspect_schema()
-        return self._run_query(call.arguments if isinstance(call.arguments, dict) else {})
+            return self._inspect_schema(arguments.get("table_id"))
+        return self._run_query(arguments)
 
-    def _inspect_schema(self) -> ToolOutcome:
+    def _inspect_schema(self, table_id: Any = None) -> ToolOutcome:
         assert self.snapshot is not None
+        details = self.snapshot.get("table_details", [])
+        if isinstance(table_id, str) and table_id:
+            details = [t for t in details if t["name"] == table_id]
+            if not details:
+                return self._error(INSPECT_SCHEMA_TOOL.name, f"Unknown table_id {table_id!r}. Call inspect_schema without it to list tables.")
         tables = [
             {
                 "table_id": t["name"],
@@ -254,7 +294,7 @@ class AnalyticsToolbox:
                     for c in t.get("columns", [])
                 ],
             }
-            for t in self.snapshot.get("table_details", [])
+            for t in details
         ]
         semantics = self.semantics or {}
         payload = {
@@ -267,7 +307,7 @@ class AnalyticsToolbox:
             "tables": tables,
         }
         return ToolOutcome(
-            content=_cap(payload),
+            content=_cap_schema(payload),
             is_error=False,
             summary={"tool": INSPECT_SCHEMA_TOOL.name, "ok": True, "tables": len(tables)},
         )
