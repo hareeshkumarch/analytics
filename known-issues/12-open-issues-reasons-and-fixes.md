@@ -153,7 +153,8 @@ The **UX** tag marks items that users directly notice.
 
 ## P2: performance, scale, security and build hygiene
 
-### #22 Lists load everything (UX)
+### #22 Lists load everything (UX) (partly fixed)
+- **Status (2026-11-24):** Partly fixed. `GET /runs` is keyset-paginated (`limit` default 200, max 500, `before` cursor, `next_before` in the response), usage reads at most the newest 500 runs, and `list_snapshots` loads the latest semantics for all snapshots in one query. Still open: a summary response without `answer_json`, a server-side time filter for `/usage`, and a "Load more" control in the UI.
 - **Reason:** `/runs` returns every run with its full answer (used by Ask and Dashboard), `/usage` returns every run every 15 s, and `list_snapshots` runs one query per snapshot.
 - **How to fix:** Keyset pagination (`?limit=&before=`), a summary response without `answer_json`, a lateral join for semantics, a server-side time filter for `/usage`, and "Load more" in the UI.
 

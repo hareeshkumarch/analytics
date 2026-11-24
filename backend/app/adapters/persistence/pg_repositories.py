@@ -296,13 +296,17 @@ class PgRunRepository:
                 "created_at": row.created_at.isoformat(),
             }
 
-    def list_runs(self, workspace_id: str) -> list[dict[str, Any]]:
+    def list_runs(
+        self, workspace_id: str, limit: int | None = None, before: datetime | None = None
+    ) -> list[dict[str, Any]]:
         with self._sf() as db:
-            rows = db.scalars(
-                select(RunRow)
-                .where(RunRow.workspace_id == workspace_id)
-                .order_by(RunRow.created_at.desc())
-            ).all()
+            stmt = select(RunRow).where(RunRow.workspace_id == workspace_id)
+            if before is not None:
+                stmt = stmt.where(RunRow.created_at < before)
+            stmt = stmt.order_by(RunRow.created_at.desc(), RunRow.run_id.desc())
+            if limit is not None:
+                stmt = stmt.limit(limit)
+            rows = db.scalars(stmt).all()
             res = []
             for r in rows:
                 ans = r.answer_json or {}
@@ -741,6 +745,13 @@ class PgSnapshotRepository:
                 .where(SnapshotManifestRow.workspace_id == workspace_id)
                 .order_by(SnapshotManifestRow.created_at.desc())
             ).all()
+            latest_semantics: dict[str, SemanticVersionRow] = {}
+            for sem in db.scalars(
+                select(SemanticVersionRow)
+                .where(SemanticVersionRow.snapshot_id.in_([s.snapshot_id for s in snaps]))
+                .order_by(SemanticVersionRow.version.desc())
+            ):
+                latest_semantics.setdefault(sem.snapshot_id, sem)
             res = []
             for s in snaps:
                 item = dict(s.manifest_json)
@@ -756,11 +767,7 @@ class PgSnapshotRepository:
                         "created_at": s.created_at.isoformat(),
                     }
                 )
-                sem = db.scalars(
-                    select(SemanticVersionRow)
-                    .where(SemanticVersionRow.snapshot_id == s.snapshot_id)
-                    .order_by(SemanticVersionRow.version.desc())
-                ).first()
+                sem = latest_semantics.get(s.snapshot_id)
                 if sem:
                     item["semantic_version_id"] = sem.semantic_version_id
                     item["approved"] = sem.approved

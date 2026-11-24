@@ -83,6 +83,8 @@ TERMINAL_RUN_STATUSES = frozenset(
 )
 SSE_HEARTBEAT_SECONDS = 15.0
 SSE_WORKER_POLL_SECONDS = 1.0
+RUN_PAGE_DEFAULT = 200
+RUN_PAGE_MAX = 500
 
 logger = logging.getLogger(__name__)
 
@@ -1205,9 +1207,15 @@ def create_app(
         return JSONResponse(status_code=202, content=resp_body)
 
     @app.get("/api/v1/workspaces/{workspace_id}/runs")
-    def list_runs(workspace_id: str) -> dict[str, Any]:
+    def list_runs(
+        workspace_id: str,
+        limit: int = Query(RUN_PAGE_DEFAULT, ge=1, le=RUN_PAGE_MAX),
+        before: datetime | None = None,
+    ) -> dict[str, Any]:
         try:
-            return {"runs": app.state.repo_runs.list_runs(workspace_id)}
+            runs = app.state.repo_runs.list_runs(workspace_id, limit=limit + 1, before=before)
+            page = runs[:limit]
+            return {"runs": page, "next_before": page[-1]["created_at"] if len(runs) > limit else None}
         except SQLAlchemyError as exc:
             logger.exception("Failed to query runs from DB")
             raise _db_unavailable("load the run history") from exc
@@ -1633,7 +1641,7 @@ def create_app(
     def get_usage(workspace_id: str) -> dict[str, Any]:
         c: AppContainer = app.state.container
         try:
-            ws_runs = app.state.repo_runs.list_runs(workspace_id)
+            ws_runs = app.state.repo_runs.list_runs(workspace_id, limit=RUN_PAGE_MAX)
         except SQLAlchemyError as exc:
             logger.exception("Failed to query runs for usage from DB")
             raise _db_unavailable("load usage") from exc
