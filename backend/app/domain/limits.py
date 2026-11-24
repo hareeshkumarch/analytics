@@ -44,6 +44,9 @@ class DataLimits:
         }
 
 
+REPLAN_TASKS = 2
+
+
 @dataclass(frozen=True, slots=True)
 class RunBudgetLimits:
     mode: str
@@ -56,6 +59,19 @@ class RunBudgetLimits:
     max_depth: int
     max_replans: int
     max_tool_invocations: int
+
+    def __post_init__(self) -> None:
+        if self.planner_task_limit < 1:
+            raise ValueError(
+                f"{self.mode} limits leave no planner capacity after reserving {self.max_replans} replans"
+            )
+
+    @property
+    def planner_task_limit(self) -> int:
+        return (
+            min(self.accepted_dag_tasks, self.lifetime_specialist_instances)
+            - REPLAN_TASKS * self.max_replans
+        )
 
 
 QUICK_BUDGET_LIMITS = RunBudgetLimits(
@@ -78,7 +94,7 @@ DEEP_BUDGET_LIMITS = RunBudgetLimits(
     analytical_calls=16,
     accepted_dag_tasks=12,
     concurrent_specialists=2,
-    lifetime_specialist_instances=6,
+    lifetime_specialist_instances=8,
     max_depth=1,
     max_replans=2,
     max_tool_invocations=64,

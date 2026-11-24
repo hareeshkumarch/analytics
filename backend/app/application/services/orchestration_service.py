@@ -31,7 +31,7 @@ from app.application.ports.query import SnapshotQueryPort
 from app.application.services.analytics_tools import AnalyticsToolbox, ToolBudget
 from app.domain.errors import BudgetExhaustedError, ClarificationRequired
 from app.domain.events import EventType, RunEvent
-from app.domain.limits import DEFAULT_GLOBAL_LIMITS
+from app.domain.limits import DEFAULT_GLOBAL_LIMITS, REPLAN_TASKS
 from app.domain.models import Answer, Claim, PlanDAG, RunMode, RunStatus, TaskNode, TaskStatus
 from app.domain.providers import AgentRole, RoutingPolicy
 
@@ -42,6 +42,8 @@ DEADLINE_MARGIN_SECONDS = 45
 FINAL_ROUND_MIN_TIMEOUT_SECONDS = 30
 OLDER_RESULT_MAX_CHARS = 4_000
 OLDER_RESULT_ROWS = 10
+COMPOSER_ATTEMPT_RESERVE = 1
+MIN_ATTEMPTS_PER_TASK = 2
 
 
 class _OrchestrationState(TypedDict):
@@ -742,14 +744,16 @@ class InvestigationOrchestrator:
             max_cost_usd=policy.hard_cost_ceiling_usd,
         )
         use_deep_agents = os.environ.get("AGENT_RUNTIME", "deepagents").strip().lower() != "legacy"
+        attempt_reserve = COMPOSER_ATTEMPT_RESERVE if use_deep_agents else 0
+
+        def _remaining_attempts() -> int:
+            used = int(self._container.budget_ledger.get_run_totals(run_id).get("used_attempts", 0))
+            return limits.total_model_attempts - used
+
         plan = initial_plan if isinstance(initial_plan, PlanDAG) else _deserialize_plan(initial_plan)
         if plan is None:
             if use_deep_agents:
-                planner_task_limit = max(
-                    1,
-                    limits.accepted_dag_tasks
-                    - (2 * limits.max_replans if mode == RunMode.DEEP else 0),
-                )
+                planner_task_limit = limits.planner_task_limit
                 planner_prompt = (
                     "Create a minimal analytical task plan for this investigation. Return only JSON with keys "
                     "needs_clarification, clarification_question, goal, completion_criteria, and tasks. Each task "
@@ -810,10 +814,16 @@ class InvestigationOrchestrator:
         flagged: set[str] = set()
         latest_review_verdict: ReviewVerdict | None = None
         final_review_verdict: ReviewVerdict | None = None
+        budget_limitations: list[str] = []
         cancelled = False
 
         ready_batch: tuple[TaskNode, ...] = ()
         batch_outcomes: list[tuple[TaskNode, SpecialistOutcome]] = []
+
+        def _stop_scheduling(reason: str) -> None:
+            for task_id in supervisor.abandon_pending():
+                _emit(EventType.TASK_STATUS, {"task_id": task_id, "status": "cancelled", "error": reason})
+            budget_limitations.append(reason)
 
         def prepare_batch(state: _OrchestrationState) -> _OrchestrationState:
             nonlocal ready_batch, cancelled, timed_out
@@ -825,7 +835,20 @@ class InvestigationOrchestrator:
                 return {"action": "finish"}
             if supervisor.all_tasks_joined():
                 return {"action": "review"}
-            ready_batch = supervisor.next_ready_tasks()
+            attempts_for_tasks = _remaining_attempts() - attempt_reserve
+            if attempts_for_tasks <= 0:
+                _stop_scheduling(
+                    f"The run used its {limits.total_model_attempts} model calls, so some planned steps did not run."
+                )
+                return {"action": "finish"}
+            try:
+                ready_batch = supervisor.next_ready_tasks(max_tasks=attempts_for_tasks)
+            except BudgetExhaustedError:
+                _stop_scheduling(
+                    f"The run reached its limit of {limits.lifetime_specialist_instances} analysis steps, "
+                    "so some planned steps did not run."
+                )
+                return {"action": "finish"}
             if not ready_batch:
                 task_errors.append("The plan has pending work but no dependency-ready tasks.")
                 return {"action": "finish"}
@@ -942,6 +965,10 @@ class InvestigationOrchestrator:
             final_review_verdict = verdict
             if verdict.approved or supervisor.state.replan_count >= limits.max_replans:
                 return {"action": "finish"}
+            if not supervisor.can_accept_replan(REPLAN_TASKS) or (
+                _remaining_attempts() < REPLAN_TASKS * MIN_ATTEMPTS_PER_TASK + attempt_reserve
+            ):
+                return {"action": "finish"}
 
             bounded_gaps = [str(gap).strip()[:200] for gap in verdict.gaps[:5] if str(gap).strip()]
             if not bounded_gaps:
@@ -1044,6 +1071,7 @@ class InvestigationOrchestrator:
             )
         if task_errors:
             answer_limitations.append("One or more steps failed, so the findings may be partial.")
+        answer_limitations.extend(budget_limitations)
         if (
             mode == RunMode.DEEP
             and final_review_verdict is not None
@@ -1137,6 +1165,9 @@ class InvestigationOrchestrator:
         elif not summary_parts and task_errors:
             finished["status"] = RunStatus.FAILED.value
             finished["error"] = task_errors[0][:500]
+        elif not summary_parts and budget_limitations:
+            finished["status"] = RunStatus.FAILED.value
+            finished["error"] = budget_limitations[0][:500]
         else:
             finished["status"] = RunStatus.COMPLETED.value
             if task_errors:

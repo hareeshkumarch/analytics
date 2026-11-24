@@ -108,12 +108,14 @@ class DeterministicSupervisor:
         for task in new_tasks:
             self.state.task_statuses[task.task_id] = TaskStatus.PENDING
 
-    def next_ready_tasks(self) -> tuple[TaskNode, ...]:
+    def next_ready_tasks(self, max_tasks: int | None = None) -> tuple[TaskNode, ...]:
         if self.state.cancelled or self.state.awaiting_clarification or self.state.plan is None:
             return ()
         self._propagate_failed_dependencies()
         running_count = sum(1 for s in self.state.task_statuses.values() if s == TaskStatus.RUNNING)
         available_slots = max(0, self.state.limits.concurrent_specialists - running_count)
+        if max_tasks is not None:
+            available_slots = min(available_slots, max(0, max_tasks))
         if available_slots == 0:
             return ()
 
@@ -137,6 +139,26 @@ class DeterministicSupervisor:
             self.state.task_statuses[t.task_id] = TaskStatus.RUNNING
             self.state.specialist_instances_used += 1
         return tuple(ready)
+
+    def remaining_specialist_capacity(self) -> int:
+        return max(0, self.state.limits.lifetime_specialist_instances - self.state.specialist_instances_used)
+
+    def can_accept_replan(self, task_count: int) -> bool:
+        limits = self.state.limits
+        return (
+            not self.state.cancelled
+            and self.state.replan_count < limits.max_replans
+            and self.remaining_specialist_capacity() >= task_count
+            and self.state.accepted_task_count + task_count <= limits.accepted_dag_tasks
+        )
+
+    def abandon_pending(self) -> tuple[str, ...]:
+        abandoned = tuple(
+            tid for tid, status in self.state.task_statuses.items() if status == TaskStatus.PENDING
+        )
+        for tid in abandoned:
+            self.state.task_statuses[tid] = TaskStatus.CANCELLED
+        return abandoned
 
     def record_task_result(self, result: TaskAttemptResult, *, failed: bool = False) -> None:
         self.state.results = merge_task_results_reducer(
