@@ -22,6 +22,7 @@ import {
   workspacePath,
 } from "@/lib/workspace";
 import type { RunMode } from "@/lib/types";
+import { setUrlParam } from "@/lib/url";
 
 interface Session {
   id: string;
@@ -164,13 +165,6 @@ function statusLabel(status: string): string {
   if (status === "running") return "Working";
   if (status === "awaiting_input") return "Needs your input";
   return humanize(status);
-}
-
-function setUrlParam(key: string, value: string | null) {
-  const url = new URL(window.location.href);
-  if (value) url.searchParams.set(key, value);
-  else url.searchParams.delete(key);
-  window.history.replaceState(null, "", url.toString());
 }
 
 function taskName(taskId: string): string {

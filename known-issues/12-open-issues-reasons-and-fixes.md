@@ -16,6 +16,12 @@ The **UX** tag marks items that users directly notice.
 
 ## Done since the previous version of this list
 
+- **Release blockers (2026-11-24):**
+  - The Data page is back. An unanchored `data/` rule in `.gitignore` had kept `frontend/src/app/data/` and `frontend/src/features/data/` out of git, so `/data` returned 404 and nothing could be imported. The rule is now anchored to the repo root, the page was rebuilt (catalog, connect form, table selection, import, and Definitions/Profile/Preview/Versions/Diagnostics tabs), and CI fails if any committed file matches an ignore rule.
+  - Lock files are committed (#1, [05](05-python-dependency-lock.md)): `frontend/package-lock.json` plus hash-pinned `backend/requirements.lock` and `requirements-dev.lock`. CI and Docker install from them.
+  - Deep runs no longer crash on a second replan. The default plan plus two replans needed 7 specialist instances against a limit of 6, and the planner could propose 8 tasks; the resulting `BudgetExhaustedError` escaped the graph and failed the run. Deep runs now allow 8 instances, `RunBudgetLimits.planner_task_limit` reserves room for every replan (checked at construction), replans are skipped when instances or model calls can't cover them, one model call stays reserved for the composer, and an exhausted budget cancels pending tasks with a limitation instead of failing.
+  - CI now runs `ruff`, the Playwright suite, and `mypy` as advisory (#43, partly). `make test` uses `pytest`.
+
 - **Quick fixes:**
   - Pin refresh runs every time (#2).
   - Interrupted runs are closed at startup, and Ask stops polling stale runs (#3).
@@ -43,11 +49,12 @@ The **UX** tag marks items that users directly notice.
 
 ## P0: blocks release
 
-### #1 No frontend lockfile
+### #1 No frontend lockfile (fixed)
 - **Reason:** CI runs `npm ci`, which refuses to run without `package-lock.json`, so the frontend job always fails. The Docker image uses `npm install`, so builds can resolve different versions.
 - **How to fix:** Install Node 22, run `cd frontend && npm install`, and commit `package-lock.json`. In `infra/compose/Dockerfile.frontend`, switch `npm install` to `npm ci` (the `COPY frontend/package*.json` line already picks up the lockfile).
 
-### #4 Nothing has been executed
+### #4 Nothing has been executed (partly fixed)
+- **Status:** The backend suite, ruff, frontend typecheck, build and Playwright now run in CI. Migrations, the Compose stack and live provider runs are still unverified.
 - **Reason:** No typecheck, build, test or migration has run on any of the recent changes, so bugs may be hidden.
 - **How to fix:** Run the verification checklist at the end of this file.
 
@@ -68,6 +75,7 @@ The **UX** tag marks items that users directly notice.
 - **How to fix:** Run `tests/test_new_connectors.py`, then make one `verify-full` connection to a managed MySQL. If pymysql rejects the context, pass `ssl={"ca": certifi.where()}` with `ssl_verify_identity=True` instead.
 
 ### #8 Snapshot version numbers are chosen by the browser
+- **Status (2026-11-24):** Partly fixed. The rebuilt Data page derives the source id from a hash of the family and non-secret config, so re-imports link up across browser sessions with no `sessionStorage`. The browser still picks the next version, so two tabs can still race; steps 1 and 2 remain.
 - **Reason:** The browser picks the next version and keeps source identity in `sessionStorage`. Two tabs can create the same version, and a new browser session starts a new source, which also breaks the Dashboard "Newer data" flag.
 - **How to fix:**
   1. In `extract_connector`, resolve the source from its redacted config and compute `max(version) + 1` on the server inside a transaction that locks the source row (`SELECT … FOR UPDATE`).
@@ -149,7 +157,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** Without `DATABASE_URL` the API uses throwaway in-memory SQLite.
 - **How to fix:** Fail at startup unless `TESTING=1`, and set `TESTING=1` in tests and CI.
 
-### #43 CI doesn't lint, type-check or run end-to-end tests (new)
+### #43 CI doesn't lint, type-check or run end-to-end tests (partly fixed)
+- **Status:** `ruff` and Playwright run in CI and `make test` uses `pytest`. `mypy` runs as advisory until its 92 existing errors are fixed.
 - **Reason:** `.github/workflows/ci.yml` runs only `pytest` and the frontend typecheck and build. `ruff` and `mypy` are configured in `pyproject.toml` but never run, Playwright isn't run, and the Makefile `test` target uses `unittest` while CI uses `pytest`.
 - **How to fix:** Add `ruff check app tests` and `mypy app` to CI; start mypy non-blocking because `strict = true` will flag existing code. Add a Playwright job that starts the Compose stack. Switch `make test` to `pytest -v`.
 

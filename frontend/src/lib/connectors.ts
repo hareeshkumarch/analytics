@@ -111,7 +111,7 @@ const httpsUrl = (value: string) => {
   }
 };
 
-export const DATASET_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+const DATASET_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 export const datasetName = (value: string) =>
   DATASET_NAME_RE.test(value) ? null : "Use letters, numbers and underscores, starting with a letter (max 64).";
 

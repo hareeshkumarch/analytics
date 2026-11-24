@@ -54,5 +54,10 @@ provider calls require an environment with Docker running and provider credentia
 | Quick | 120 s | 6 | 4 | 4 | 1 | 0 | 16 |
 | Deep | 600 s | 24 | 16 | 12 | 2 | 2 | 64 |
 
-The values come from `QUICK_BUDGET_LIMITS` and `DEEP_BUDGET_LIMITS` in `domain/limits.py`. The
-planner leaves task capacity for bounded remediation and re-review.
+The values come from `QUICK_BUDGET_LIMITS` and `DEEP_BUDGET_LIMITS` in `domain/limits.py`. A run
+may start at most 4 (quick) or 8 (deep) specialist instances. `planner_task_limit` subtracts two
+tasks per allowed replan from that, so the planner always leaves room for bounded remediation and
+re-review; limits that leave no planner capacity are rejected at import. A replan is skipped when the
+remaining instances or model calls can't cover it, each batch leaves one model call for the answer
+composer, and a run that exhausts its step or model-call budget cancels its pending tasks and
+finishes with a limitation instead of failing.
