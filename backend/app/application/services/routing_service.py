@@ -1,7 +1,7 @@
 from decimal import Decimal
 import re
 import threading
-from typing import Callable
+from typing import Any, Callable
 import uuid
 
 from app.adapters.providers.registry import ProviderRegistry
@@ -19,6 +19,36 @@ from app.domain.providers import (
     RoutingPolicy,
     RoutingPreset,
 )
+
+
+def routing_policy_from_saved(saved: dict[str, Any] | None, default: RoutingPolicy) -> RoutingPolicy:
+    if not saved:
+        return default
+    raw_routes = saved.get("role_routes") or {}
+    routes = dict(default.role_routes)
+    if isinstance(raw_routes, dict):
+        routes.update(
+            {
+                AgentRole(role): tuple(models)
+                for role, models in raw_routes.items()
+                if role in AgentRole._value2member_map_
+            }
+        )
+    raw_providers = saved.get("allowed_providers")
+    providers = (
+        tuple(ProviderId(p) for p in raw_providers if p in ProviderId._value2member_map_)
+        if isinstance(raw_providers, list)
+        else default.allowed_providers
+    )
+    ceiling = saved.get("hard_cost_ceiling_usd")
+    return RoutingPolicy(
+        policy_version=int(saved.get("policy_version", default.policy_version)),
+        preset=RoutingPreset(saved.get("preset", default.preset.value)),
+        fallback_enabled=bool(saved.get("fallback_enabled", default.fallback_enabled)),
+        role_routes=routes,
+        allowed_providers=providers,
+        hard_cost_ceiling_usd=Decimal(str(ceiling)) if ceiling is not None else None,
+    )
 
 
 class CredentialSemaphorePool:

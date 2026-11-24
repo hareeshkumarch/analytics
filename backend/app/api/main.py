@@ -19,6 +19,7 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.persistence.crypto import CredentialCipher
@@ -53,6 +54,7 @@ from app.application.services.orchestration_service import InvestigationOrchestr
 from app.application.services.ingestion import table_artifact_id, table_key
 from app.application.services.profiling import profile_arrow_table, propose_metrics_from_schema
 from app.bootstrap.container import AppContainer, build_container
+from app.application.services.routing_service import routing_policy_from_saved
 from app.domain.errors import (
     BudgetExhaustedError,
     ClarificationRequired,
@@ -60,6 +62,7 @@ from app.domain.errors import (
     DomainError,
     LimitExceededError,
     NotFoundError,
+    PersistenceUnavailableError,
     SecurityPolicyError,
     ValidationError,
     VersionConflictError,
@@ -71,7 +74,7 @@ from app.domain.limits import (
     QUICK_BUDGET_LIMITS,
 )
 from app.domain.models import Answer, ConnectorFamily, RunMode, RunStatus
-from app.domain.providers import AgentRole, ProviderId, RoutingPolicy, RoutingPreset
+from app.domain.providers import AgentRole, ProviderId, RoutingPolicy
 
 ALLOWED_LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "testserver", "api", "edge"})
 TERMINAL_RUN_STATUSES = frozenset(
@@ -189,6 +192,12 @@ def create_app(
     app.state.repo_snapshots = PgSnapshotRepository(sf)
     app.state.repo_pins = PgPinRepository(sf)
 
+    def _db_unavailable(action: str) -> PersistenceUnavailableError:
+        return PersistenceUnavailableError(
+            f"Could not {action} because the database is unavailable.",
+            remediation="Check that PostgreSQL is running and DATABASE_URL is correct, then try again.",
+        )
+
     app.state.runs: dict[str, dict[str, Any]] = {}
     app.state.answers: dict[str, Answer] = {}
     app.state.events: dict[str, list[dict[str, Any]]] = {}
@@ -298,9 +307,9 @@ def create_app(
     def _prior_tool_usage(run_id: str) -> tuple[int, int]:
         try:
             events = app.state.repo_events.list_after(run_id, 0)
-        except Exception:
+        except SQLAlchemyError as exc:
             logger.exception("Could not restore tool usage for run %s", run_id)
-            return 0, 0
+            raise _db_unavailable("restore the run's tool budget") from exc
         tool_events = [
             event
             for event in events
@@ -589,7 +598,6 @@ def create_app(
                 "source_summary": dict(manifest.source_config_summary),
             },
         }
-        app.state.snapshots[manifest.snapshot_id] = snap_dict
         sem_id = f"sem_{uuid.uuid4().hex[:10]}"
         sem_dict = {
             "semantic_version_id": sem_id,
@@ -608,26 +616,26 @@ def create_app(
                 for m in proposed_metrics
             ],
         }
+        try:
+            app.state.repo_snapshots.save_snapshot(
+                workspace_id=workspace_id,
+                source_id=source_id,
+                snapshot_id=manifest.snapshot_id,
+                version=manifest.version,
+                schema_fingerprint=manifest.schema_fingerprint,
+                manifest_json=snap_dict,
+                artifact_id=manifest.artifact_id,
+                sha256=content_hash.hexdigest(),
+                source_family=payload.family.value,
+                source_name=payload.selected_tables[0] if payload.selected_tables else "upload",
+                source_config=_redacted_source_config(dict(payload.config)),
+                semantics_json=sem_dict,
+            )
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to persist snapshot to DB")
+            raise _db_unavailable("save the imported dataset") from exc
+        app.state.snapshots[manifest.snapshot_id] = snap_dict
         app.state.semantics[manifest.snapshot_id] = sem_dict
-
-        if hasattr(app.state, "repo_snapshots"):
-            try:
-                app.state.repo_snapshots.save_snapshot(
-                    workspace_id=workspace_id,
-                    source_id=source_id,
-                    snapshot_id=manifest.snapshot_id,
-                    version=manifest.version,
-                    schema_fingerprint=manifest.schema_fingerprint,
-                    manifest_json=snap_dict,
-                    artifact_id=manifest.artifact_id,
-                    sha256=content_hash.hexdigest(),
-                    source_family=payload.family.value,
-                    source_name=payload.selected_tables[0] if payload.selected_tables else "upload",
-                    source_config=_redacted_source_config(dict(payload.config)),
-                    semantics_json=sem_dict,
-                )
-            except Exception:
-                logger.exception("Failed to persist snapshot to DB")
 
         return {
             "snapshot": snap_dict,
@@ -793,13 +801,11 @@ def create_app(
     @app.get("/api/v1/workspaces/{workspace_id}/providers")
     def list_providers(workspace_id: str) -> dict[str, Any]:
         c: AppContainer = app.state.container
-        db_keys = set()
-        if hasattr(app.state, "repo_creds"):
-            try:
-                for cr in app.state.repo_creds.list_active_credentials(workspace_id):
-                    db_keys.add(cr["provider"])
-            except Exception:
-                pass
+        try:
+            db_keys = {cr["provider"] for cr in app.state.repo_creds.list_active_credentials(workspace_id)}
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to load provider keys from DB")
+            raise _db_unavailable("load saved provider keys") from exc
         return {
             "workspace_id": workspace_id,
             "providers": [
@@ -866,29 +872,7 @@ def create_app(
 
     @app.get("/api/v1/workspaces/{workspace_id}/routing")
     def get_routing_policy(workspace_id: str) -> dict[str, Any]:
-        c: AppContainer = app.state.container
-        current = app.state.routing_policies.get(workspace_id)
-        if current is None and hasattr(app.state, "repo_routing"):
-            try:
-                db_pol = app.state.repo_routing.get_policy(workspace_id)
-                if db_pol:
-                    role_routes = dict(c.default_routing_policy.role_routes)
-                    role_routes.update(
-                        {AgentRole(k): tuple(v) for k, v in db_pol.get("role_routes", {}).items()}
-                    )
-                    current = RoutingPolicy(
-                        policy_version=int(db_pol["policy_version"]),
-                        preset=RoutingPreset(db_pol.get("preset", "balanced")),
-                        fallback_enabled=bool(db_pol.get("fallback_enabled", True)),
-                        role_routes=role_routes,
-                        allowed_providers=tuple(ProviderId(x) for x in db_pol.get("allowed_providers", ())) if db_pol.get("allowed_providers") else c.default_routing_policy.allowed_providers,
-                        hard_cost_ceiling_usd=Decimal(str(db_pol["hard_cost_ceiling_usd"])) if db_pol.get("hard_cost_ceiling_usd") is not None else c.default_routing_policy.hard_cost_ceiling_usd,
-                    )
-                    app.state.routing_policies[workspace_id] = current
-            except Exception:
-                logger.exception("Failed to load routing policy from DB")
-        if current is None:
-            current = c.default_routing_policy
+        current = _policy_for_workspace(workspace_id)
         return {
             "workspace_id": workspace_id,
             "policy_version": current.policy_version,
@@ -903,27 +887,7 @@ def create_app(
     @app.put("/api/v1/workspaces/{workspace_id}/routing")
     async def update_routing_policy(workspace_id: str, payload: UpdateRoutingRequest) -> dict[str, Any]:
         c: AppContainer = app.state.container
-        current = app.state.routing_policies.get(workspace_id)
-        if current is None and hasattr(app.state, "repo_routing"):
-            try:
-                db_pol = app.state.repo_routing.get_policy(workspace_id)
-                if db_pol:
-                    role_routes = dict(c.default_routing_policy.role_routes)
-                    role_routes.update(
-                        {AgentRole(k): tuple(v) for k, v in db_pol.get("role_routes", {}).items()}
-                    )
-                    current = RoutingPolicy(
-                        policy_version=int(db_pol["policy_version"]),
-                        preset=RoutingPreset(db_pol.get("preset", "balanced")),
-                        fallback_enabled=bool(db_pol.get("fallback_enabled", True)),
-                        role_routes=role_routes,
-                        allowed_providers=tuple(ProviderId(x) for x in db_pol.get("allowed_providers", ())) if db_pol.get("allowed_providers") else c.default_routing_policy.allowed_providers,
-                        hard_cost_ceiling_usd=Decimal(str(db_pol["hard_cost_ceiling_usd"])) if db_pol.get("hard_cost_ceiling_usd") is not None else c.default_routing_policy.hard_cost_ceiling_usd,
-                    )
-            except Exception:
-                pass
-        if current is None:
-            current = c.default_routing_policy
+        current = _policy_for_workspace(workspace_id)
 
         if payload.expected_version != current.policy_version:
             raise HTTPException(status_code=409, detail="Routing policy version conflict")
@@ -962,15 +926,14 @@ def create_app(
             "allowed_providers": [p.value for p in current.allowed_providers],
             "hard_cost_ceiling_usd": str(hard_cost_ceiling) if hard_cost_ceiling is not None else None,
         }
-        new_version = current.policy_version + 1
-        if hasattr(app.state, "repo_routing"):
-            try:
-                res = app.state.repo_routing.save_policy(workspace_id, pol_dict, expected_version=payload.expected_version)
-                new_version = res["policy_version"]
-            except VersionConflictError as exc:
-                raise HTTPException(status_code=409, detail="Routing policy version conflict") from exc
-            except Exception:
-                logger.exception("Failed to save routing policy to DB")
+        try:
+            res = app.state.repo_routing.save_policy(workspace_id, pol_dict, expected_version=payload.expected_version)
+        except VersionConflictError as exc:
+            raise HTTPException(status_code=409, detail="Routing policy version conflict") from exc
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to save routing policy to DB")
+            raise _db_unavailable("save the routing policy") from exc
+        new_version = res["policy_version"]
 
         new_policy = RoutingPolicy(
             policy_version=new_version,
@@ -1000,34 +963,10 @@ def create_app(
             return policy
         try:
             saved = app.state.repo_routing.get_policy(workspace_id)
-        except Exception:
-            logger.exception("Could not reload routing policy for workspace %s", workspace_id)
-            saved = None
-        if not saved:
-            return app.state.container.default_routing_policy
-        default = app.state.container.default_routing_policy
-        routes = {
-            AgentRole(role): tuple(models)
-            for role, models in saved.get("role_routes", {}).items()
-            if role in AgentRole._value2member_map_
-        }
-        merged_routes = dict(default.role_routes)
-        merged_routes.update(routes)
-        policy = RoutingPolicy(
-            policy_version=int(saved.get("policy_version", default.policy_version)),
-            preset=RoutingPreset(saved.get("preset", default.preset.value)),
-            fallback_enabled=bool(saved.get("fallback_enabled", default.fallback_enabled)),
-            role_routes=merged_routes,
-            allowed_providers=tuple(
-                ProviderId(provider)
-                for provider in saved.get("allowed_providers", [p.value for p in default.allowed_providers])
-            ),
-            hard_cost_ceiling_usd=(
-                Decimal(str(saved["hard_cost_ceiling_usd"]))
-                if saved.get("hard_cost_ceiling_usd") is not None
-                else None
-            ),
-        )
+        except SQLAlchemyError as exc:
+            logger.exception("Could not load routing policy for workspace %s", workspace_id)
+            raise _db_unavailable("load the routing policy and cost limit") from exc
+        policy = routing_policy_from_saved(saved, app.state.container.default_routing_policy)
         app.state.routing_policies[workspace_id] = policy
         return policy
 
@@ -1116,9 +1055,12 @@ def create_app(
                 run_rec["status"] = RunStatus.FAILED.value
                 run_rec["outcome"] = "failed"
                 run_rec["error"] = str(exc)[:500]
-                app.state.repo_runs.update_status(
-                    run_id, RunStatus.FAILED, outcome="failed", error=run_rec["error"]
-                )
+                try:
+                    app.state.repo_runs.update_status(
+                        run_id, RunStatus.FAILED, outcome="failed", error=run_rec["error"]
+                    )
+                except SQLAlchemyError:
+                    logger.exception("Could not record failure of run %s", run_id)
                 _publish_api_event(
                     run_id, "run.finished", {"status": RunStatus.FAILED.value, "error": run_rec["error"]}
                 )
@@ -1162,9 +1104,9 @@ def create_app(
             )
         try:
             queued_count = app.state.repo_runs.count_queued_runs()
-        except Exception:
+        except SQLAlchemyError as exc:
             logger.exception("Could not count queued runs in DB")
-            queued_count = sum(1 for r in app.state.runs.values() if r["status"] == RunStatus.QUEUED.value)
+            raise _db_unavailable("check the run queue") from exc
         if queued_count >= DEFAULT_GLOBAL_LIMITS.max_queued_runs:
             raise BudgetExhaustedError(
                 f"Global queue limit ({DEFAULT_GLOBAL_LIMITS.max_queued_runs} queued runs) reached."
@@ -1176,54 +1118,20 @@ def create_app(
         run_id = f"run_{uuid.uuid4().hex[:12]}"
         now = datetime.now(timezone.utc).isoformat()
         conv_id = f"conv_{workspace_id}"
-        if hasattr(app.state, "repo_runs"):
-            try:
-                run_rec = app.state.repo_runs.create_run(
-                    run_id=run_id,
-                    workspace_id=workspace_id,
-                    conversation_id=conv_id,
-                    mode=payload.mode.value,
-                    status=RunStatus.QUEUED.value,
-                    question=payload.question,
-                    snapshot_id=snapshot_id or None,
-                    semantic_version_id=semantic_version_id or None,
-                )
-            except Exception:
-                logger.exception("Failed to create run in DB")
-                if execution_mode == "celery":
-                    raise HTTPException(
-                        status_code=503,
-                        detail="Run persistence is unavailable; the worker cannot safely execute this run.",
-                    )
-                run_rec = {
-                    "run_id": run_id,
-                    "workspace_id": workspace_id,
-                    "conversation_id": conv_id,
-                    "snapshot_id": snapshot_id,
-                    "semantic_version_id": semantic_version_id,
-                    "mode": payload.mode.value,
-                    "status": RunStatus.QUEUED.value,
-                    "outcome": None,
-                    "question": payload.question,
-                    "clarification_revision": 0,
-                    "last_event_sequence": 0,
-                    "created_at": now,
-                }
-        else:
-            run_rec = {
-                "run_id": run_id,
-                "workspace_id": workspace_id,
-                "conversation_id": conv_id,
-                "snapshot_id": snapshot_id,
-                "semantic_version_id": semantic_version_id,
-                "mode": payload.mode.value,
-                "status": RunStatus.QUEUED.value,
-                "outcome": None,
-                "question": payload.question,
-                "clarification_revision": 0,
-                "last_event_sequence": 0,
-                "created_at": now,
-            }
+        try:
+            run_rec = app.state.repo_runs.create_run(
+                run_id=run_id,
+                workspace_id=workspace_id,
+                conversation_id=conv_id,
+                mode=payload.mode.value,
+                status=RunStatus.QUEUED.value,
+                question=payload.question,
+                snapshot_id=snapshot_id or None,
+                semantic_version_id=semantic_version_id or None,
+            )
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to create run in DB")
+            raise _db_unavailable("start the run") from exc
         run_rec["clarification_revision"] = 0
         app.state.runs[run_id] = run_rec
         app.state.events[run_id] = []
@@ -1289,13 +1197,11 @@ def create_app(
 
     @app.get("/api/v1/workspaces/{workspace_id}/runs")
     def list_runs(workspace_id: str) -> dict[str, Any]:
-        if hasattr(app.state, "repo_runs"):
-            try:
-                return {"runs": app.state.repo_runs.list_runs(workspace_id)}
-            except Exception:
-                logger.exception("Failed to query runs from DB")
-        ws_runs = [r for r in app.state.runs.values() if r["workspace_id"] == workspace_id]
-        return {"runs": ws_runs}
+        try:
+            return {"runs": app.state.repo_runs.list_runs(workspace_id)}
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to query runs from DB")
+            raise _db_unavailable("load the run history") from exc
 
     @app.get("/api/v1/workspaces/{workspace_id}/runs/{run_id}")
     def get_run(workspace_id: str, run_id: str) -> dict[str, Any]:
@@ -1456,11 +1362,9 @@ def create_app(
             raise HTTPException(status_code=422, detail="Clarification answer cannot be blank")
         try:
             queued_count = app.state.repo_runs.count_queued_runs()
-        except Exception:
+        except SQLAlchemyError as exc:
             logger.exception("Could not count queued runs before clarification resume")
-            queued_count = sum(
-                1 for item in app.state.runs.values() if item.get("status") == RunStatus.QUEUED.value
-            )
+            raise _db_unavailable("check the run queue") from exc
         if queued_count >= DEFAULT_GLOBAL_LIMITS.max_queued_runs:
             raise BudgetExhaustedError(
                 f"Global queue limit ({DEFAULT_GLOBAL_LIMITS.max_queued_runs} queued runs) reached."
@@ -1545,12 +1449,11 @@ def create_app(
 
     @app.get("/api/v1/workspaces/{workspace_id}/pins")
     def list_pins(workspace_id: str) -> dict[str, Any]:
-        if hasattr(app.state, "repo_pins"):
-            try:
-                return {"pins": app.state.repo_pins.list_pins(workspace_id)}
-            except Exception:
-                logger.exception("Failed to query pins from DB")
-        return {"pins": app.state.pins.get(workspace_id, [])}
+        try:
+            return {"pins": app.state.repo_pins.list_pins(workspace_id)}
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to query pins from DB")
+            raise _db_unavailable("load pinned answers") from exc
 
     @app.post("/api/v1/workspaces/{workspace_id}/pins", status_code=201)
     async def create_pin(workspace_id: str, payload: CreatePinRequest) -> dict[str, Any]:
@@ -1563,50 +1466,37 @@ def create_app(
             raise HTTPException(status_code=404, detail="Run not found in this workspace")
         if run_rec.get("status") != RunStatus.COMPLETED.value:
             raise HTTPException(status_code=409, detail="Only completed runs can be pinned")
-        existing_pins = app.state.pins.get(workspace_id, [])
-        if hasattr(app.state, "repo_pins"):
-            try:
-                existing_pins = app.state.repo_pins.list_pins(workspace_id)
-            except Exception:
-                logger.exception("Failed to check existing pins in DB")
+        try:
+            existing_pins = app.state.repo_pins.list_pins(workspace_id)
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to check existing pins in DB")
+            raise _db_unavailable("check existing pins") from exc
         existing = next((pin for pin in existing_pins if pin.get("run_id") == payload.run_id), None)
         if existing:
             return existing
         pin_id = f"pin_{uuid.uuid4().hex[:10]}"
-        if hasattr(app.state, "repo_pins"):
-            try:
-                res = app.state.repo_pins.create_pin(
-                    pin_id=pin_id,
-                    workspace_id=workspace_id,
-                    title=payload.title,
-                    question_text=payload.question_text,
-                    run_id=payload.run_id,
-                )
-                app.state.pins.setdefault(workspace_id, []).append(res)
-                return res
-            except Exception:
-                logger.exception("Failed to create pin in DB")
-        pin = {
-            "pin_id": pin_id,
-            "workspace_id": workspace_id,
-            "title": payload.title,
-            "question_text": payload.question_text,
-            "run_id": payload.run_id,
-            "version": 1,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        app.state.pins.setdefault(workspace_id, []).append(pin)
-        return pin
+        try:
+            res = app.state.repo_pins.create_pin(
+                pin_id=pin_id,
+                workspace_id=workspace_id,
+                title=payload.title,
+                question_text=payload.question_text,
+                run_id=payload.run_id,
+            )
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to create pin in DB")
+            raise _db_unavailable("pin the answer") from exc
+        app.state.pins.setdefault(workspace_id, []).append(res)
+        return res
 
     @app.delete("/api/v1/workspaces/{workspace_id}/pins/{pin_id}")
     def delete_pin(workspace_id: str, pin_id: str) -> dict[str, Any]:
         removed = False
-        if hasattr(app.state, "repo_pins"):
-            try:
-                removed = app.state.repo_pins.delete_pin(workspace_id, pin_id)
-            except Exception:
-                logger.exception("Failed to delete pin in DB")
-                raise HTTPException(status_code=503, detail="Could not remove the pin; the database is unavailable.")
+        try:
+            removed = app.state.repo_pins.delete_pin(workspace_id, pin_id)
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to delete pin in DB")
+            raise _db_unavailable("remove the pin") from exc
         mem = app.state.pins.get(workspace_id, [])
         kept = [p for p in mem if p.get("pin_id") != pin_id]
         removed = removed or len(kept) != len(mem)
@@ -1727,14 +1617,11 @@ def create_app(
     @app.get("/api/v1/workspaces/{workspace_id}/usage")
     def get_usage(workspace_id: str) -> dict[str, Any]:
         c: AppContainer = app.state.container
-        if hasattr(app.state, "repo_runs"):
-            try:
-                ws_runs = app.state.repo_runs.list_runs(workspace_id)
-            except Exception:
-                logger.exception("Failed to query runs for usage from DB")
-                ws_runs = [r for r in app.state.runs.values() if r["workspace_id"] == workspace_id]
-        else:
-            ws_runs = [r for r in app.state.runs.values() if r["workspace_id"] == workspace_id]
+        try:
+            ws_runs = app.state.repo_runs.list_runs(workspace_id)
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to query runs for usage from DB")
+            raise _db_unavailable("load usage") from exc
         totals = [
             {
                 **c.budget_ledger.get_run_totals(r["run_id"]),
@@ -1752,12 +1639,12 @@ def create_app(
     async def save_provider_key(workspace_id: str, payload: SaveProviderKeyRequest) -> dict[str, str]:
         cipher = CredentialCipher()
         encrypted = cipher.encrypt(payload.api_key)
+        try:
+            app.state.repo_creds.save_credential(workspace_id, payload.provider_id.value, encrypted)
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to persist provider key to DB")
+            raise _db_unavailable("save the provider key") from exc
         app.state.encrypted_keys[f"{workspace_id}:{payload.provider_id.value}"] = encrypted
-        if hasattr(app.state, "repo_creds"):
-            try:
-                app.state.repo_creds.save_credential(workspace_id, payload.provider_id.value, encrypted)
-            except Exception:
-                logger.exception("Failed to persist provider key to DB")
         c: AppContainer = app.state.container
         c.routing_service._api_keys[payload.provider_id] = payload.api_key
         return {"provider_id": payload.provider_id.value, "status": "configured"}

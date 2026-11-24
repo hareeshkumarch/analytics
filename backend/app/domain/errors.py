@@ -69,6 +69,12 @@ class SecurityPolicyError(DomainError):
     http_status = 403
 
 
+class PersistenceUnavailableError(DomainError):
+    code = "persistence_unavailable"
+    retryable = True
+    http_status = 503
+
+
 class ConnectorError(DomainError):
     code = "connector_error"
     http_status = 502

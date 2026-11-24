@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from decimal import Decimal
 import logging
 import threading
 import uuid
@@ -25,11 +24,12 @@ from app.adapters.persistence.pg_repositories import (
 from app.adapters.query.snapshot_engine import SnapshotQueryEngine
 from app.adapters.query.sqlglot_compiler import SqlGlotQueryCompiler
 from app.application.services.orchestration_service import InvestigationOrchestrator
+from app.application.services.routing_service import routing_policy_from_saved
 from app.bootstrap.container import build_container
 from app.domain.events import EventType, RunEvent
 from app.domain.errors import ClarificationRequired
 from app.domain.models import RunMode, RunStatus
-from app.domain.providers import AgentRole, ProviderId, RoutingPolicy, RoutingPreset
+from app.domain.providers import ProviderId, RoutingPolicy
 
 logger = logging.getLogger(__name__)
 _worker_session_factory: sessionmaker[Session] | None = None
@@ -55,32 +55,7 @@ def dispose_worker_session_factory() -> None:
 
 
 def _policy_for_run(repo: PgRoutingRepository, container: Any, workspace_id: str) -> RoutingPolicy:
-    saved = repo.get_policy(workspace_id)
-    if not saved:
-        return container.default_routing_policy
-    default = container.default_routing_policy
-    role_routes = {
-        AgentRole(role): tuple(models)
-        for role, models in saved.get("role_routes", {}).items()
-        if role in AgentRole._value2member_map_
-    }
-    merged_role_routes = dict(default.role_routes)
-    merged_role_routes.update(role_routes)
-    return RoutingPolicy(
-        policy_version=int(saved.get("policy_version", default.policy_version)),
-        preset=RoutingPreset(saved.get("preset", default.preset.value)),
-        fallback_enabled=bool(saved.get("fallback_enabled", default.fallback_enabled)),
-        role_routes=merged_role_routes,
-        allowed_providers=tuple(
-            ProviderId(provider)
-            for provider in saved.get("allowed_providers", [item.value for item in default.allowed_providers])
-        ),
-        hard_cost_ceiling_usd=(
-            Decimal(str(saved["hard_cost_ceiling_usd"]))
-            if saved.get("hard_cost_ceiling_usd") is not None
-            else None
-        ),
-    )
+    return routing_policy_from_saved(repo.get_policy(workspace_id), container.default_routing_policy)
 
 
 def _load_saved_credentials(container: Any, repo: PgCredentialRepository, workspace_id: str) -> None:

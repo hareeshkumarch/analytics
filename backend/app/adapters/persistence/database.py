@@ -1,5 +1,6 @@
-import logging
 import os
+from pathlib import Path
+import tempfile
 from typing import Any
 from sqlalchemy import create_engine, inspect, pool, text
 from sqlalchemy.orm import Session, sessionmaker
@@ -11,21 +12,18 @@ def create_db_engine(database_url: str | None = None) -> Any:
     url = database_url
     if url is None:
         if os.environ.get("TESTING") == "1":
-            url = "sqlite:///:memory:"
+            url = f"sqlite:///{Path(tempfile.mkdtemp(prefix='ledgerline-test-')) / 'test.db'}"
         else:
             url = os.environ.get("DATABASE_URL")
 
-    if not url or url.startswith("sqlite"):
-        if not url and os.environ.get("TESTING") != "1":
-            logging.getLogger(__name__).warning(
-                "DATABASE_URL is not set: using a temporary in-memory SQLite database. Runs, datasets, pins "
-                "and saved keys will be lost when the API stops. Set DATABASE_URL to the Postgres instance."
-            )
-        engine = create_engine(
-            url or "sqlite:///:memory:",
-            connect_args={"check_same_thread": False},
-            poolclass=pool.StaticPool,
+    if not url:
+        raise RuntimeError(
+            "DATABASE_URL is not set. Point it at the PostgreSQL instance, or set TESTING=1 to use a throwaway "
+            "SQLite database."
         )
+    if url.startswith("sqlite"):
+        shared_connection = {"poolclass": pool.StaticPool} if ":memory:" in url or url == "sqlite://" else {}
+        engine = create_engine(url, connect_args={"check_same_thread": False}, **shared_connection)
         Base.metadata.create_all(engine)
         if "runs" in inspect(engine).get_table_names():
             columns = {column["name"] for column in inspect(engine).get_columns("runs")}
