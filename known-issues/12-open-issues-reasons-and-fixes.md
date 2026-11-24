@@ -23,6 +23,10 @@ The **UX** tag marks items that users directly notice.
   - CI now runs `ruff`, the Playwright suite, and `mypy` as advisory (#43, partly). `make test` uses `pytest`.
   - Fonts are self-hosted from pinned `@fontsource-variable` packages, so `next build` makes no network calls (an intermittent `next/font/google` crash had failed CI builds).
   - Every test has a 120 s timeout (`pytest-timeout`) and every CI job a `timeout-minutes`, after a test race hung CI for 25+ minutes: `test_fastapi_health_providers_and_run_idempotency` used a non-context `TestClient`, so each request ran in a short-lived event loop that destroyed the run's background task.
+- **Privacy and concurrency (2026-11-24):**
+  - `allow_raw_record_egress` is enforced: detail-query row values reach the model only when every provider the routing policy allows has it enabled (all default to off). The model gets columns, row count and the evidence id; the rows stay in local evidence.
+  - Snapshot versions are allocated on the server (#8).
+  - In Celery mode the SSE endpoint polls the event log every second instead of every 15 s, off the event loop thread.
 - **Wrong results and lost data (2026-11-24):**
   - Database errors are reported (#9). Writes (runs, datasets, pins, provider keys, routing policies) and reads (runs, pins, usage, providers, routing, queue counts) return `503 persistence_unavailable` with a remediation instead of reporting success or answering from memory; memory caches update only after the commit. A run whose failure can't be recorded still sends `run.finished`.
   - `DATABASE_URL` is required (#28). The API fails at startup without it unless `TESTING=1`; tests use a throwaway file-backed SQLite database so concurrent requests no longer share one connection.
@@ -63,7 +67,7 @@ The **UX** tag marks items that users directly notice.
 - **How to fix:** Install Node 22, run `cd frontend && npm install`, and commit `package-lock.json`. In `infra/compose/Dockerfile.frontend`, switch `npm install` to `npm ci` (the `COPY frontend/package*.json` line already picks up the lockfile).
 
 ### #4 Nothing has been executed (partly fixed)
-- **Status:** The backend suite, ruff, frontend typecheck, build and Playwright now run in CI. Migrations, the Compose stack and live provider runs are still unverified.
+- **Status:** The backend suite, ruff, frontend typecheck, build and Playwright run in CI. On 2026-11-24 the stack ran end to end outside Docker: PostgreSQL 16 (migrations 0001–0005, including the 0005 de-duplication, downgrade and re-upgrade, and `alembic check` against the ORM), Redis, the API in Celery mode and a Celery worker, with the Kimi chat adapter pointed at a local OpenAI-compatible mock. Import, approve, a quick run through the worker, SSE, evidence, pinning and an API restart all worked. Still unverified: `docker compose` itself (no Docker daemon was available), deep runs (the mocked provider has no reviewer or reconciliation models), cancellation and worker restarts mid-run, and real provider responses.
 - **Reason:** No typecheck, build, test or migration has run on any of the recent changes, so bugs may be hidden.
 - **How to fix:** Run the verification checklist at the end of this file.
 
@@ -83,8 +87,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** MySQL TLS passes an `ssl.SSLContext` to `pymysql.connect(ssl=…)`. The DuckDB connector relies on the `duckdb_tables()`, `duckdb_views()` and `duckdb_columns()` column names in DuckDB 1.1.3. Neither has been run.
 - **How to fix:** Run `tests/test_new_connectors.py`, then make one `verify-full` connection to a managed MySQL. If pymysql rejects the context, pass `ssl={"ca": certifi.where()}` with `ssl_verify_identity=True` instead.
 
-### #8 Snapshot version numbers are chosen by the browser
-- **Status (2026-11-24):** Partly fixed. The rebuilt Data page derives the source id from a hash of the family and non-secret config, so re-imports link up across browser sessions with no `sessionStorage`. The browser still picks the next version, so two tabs can still race; steps 1 and 2 remain.
+### #8 Snapshot version numbers are chosen by the browser (fixed)
+- **Status (2026-11-24):** Fixed. The API derives the source id from a hash of the family and redacted config (or uses an explicit `source_id`) and reserves the version before extraction with an atomic `UPDATE sources SET last_version = last_version + 1 … RETURNING`. Migration `0005_snapshot_version_allocation` adds the counter, renumbers existing duplicates and makes `(source_id, version)` unique. The extract request no longer accepts a version.
 - **Reason:** The browser picks the next version and keeps source identity in `sessionStorage`. Two tabs can create the same version, and a new browser session starts a new source, which also breaks the Dashboard "Newer data" flag.
 - **How to fix:**
   1. In `extract_connector`, resolve the source from its redacted config and compute `max(version) + 1` on the server inside a transaction that locks the source row (`SELECT … FOR UPDATE`).
