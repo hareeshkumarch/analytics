@@ -2,7 +2,14 @@ import os
 from celery import Celery
 from celery.signals import worker_process_shutdown
 
+from app.domain.limits import DEEP_BUDGET_LIMITS
+
+REDELIVERY_MARGIN_SECONDS = 300
+
 REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
+REDELIVERY_SECONDS = int(
+    os.environ.get("RUN_REDELIVERY_SECONDS", DEEP_BUDGET_LIMITS.active_seconds + REDELIVERY_MARGIN_SECONDS)
+)
 
 celery_app = Celery(
     "agentic_analytics",
@@ -11,6 +18,7 @@ celery_app = Celery(
     include=["app.jobs.tasks"],
 )
 celery_app.conf.update(
+    broker_transport_options={"visibility_timeout": REDELIVERY_SECONDS},
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     worker_prefetch_multiplier=1,
