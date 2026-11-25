@@ -146,8 +146,8 @@ export function SettingsView() {
     value: p.provider_id,
     label: humanize(p.provider_id),
     icon: <ProviderLogo providerId={p.provider_id} />,
-    sublabel: p.configured ? "Key saved" : "No key yet",
-    badge: p.configured ? "Ready" : undefined,
+    sublabel: p.key_status === "needs_key" ? "Saved key can't be decrypted; save it again" : p.configured ? "Key saved" : "No key yet",
+    badge: p.key_status === "needs_key" ? "Needs a key" : p.configured ? "Ready" : undefined,
   }));
   const configuredCount = (data?.providers ?? []).filter((p) => p.configured).length;
 

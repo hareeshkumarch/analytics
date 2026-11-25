@@ -105,6 +105,7 @@ export interface ProviderStatus {
   api_profile: string;
   endpoint_profile_id: string;
   configured: boolean;
+  key_status: "ready" | "needs_key" | "missing";
 }
 
 export interface ModelStatus {

@@ -172,7 +172,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** `allow_origin_regex` accepts every `localhost` / `127.0.0.1` port.
 - **How to fix:** Allow exact origins only, and require a per-install token header on mutating routes.
 
-### #26 Provider key handling
+### #26 Provider key handling (partly fixed)
+- **Status (2026-11-25):** `APP_MASTER_KEY` accepts a comma-separated list (newest first, read by `MultiFernet`), `make rotate-keys` (`python -m app.jobs.rotate_credentials`) re-encrypts saved keys with the newest one, and a saved key that can't be decrypted is reported as `key_status: needs_key` ("Needs a key" in Settings) instead of Ready. Still open: per-workspace key lookup, which belongs with the multi-workspace/authentication work.
 - **Reason:** There is one Fernet key with no rotation, a decrypt failure still shows "Ready", and keys from all workspaces share one dictionary.
 - **How to fix:** `MultiFernet` plus a re-encrypt command, report decrypt failures as "Needs a key", and look up keys per workspace.
 
@@ -184,7 +185,7 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** Without `DATABASE_URL` the API uses throwaway in-memory SQLite.
 - **How to fix:** Fail at startup unless `TESTING=1`, and set `TESTING=1` in tests and CI.
 
-### #43 CI doesn't lint, type-check or run end-to-end tests (partly fixed)
+### #43 CI doesn't lint, type-check or run end-to-end tests (fixed)
 - **Status:** `ruff` and Playwright run in CI and `make test` uses `pytest`. `mypy app` (strict) passes and blocks CI; untyped third-party packages are listed in `ignore_missing_imports` overrides, and `app.api.main` sets `warn_return_any = false` because Starlette's `app.state` is untyped.
 - **Reason:** `.github/workflows/ci.yml` runs only `pytest` and the frontend typecheck and build. `ruff` and `mypy` are configured in `pyproject.toml` but never run, Playwright isn't run, and the Makefile `test` target uses `unittest` while CI uses `pytest`.
 - **How to fix:** Add `ruff check app tests` and `mypy app` to CI; start mypy non-blocking because `strict = true` will flag existing code. Add a Playwright job that starts the Compose stack. Switch `make test` to `pytest -v`.
@@ -227,7 +228,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** `rounded-*` classes render square, and the API base URL is absolute.
 - **How to fix:** Drop the `rounded-*` classes, and use a relative `/api/v1` base through Caddy.
 
-### #40 Fonts need network at build time
+### #40 Fonts need network at build time (fixed)
+- **Status (2026-11-24):** Fixed. Fonts come from pinned `@fontsource-variable` packages through `next/font/local`.
 - **Reason:** `next/font/google` downloads fonts during `next build`, so offline builds fail.
 - **How to fix:** Vendor the font files into `frontend/src/fonts/` and use `next/font/local`.
 

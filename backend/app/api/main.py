@@ -221,6 +221,7 @@ def create_app(
     app.state.semantics = {}
     app.state.pins = {}
     app.state.encrypted_keys = {}
+    app.state.undecryptable_keys = set()
     app.state.routing_policies = {}
 
     def _load_saved_credentials() -> None:
@@ -240,6 +241,7 @@ def create_app(
                         c.routing_service._api_keys[pid] = plain
                         app.state.encrypted_keys[f"{cred['workspace_id']}:{pid_str}"] = cred["encrypted_payload"]
                     except Exception as exc:
+                        app.state.undecryptable_keys.add(f"{cred['workspace_id']}:{pid_str}")
                         logger.warning("Could not decrypt key for %s: %s", pid_str, exc)
         except Exception:
             logger.exception("Error loading saved credentials from DB")
@@ -847,6 +849,14 @@ def create_app(
         except SQLAlchemyError as exc:
             logger.exception("Failed to load provider keys from DB")
             raise _db_unavailable("load saved provider keys") from exc
+        def key_status(provider: ProviderId) -> str:
+            if c.routing_service._api_keys.get(provider) or f"{workspace_id}:{provider.value}" in app.state.encrypted_keys:
+                return "ready"
+            if f"{workspace_id}:{provider.value}" in app.state.undecryptable_keys:
+                return "needs_key"
+            return "ready" if provider.value in db_keys else "missing"
+
+        statuses = {p.provider_id: key_status(p.provider_id) for p in c.provider_profiles.values()}
         return {
             "workspace_id": workspace_id,
             "providers": [
@@ -854,11 +864,8 @@ def create_app(
                     "provider_id": p.provider_id.value,
                     "api_profile": p.api_profile.value,
                     "endpoint_profile_id": p.endpoint_profile_id,
-                    "configured": bool(
-                        c.routing_service._api_keys.get(p.provider_id)
-                        or f"{workspace_id}:{p.provider_id.value}" in app.state.encrypted_keys
-                        or p.provider_id.value in db_keys
-                    ),
+                    "configured": statuses[p.provider_id] == "ready",
+                    "key_status": statuses[p.provider_id],
                 }
                 for p in c.provider_profiles.values()
             ],
@@ -1704,6 +1711,7 @@ def create_app(
             logger.exception("Failed to persist provider key to DB")
             raise _db_unavailable("save the provider key") from exc
         app.state.encrypted_keys[f"{workspace_id}:{payload.provider_id.value}"] = encrypted
+        app.state.undecryptable_keys.discard(f"{workspace_id}:{payload.provider_id.value}")
         c: AppContainer = app.state.container
         c.routing_service._api_keys[payload.provider_id] = payload.api_key
         return {"provider_id": payload.provider_id.value, "status": "configured"}

@@ -1,4 +1,4 @@
-.PHONY: doctor dev stop migrate test lint lock build smoke backup-dev restore-dev
+.PHONY: doctor dev stop migrate test lint lock rotate-keys build smoke backup-dev restore-dev
 
 COMPOSE=docker compose
 
@@ -24,6 +24,9 @@ lock:
 	cd backend && uv pip compile pyproject.toml --universal --generate-hashes -q -o requirements.lock
 	cd backend && uv pip compile pyproject.toml --extra dev --universal --generate-hashes -q -o requirements-dev.lock
 	cd frontend && npm install --package-lock-only
+
+rotate-keys:
+	$(COMPOSE) exec api python -m app.jobs.rotate_credentials
 
 build:
 	$(COMPOSE) build
