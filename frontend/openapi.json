@@ -16,6 +16,74 @@
         "title": "ApproveSemanticsRequest",
         "type": "object"
       },
+      "ChartOut": {
+        "additionalProperties": true,
+        "properties": {
+          "chart_id": {
+            "title": "Chart Id",
+            "type": "string"
+          },
+          "chart_type": {
+            "title": "Chart Type",
+            "type": "string"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "x_field": {
+            "title": "X Field",
+            "type": "string"
+          },
+          "y_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Y Fields",
+            "type": "array"
+          }
+        },
+        "required": [
+          "chart_id",
+          "chart_type",
+          "title",
+          "x_field",
+          "y_fields",
+          "evidence_id",
+          "rows"
+        ],
+        "title": "ChartOut",
+        "type": "object"
+      },
       "ClarifyRunRequest": {
         "additionalProperties": false,
         "properties": {
@@ -36,6 +104,58 @@
           "answer"
         ],
         "title": "ClarifyRunRequest",
+        "type": "object"
+      },
+      "ColumnDetailOut": {
+        "additionalProperties": true,
+        "properties": {
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "leading_zero_id": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leading Zero Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "nullable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nullable"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "title": "ColumnDetailOut",
         "type": "object"
       },
       "ConnectorExtractRequest": {
@@ -213,6 +333,35 @@
         "title": "CreatePinRequest",
         "type": "object"
       },
+      "CreateRunOut": {
+        "additionalProperties": true,
+        "properties": {
+          "events_url": {
+            "title": "Events Url",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_url": {
+            "title": "Status Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "status_url",
+          "events_url"
+        ],
+        "title": "CreateRunOut",
+        "type": "object"
+      },
       "CreateRunRequest": {
         "additionalProperties": false,
         "properties": {
@@ -329,6 +478,171 @@
         "title": "ImportForm",
         "type": "object"
       },
+      "ModelStatusOut": {
+        "additionalProperties": true,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "provider_id": {
+            "title": "Provider Id",
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "verification_date": {
+            "title": "Verification Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_id",
+          "provider_id",
+          "roles",
+          "enabled",
+          "verification_date"
+        ],
+        "title": "ModelStatusOut",
+        "type": "object"
+      },
+      "ModelUsageOut": {
+        "additionalProperties": true,
+        "properties": {
+          "avg_latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Latency Ms"
+          },
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "cost_unknown": {
+            "title": "Cost Unknown",
+            "type": "boolean"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "provider_id": {
+            "title": "Provider Id",
+            "type": "string"
+          },
+          "total_cost_usd": {
+            "title": "Total Cost Usd",
+            "type": "string"
+          },
+          "total_tokens": {
+            "title": "Total Tokens",
+            "type": "integer"
+          },
+          "unsettled_calls": {
+            "title": "Unsettled Calls",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "provider_id",
+          "model_id",
+          "calls",
+          "unsettled_calls",
+          "total_tokens",
+          "total_cost_usd",
+          "cost_unknown",
+          "avg_latency_ms"
+        ],
+        "title": "ModelUsageOut",
+        "type": "object"
+      },
+      "PinListOut": {
+        "additionalProperties": true,
+        "properties": {
+          "pins": {
+            "items": {
+              "$ref": "#/components/schemas/PinOut"
+            },
+            "title": "Pins",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pins"
+        ],
+        "title": "PinListOut",
+        "type": "object"
+      },
+      "PinOut": {
+        "additionalProperties": true,
+        "properties": {
+          "auto_refresh": {
+            "default": false,
+            "title": "Auto Refresh",
+            "type": "boolean"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "latest_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Run Id"
+          },
+          "pin_id": {
+            "title": "Pin Id",
+            "type": "string"
+          },
+          "question_text": {
+            "title": "Question Text",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pin_id",
+          "title",
+          "question_text",
+          "run_id",
+          "version",
+          "created_at"
+        ],
+        "title": "PinOut",
+        "type": "object"
+      },
       "ProviderId": {
         "enum": [
           "openai",
@@ -342,6 +656,175 @@
         "title": "ProviderId",
         "type": "string"
       },
+      "ProviderStatusOut": {
+        "additionalProperties": true,
+        "properties": {
+          "api_profile": {
+            "title": "Api Profile",
+            "type": "string"
+          },
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "endpoint_profile_id": {
+            "title": "Endpoint Profile Id",
+            "type": "string"
+          },
+          "key_status": {
+            "enum": [
+              "ready",
+              "needs_key",
+              "missing"
+            ],
+            "title": "Key Status",
+            "type": "string"
+          },
+          "provider_id": {
+            "$ref": "#/components/schemas/ProviderId"
+          }
+        },
+        "required": [
+          "provider_id",
+          "api_profile",
+          "endpoint_profile_id",
+          "configured",
+          "key_status"
+        ],
+        "title": "ProviderStatusOut",
+        "type": "object"
+      },
+      "ProvidersOut": {
+        "additionalProperties": true,
+        "properties": {
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ModelStatusOut"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderStatusOut"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "providers",
+          "models"
+        ],
+        "title": "ProvidersOut",
+        "type": "object"
+      },
+      "ReimportOut": {
+        "additionalProperties": true,
+        "properties": {
+          "connector_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connector Id"
+          },
+          "selected_tables": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Selected Tables",
+            "type": "array"
+          },
+          "values": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "connector_id",
+          "values",
+          "selected_tables"
+        ],
+        "title": "ReimportOut",
+        "type": "object"
+      },
+      "RoutingPolicyOut": {
+        "additionalProperties": true,
+        "properties": {
+          "fallback_enabled": {
+            "title": "Fallback Enabled",
+            "type": "boolean"
+          },
+          "hard_cost_ceiling_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hard Cost Ceiling Usd"
+          },
+          "policy_version": {
+            "title": "Policy Version",
+            "type": "integer"
+          },
+          "preset": {
+            "$ref": "#/components/schemas/RoutingPreset"
+          },
+          "role_routes": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Role Routes",
+            "type": "object"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "policy_version",
+          "preset",
+          "fallback_enabled",
+          "role_routes",
+          "hard_cost_ceiling_usd"
+        ],
+        "title": "RoutingPolicyOut",
+        "type": "object"
+      },
       "RoutingPreset": {
         "enum": [
           "balanced",
@@ -352,6 +835,49 @@
         "title": "RoutingPreset",
         "type": "string"
       },
+      "RunAnswerOut": {
+        "additionalProperties": true,
+        "properties": {
+          "answer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer Id"
+          },
+          "charts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ChartOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charts"
+          },
+          "summary_markdown": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Markdown"
+          }
+        },
+        "title": "RunAnswerOut",
+        "type": "object"
+      },
       "RunMode": {
         "enum": [
           "quick",
@@ -359,6 +885,255 @@
         ],
         "title": "RunMode",
         "type": "string"
+      },
+      "RunOut": {
+        "additionalProperties": true,
+        "properties": {
+          "answer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunAnswerOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "clarification_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clarification Prompt"
+          },
+          "clarification_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clarification Revision"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "semantic_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semantic Version Id"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "workspace_id",
+          "status"
+        ],
+        "title": "RunOut",
+        "type": "object"
+      },
+      "RunPageOut": {
+        "additionalProperties": true,
+        "properties": {
+          "next_before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/RunOut"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "runs",
+          "next_before"
+        ],
+        "title": "RunPageOut",
+        "type": "object"
+      },
+      "RunUsageOut": {
+        "additionalProperties": true,
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "incomplete": {
+            "title": "Incomplete",
+            "type": "boolean"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "total_cost_usd": {
+            "title": "Total Cost Usd",
+            "type": "string"
+          },
+          "total_tokens": {
+            "title": "Total Tokens",
+            "type": "integer"
+          },
+          "used_attempts": {
+            "title": "Used Attempts",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run_id",
+          "used_attempts",
+          "total_tokens",
+          "total_cost_usd",
+          "incomplete"
+        ],
+        "title": "RunUsageOut",
+        "type": "object"
       },
       "SaveProviderKeyRequest": {
         "additionalProperties": false,
@@ -378,6 +1153,199 @@
           "api_key"
         ],
         "title": "SaveProviderKeyRequest",
+        "type": "object"
+      },
+      "SnapshotListOut": {
+        "additionalProperties": true,
+        "properties": {
+          "snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotOut"
+            },
+            "title": "Snapshots",
+            "type": "array"
+          }
+        },
+        "required": [
+          "snapshots"
+        ],
+        "title": "SnapshotListOut",
+        "type": "object"
+      },
+      "SnapshotOut": {
+        "additionalProperties": true,
+        "properties": {
+          "approved": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved"
+          },
+          "consistency_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consistency Level"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "reimport": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReimportOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "semantic_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semantic Version Id"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "source_family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Family"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "table_details": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/TableDetailOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Details"
+          },
+          "tables": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tables",
+            "type": "array"
+          },
+          "total_normalized_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Normalized Bytes"
+          },
+          "total_rows": {
+            "title": "Total Rows",
+            "type": "integer"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "source_id",
+          "version",
+          "total_rows",
+          "tables"
+        ],
+        "title": "SnapshotOut",
+        "type": "object"
+      },
+      "TableDetailOut": {
+        "additionalProperties": true,
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnDetailOut"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "normalized_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalized Bytes"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "row_count",
+          "columns"
+        ],
+        "title": "TableDetailOut",
         "type": "object"
       },
       "UpdatePinRequest": {
@@ -460,6 +1428,41 @@
           "expected_version"
         ],
         "title": "UpdateRoutingRequest",
+        "type": "object"
+      },
+      "UsageOut": {
+        "additionalProperties": true,
+        "properties": {
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ModelUsageOut"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "run_count": {
+            "title": "Run Count",
+            "type": "integer"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/RunUsageOut"
+            },
+            "title": "Runs",
+            "type": "array"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "run_count",
+          "runs",
+          "models"
+        ],
+        "title": "UsageOut",
         "type": "object"
       },
       "ValidationError": {
@@ -799,9 +1802,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response List Pins Api V1 Workspaces  Workspace Id  Pins Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/PinListOut"
                 }
               }
             },
@@ -848,9 +1849,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Create Pin Api V1 Workspaces  Workspace Id  Pins Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/PinOut"
                 }
               }
             },
@@ -956,9 +1955,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Update Pin Api V1 Workspaces  Workspace Id  Pins  Pin Id  Patch",
-                  "type": "object"
+                  "$ref": "#/components/schemas/PinOut"
                 }
               }
             },
@@ -1047,9 +2044,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response List Providers Api V1 Workspaces  Workspace Id  Providers Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProvidersOut"
                 }
               }
             },
@@ -1138,9 +2133,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Routing Policy Api V1 Workspaces  Workspace Id  Routing Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/RoutingPolicyOut"
                 }
               }
             },
@@ -1187,9 +2180,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Update Routing Policy Api V1 Workspaces  Workspace Id  Routing Put",
-                  "type": "object"
+                  "$ref": "#/components/schemas/RoutingPolicyOut"
                 }
               }
             },
@@ -1257,9 +2248,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response List Runs Api V1 Workspaces  Workspace Id  Runs Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/RunPageOut"
                 }
               }
             },
@@ -1321,7 +2310,9 @@
           "202": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CreateRunOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -1416,9 +2407,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Run Api V1 Workspaces  Workspace Id  Runs  Run Id  Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/RunOut"
                 }
               }
             },
@@ -1961,9 +2950,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response List Snapshots Api V1 Workspaces  Workspace Id  Snapshots Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/SnapshotListOut"
                 }
               }
             },
@@ -2300,9 +3287,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Usage Api V1 Workspaces  Workspace Id  Usage Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/UsageOut"
                 }
               }
             },

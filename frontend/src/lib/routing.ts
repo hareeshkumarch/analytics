@@ -4,18 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api/client";
 import { workspacePath } from "@/lib/workspace";
 import type { RichOption } from "@/components/RichSelect";
-import type { UpdateRoutingRequest } from "@/lib/api/types";
+import type { RoutingPolicyOut, UpdateRoutingRequest } from "@/lib/api/types";
 
-export type RoutingPreset = "balanced" | "cost" | "latency" | "quality";
-
-export interface RoutingPolicy {
-  workspace_id: string;
-  policy_version: number;
-  preset: RoutingPreset;
-  fallback_enabled: boolean;
-  role_routes: Record<string, string[]>;
-  hard_cost_ceiling_usd: string | null;
-}
+export type { RoutingPreset } from "@/lib/api/types";
+export type RoutingPolicy = RoutingPolicyOut;
 
 export const PRESET_OPTIONS: RichOption[] = [
   { value: "balanced", label: "Balanced", sublabel: "Default role-ordered routes", badge: "Default" },

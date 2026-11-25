@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api/client";
 import { useUiStore } from "@/lib/store";
-import type { ProviderId } from "@/lib/api/types";
+import type { ColumnDetailOut, ModelStatusOut, ProviderStatusOut, ProvidersOut, SnapshotOut } from "@/lib/api/types";
 
 export function workspacePath(workspaceId: string, path: string): string {
   return `/workspaces/${encodeURIComponent(workspaceId)}${path}`;
@@ -36,30 +36,9 @@ export function useHealth() {
   });
 }
 
-export interface ColumnDetail {
-  name: string;
-  type: string;
-  nullable: boolean;
-  leading_zero_id: boolean;
-  currency: string | null;
-}
+export type ColumnDetail = ColumnDetailOut;
 
-export interface SnapshotSummary {
-  snapshot_id: string;
-  source_id: string;
-  version: number;
-  total_rows: number;
-  tables: string[];
-  semantic_version_id?: string | null;
-  approved?: boolean;
-  created_at?: string | null;
-  source_family?: string | null;
-  total_normalized_bytes?: number;
-  consistency_level?: string | null;
-  sha256?: string;
-  table_details?: { name: string; row_count: number; normalized_bytes?: number; columns: ColumnDetail[] }[];
-  reimport?: { connector_id: string | null; values: Record<string, string | boolean>; selected_tables: string[] } | null;
-}
+export type SnapshotSummary = SnapshotOut;
 
 function createdTime(s: SnapshotSummary): number {
   const t = s.created_at ? Date.parse(s.created_at) : NaN;
@@ -102,27 +81,11 @@ export function useSnapshots<T extends SnapshotSummary = SnapshotSummary>() {
   });
 }
 
-export interface ProviderStatus {
-  provider_id: ProviderId;
-  api_profile: string;
-  endpoint_profile_id: string;
-  configured: boolean;
-  key_status: "ready" | "needs_key" | "missing";
-}
+export type ProviderStatus = ProviderStatusOut;
 
-export interface ModelStatus {
-  model_id: string;
-  provider_id: string;
-  roles: string[];
-  enabled: boolean;
-  verification_date: string;
-}
+export type ModelStatus = ModelStatusOut;
 
-export interface ProvidersResponse {
-  workspace_id: string;
-  providers: ProviderStatus[];
-  models: ModelStatus[];
-}
+export type ProvidersResponse = ProvidersOut;
 
 export function useProviders() {
   const ws = useWorkspace();

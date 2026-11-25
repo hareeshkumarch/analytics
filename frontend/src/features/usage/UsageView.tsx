@@ -12,37 +12,11 @@ import { HScroll } from "@/components/HScroll";
 import { EmptyState, FilterChips, Notice, SearchInput, btn, cardCls, cx } from "@/components/ui";
 import { useThemeColor } from "@/lib/theme";
 import { relativeTime, useWorkspace } from "@/lib/workspace";
+import type { ModelUsageOut, RunUsageOut, UsageOut } from "@/lib/api/types";
 
-interface RunUsageItem {
-  run_id: string;
-  mode?: string;
-  status?: string;
-  used_attempts: number;
-  total_tokens: number;
-  total_cost_usd: string;
-  incomplete: boolean;
-  created_at?: string;
-  question?: string;
-  error?: string | null;
-}
-
-interface ModelUsageItem {
-  provider_id: string;
-  model_id: string;
-  calls: number;
-  unsettled_calls: number;
-  total_tokens: number;
-  total_cost_usd: string;
-  cost_unknown: boolean;
-  avg_latency_ms: number | null;
-}
-
-interface UsageResponse {
-  workspace_id: string;
-  run_count: number;
-  runs: RunUsageItem[];
-  models?: ModelUsageItem[];
-}
+type RunUsageItem = RunUsageOut;
+type ModelUsageItem = ModelUsageOut;
+type UsageResponse = UsageOut;
 
 type WindowKey = "24h" | "7d" | "30d" | "90d" | "all";
 type Metric = "tokens" | "cost" | "runs";
@@ -487,11 +461,11 @@ export function UsageView() {
                   const status = r.status ?? "queued";
                   return (
                     <tr key={r.run_id} className="border-t border-border align-top">
-                      <td className="whitespace-nowrap px-3.5 py-3 text-secondary" title={r.created_at}>
+                      <td className="whitespace-nowrap px-3.5 py-3 text-secondary" title={r.created_at ?? undefined}>
                         {relativeTime(r.created_at)}
                       </td>
                       <td className="max-w-[320px] px-3.5 py-3">
-                        <Link href={`/ask?run=${encodeURIComponent(r.run_id)}`} className="line-clamp-2 text-ink underline decoration-border underline-offset-4 hover:decoration-ink" title={r.question}>
+                        <Link href={`/ask?run=${encodeURIComponent(r.run_id)}`} className="line-clamp-2 text-ink underline decoration-border underline-offset-4 hover:decoration-ink" title={r.question ?? undefined}>
                           {r.question || "Untitled question"}
                         </Link>
                         {r.error && <span className="mt-0.5 line-clamp-1 block text-xs text-err">Failed: see the run for details</span>}

@@ -27,6 +27,7 @@ from app.domain.models import RunMode, RunStatus
 
 from app.api.support import TERMINAL_RUN_STATUSES, SSE_HEARTBEAT_SECONDS, SSE_WORKER_POLL_SECONDS, RUN_PAGE_DEFAULT, RUN_PAGE_MAX, RUN_LIST_ANSWER_KEYS
 from app.api.context import ApiContext
+from app.api.responses import CreateRunOut, RunOut, RunPageOut
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ def register(ctx: ApiContext) -> APIRouter:
     _broadcast_persisted_event = ctx.broadcast_persisted_event
     _resolve_binding = ctx.resolve_binding
 
-    @router.post("/api/v1/workspaces/{workspace_id}/runs", status_code=202)
+    @router.post("/api/v1/workspaces/{workspace_id}/runs", status_code=202, response_model=CreateRunOut, response_model_exclude_unset=True)
     async def create_run(
         workspace_id: str,
         payload: CreateRunRequest,
@@ -163,7 +164,7 @@ def register(ctx: ApiContext) -> APIRouter:
             app.state.idempotency[idempotency_key] = (payload_hash, 202, resp_body)
         return JSONResponse(status_code=202, content=resp_body)
 
-    @router.get("/api/v1/workspaces/{workspace_id}/runs")
+    @router.get("/api/v1/workspaces/{workspace_id}/runs", response_model=RunPageOut, response_model_exclude_unset=True)
     def list_runs(
         workspace_id: str,
         limit: int = Query(RUN_PAGE_DEFAULT, ge=1, le=RUN_PAGE_MAX),
@@ -180,7 +181,7 @@ def register(ctx: ApiContext) -> APIRouter:
             logger.exception("Failed to query runs from DB")
             raise _db_unavailable("load the run history") from exc
 
-    @router.get("/api/v1/workspaces/{workspace_id}/runs/{run_id}")
+    @router.get("/api/v1/workspaces/{workspace_id}/runs/{run_id}", response_model=RunOut, response_model_exclude_unset=True)
     def get_run(workspace_id: str, run_id: str) -> dict[str, Any]:
         run_rec = app.state.repo_runs.get_run(run_id)
         if run_rec:

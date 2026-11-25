@@ -6,34 +6,18 @@ import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, errorMessage } from "@/lib/api/client";
 import { anyText, useUrlState } from "@/lib/url";
-import { AnswerCharts, type AnswerChart } from "@/components/AnswerCharts";
+import { AnswerCharts } from "@/components/AnswerCharts";
 import { PageHeader } from "@/components/PageHeader";
 import { RichSelect, RichOption } from "@/components/RichSelect";
 import { Badge, EmptyState, FilterChips, Notice, SearchInput, Skeleton, Spinner, btn, cardCls, cx } from "@/components/ui";
 import { SnapshotSummary, datasetLabel, relativeTime, useSnapshots, useWorkspace } from "@/lib/workspace";
-import type { UpdatePinRequest } from "@/lib/api/types";
+import type { PinOut, RunOut, UpdatePinRequest } from "@/lib/api/types";
 
-interface PinItem {
-  pin_id: string;
-  title: string;
-  question_text: string;
-  run_id: string;
-  version: number;
-  created_at: string;
-  auto_refresh?: boolean;
-  latest_run_id?: string | null;
-}
+type PinItem = PinOut;
 
 const ACTIVE_RUN = new Set(["queued", "running", "awaiting_input"]);
 
-interface RunSummary {
-  run_id: string;
-  status: string;
-  mode?: string;
-  snapshot_id?: string | null;
-  answer?: { summary_markdown?: string; charts?: AnswerChart[] } | null;
-  created_at?: string;
-}
+type RunSummary = RunOut;
 
 type WindowFilter = "any" | "7d" | "30d";
 const isWindowFilter = (value: string): value is WindowFilter => value === "any" || value === "7d" || value === "30d";
@@ -269,7 +253,7 @@ export function DashboardView() {
             const latestFailed = latest?.status === "failed";
             const snap = run?.snapshot_id ? snapshotById.get(run.snapshot_id) : undefined;
             const newer = newerVersion(snap);
-            const text = excerpt(run?.answer?.summary_markdown);
+            const text = excerpt(run?.answer?.summary_markdown ?? undefined);
             const busy = busyPin === pin.pin_id;
             return (
               <li key={pin.pin_id} className={cx(cardCls, "flex flex-col gap-3 p-5")}>

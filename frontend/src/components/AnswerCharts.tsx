@@ -2,18 +2,10 @@
 
 import React from "react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import type { ChartOut } from "@/lib/api/types";
 import { useThemeColor } from "@/lib/theme";
 
-export type AnswerChart = {
-  chart_id: string;
-  chart_type: string;
-  title: string;
-  x_field: string;
-  y_fields: string[];
-  evidence_id: string;
-  rows: (string | number | null)[][];
-  truncated: boolean;
-};
+export type AnswerChart = ChartOut;
 
 const compact = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
 const full = new Intl.NumberFormat(undefined, { maximumFractionDigits: 4 });

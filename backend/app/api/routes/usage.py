@@ -9,6 +9,7 @@ from app.bootstrap.container import AppContainer
 
 from app.api.support import RUN_PAGE_MAX
 from app.api.context import ApiContext
+from app.api.responses import UsageOut
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ def register(ctx: ApiContext) -> APIRouter:
     app = ctx.app
     _db_unavailable = ctx.db_unavailable
 
-    @router.get("/api/v1/workspaces/{workspace_id}/usage")
+    @router.get("/api/v1/workspaces/{workspace_id}/usage", response_model=UsageOut, response_model_exclude_unset=True)
     def get_usage(workspace_id: str, since: datetime | None = None) -> dict[str, Any]:
         c: AppContainer = app.state.container
         try:

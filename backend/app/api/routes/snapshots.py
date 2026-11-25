@@ -19,6 +19,7 @@ from app.domain.limits import (
 )
 
 from app.api.context import ApiContext
+from app.api.responses import SnapshotListOut
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ def register(ctx: ApiContext) -> APIRouter:
     _get_query_engine = ctx.get_query_engine
     _get_workspace_snapshot = ctx.get_workspace_snapshot
 
-    @router.get("/api/v1/workspaces/{workspace_id}/snapshots")
+    @router.get("/api/v1/workspaces/{workspace_id}/snapshots", response_model=SnapshotListOut, response_model_exclude_unset=True)
     def list_snapshots(workspace_id: str) -> dict[str, Any]:
         if hasattr(app.state, "repo_snapshots"):
             db_snaps = app.state.repo_snapshots.list_snapshots(workspace_id)

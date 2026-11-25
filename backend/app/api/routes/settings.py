@@ -20,6 +20,7 @@ from app.domain.errors import (
 from app.domain.providers import AgentRole, ProviderId, RoutingPolicy
 
 from app.api.context import ApiContext
+from app.api.responses import ProvidersOut, RoutingPolicyOut
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ def register(ctx: ApiContext) -> APIRouter:
     _db_unavailable = ctx.db_unavailable
     _policy_for_workspace = ctx.policy_for_workspace
 
-    @router.get("/api/v1/workspaces/{workspace_id}/providers")
+    @router.get("/api/v1/workspaces/{workspace_id}/providers", response_model=ProvidersOut, response_model_exclude_unset=True)
     def list_providers(workspace_id: str) -> dict[str, Any]:
         c: AppContainer = app.state.container
         try:
@@ -107,7 +108,7 @@ def register(ctx: ApiContext) -> APIRouter:
             "usage_complete": resp.input_tokens > 0 or resp.output_tokens > 0,
         }
 
-    @router.get("/api/v1/workspaces/{workspace_id}/routing")
+    @router.get("/api/v1/workspaces/{workspace_id}/routing", response_model=RoutingPolicyOut, response_model_exclude_unset=True)
     def get_routing_policy(workspace_id: str) -> dict[str, Any]:
         current = _policy_for_workspace(workspace_id)
         return {
@@ -121,7 +122,7 @@ def register(ctx: ApiContext) -> APIRouter:
             ),
         }
 
-    @router.put("/api/v1/workspaces/{workspace_id}/routing")
+    @router.put("/api/v1/workspaces/{workspace_id}/routing", response_model=RoutingPolicyOut, response_model_exclude_unset=True)
     def update_routing_policy(workspace_id: str, payload: UpdateRoutingRequest) -> dict[str, Any]:
         c: AppContainer = app.state.container
         current = _policy_for_workspace(workspace_id)

@@ -1,4 +1,4 @@
-import type { ClarifyRunRequest, CreateRunRequest } from "@/lib/api/types";
+import type { ClarifyRunRequest, CreateRunOut, CreateRunRequest } from "@/lib/api/types";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "/api/v1";
 
@@ -102,12 +102,7 @@ export function shouldRetry(failureCount: number, error: unknown): boolean {
   return failureCount < 2;
 }
 
-export interface CreateRunResponse {
-  run_id: string;
-  status: string;
-  status_url: string;
-  events_url: string;
-}
+export type CreateRunResponse = CreateRunOut;
 
 export function createRun(
   workspaceId: string,

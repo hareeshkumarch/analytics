@@ -28,7 +28,7 @@ import { AnswerCharts, type AnswerChart } from "@/components/AnswerCharts";
 import { ExportMenu } from "@/features/ask/ExportMenu";
 import { SampleDataButton } from "@/components/SampleDataButton";
 import { SAMPLE_QUESTIONS, isSampleDataset } from "@/lib/sample";
-import type { CreatePinRequest } from "@/lib/api/types";
+import type { CreatePinRequest, RunOut, RunPageOut } from "@/lib/api/types";
 
 interface Session {
   id: string;
@@ -53,23 +53,8 @@ interface Session {
   clarificationDraft: string;
 }
 
-interface StoredRun {
-  run_id: string;
-  question: string;
-  mode: RunMode;
-  status: string;
-  answer?: { summary_markdown?: string; charts?: AnswerChart[] } | null;
-  error?: string | null;
-  created_at?: string;
-  snapshot_id?: string | null;
-  clarification_prompt?: string | null;
-  clarification_revision?: number;
-}
-
-interface RunPage {
-  runs: StoredRun[];
-  next_before: string | null;
-}
+type StoredRun = RunOut;
+type RunPage = RunPageOut;
 
 type HistoryFilter = "all" | "done" | "running" | "failed";
 
@@ -103,7 +88,7 @@ function fromStored(run: StoredRun): Session {
   return {
     id: run.run_id,
     question: run.question || "Untitled question",
-    mode: run.mode,
+    mode: run.mode ?? "quick",
     runId: run.run_id,
     status: run.status,
     answer,

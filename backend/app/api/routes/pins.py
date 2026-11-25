@@ -15,6 +15,7 @@ from app.api.schemas import (
 from app.domain.models import RunMode, RunStatus
 
 from app.api.context import ApiContext
+from app.api.responses import PinListOut, PinOut
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ def register(ctx: ApiContext) -> APIRouter:
     _snapshot_record = ctx.snapshot_record
     _newest_approved_in_source = ctx.newest_approved_in_source
 
-    @router.get("/api/v1/workspaces/{workspace_id}/pins")
+    @router.get("/api/v1/workspaces/{workspace_id}/pins", response_model=PinListOut, response_model_exclude_unset=True)
     def list_pins(workspace_id: str) -> dict[str, Any]:
         try:
             return {"pins": app.state.repo_pins.list_pins(workspace_id)}
@@ -34,7 +35,7 @@ def register(ctx: ApiContext) -> APIRouter:
             logger.exception("Failed to query pins from DB")
             raise _db_unavailable("load pinned answers") from exc
 
-    @router.post("/api/v1/workspaces/{workspace_id}/pins", status_code=201)
+    @router.post("/api/v1/workspaces/{workspace_id}/pins", status_code=201, response_model=PinOut, response_model_exclude_unset=True)
     def create_pin(workspace_id: str, payload: CreatePinRequest) -> dict[str, Any]:
         run_rec = app.state.repo_runs.get_run(payload.run_id)
         if run_rec:
@@ -78,7 +79,7 @@ def register(ctx: ApiContext) -> APIRouter:
             raise HTTPException(status_code=404, detail="Pin not found")
         return {"pin_id": pin_id, "deleted": True}
 
-    @router.patch("/api/v1/workspaces/{workspace_id}/pins/{pin_id}")
+    @router.patch("/api/v1/workspaces/{workspace_id}/pins/{pin_id}", response_model=PinOut, response_model_exclude_unset=True)
     def update_pin(workspace_id: str, pin_id: str, payload: UpdatePinRequest) -> dict[str, Any]:
         try:
             if not app.state.repo_pins.update_pin_state(workspace_id, pin_id, {"auto_refresh": payload.auto_refresh}):

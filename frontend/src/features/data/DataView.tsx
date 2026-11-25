@@ -50,7 +50,7 @@ export function DataView() {
         connectorId,
         sourceId: snapshot.source_id,
         label: datasetLabel(snapshot),
-        values: saved.values,
+        values: Object.fromEntries(Object.entries(saved.values).map(([k, v]) => [k, typeof v === "number" ? String(v) : v])),
         selectedTables: saved.selected_tables,
         nonce: (prev?.nonce ?? 0) + 1,
       }));

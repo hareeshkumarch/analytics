@@ -528,12 +528,51 @@ export interface components {
             /** Expected Version */
             expected_version: number;
         };
+        /** ChartOut */
+        ChartOut: {
+            /** Chart Id */
+            chart_id: string;
+            /** Chart Type */
+            chart_type: string;
+            /** Evidence Id */
+            evidence_id: string;
+            /** Rows */
+            rows: (string | number | null)[][];
+            /** Title */
+            title: string;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated?: boolean;
+            /** X Field */
+            x_field: string;
+            /** Y Fields */
+            y_fields: string[];
+        } & {
+            [key: string]: unknown;
+        };
         /** ClarifyRunRequest */
         ClarifyRunRequest: {
             /** Answer */
             answer: string;
             /** Revision */
             revision: number;
+        };
+        /** ColumnDetailOut */
+        ColumnDetailOut: {
+            /** Currency */
+            currency?: string | null;
+            /** Leading Zero Id */
+            leading_zero_id?: boolean | null;
+            /** Name */
+            name: string;
+            /** Nullable */
+            nullable?: boolean | null;
+            /** Type */
+            type: string;
+        } & {
+            [key: string]: unknown;
         };
         /** ConnectorExtractRequest */
         ConnectorExtractRequest: {
@@ -611,6 +650,19 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** CreateRunOut */
+        CreateRunOut: {
+            /** Events Url */
+            events_url: string;
+            /** Run Id */
+            run_id: string;
+            /** Status */
+            status: string;
+            /** Status Url */
+            status_url: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** CreateRunRequest */
         CreateRunRequest: {
             /**
@@ -648,26 +700,277 @@ export interface components {
                 [key: string]: string | boolean | number;
             };
         };
+        /** ModelStatusOut */
+        ModelStatusOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Model Id */
+            model_id: string;
+            /** Provider Id */
+            provider_id: string;
+            /** Roles */
+            roles: string[];
+            /** Verification Date */
+            verification_date: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ModelUsageOut */
+        ModelUsageOut: {
+            /** Avg Latency Ms */
+            avg_latency_ms: number | null;
+            /** Calls */
+            calls: number;
+            /** Cost Unknown */
+            cost_unknown: boolean;
+            /** Model Id */
+            model_id: string;
+            /** Provider Id */
+            provider_id: string;
+            /** Total Cost Usd */
+            total_cost_usd: string;
+            /** Total Tokens */
+            total_tokens: number;
+            /** Unsettled Calls */
+            unsettled_calls: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PinListOut */
+        PinListOut: {
+            /** Pins */
+            pins: components["schemas"]["PinOut"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** PinOut */
+        PinOut: {
+            /**
+             * Auto Refresh
+             * @default false
+             */
+            auto_refresh?: boolean;
+            /** Created At */
+            created_at: string;
+            /** Latest Run Id */
+            latest_run_id?: string | null;
+            /** Pin Id */
+            pin_id: string;
+            /** Question Text */
+            question_text: string;
+            /** Run Id */
+            run_id: string;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+        } & {
+            [key: string]: unknown;
+        };
         /**
          * ProviderId
          * @enum {string}
          */
         ProviderId: "openai" | "anthropic" | "gemini" | "groq" | "xai" | "kimi" | "nvidia_nim";
+        /** ProviderStatusOut */
+        ProviderStatusOut: {
+            /** Api Profile */
+            api_profile: string;
+            /** Configured */
+            configured: boolean;
+            /** Endpoint Profile Id */
+            endpoint_profile_id: string;
+            /**
+             * Key Status
+             * @enum {string}
+             */
+            key_status: "ready" | "needs_key" | "missing";
+            provider_id: components["schemas"]["ProviderId"];
+        } & {
+            [key: string]: unknown;
+        };
+        /** ProvidersOut */
+        ProvidersOut: {
+            /** Models */
+            models: components["schemas"]["ModelStatusOut"][];
+            /** Providers */
+            providers: components["schemas"]["ProviderStatusOut"][];
+            /** Workspace Id */
+            workspace_id: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ReimportOut */
+        ReimportOut: {
+            /** Connector Id */
+            connector_id: string | null;
+            /** Selected Tables */
+            selected_tables: string[];
+            /** Values */
+            values: {
+                [key: string]: string | boolean | number;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        /** RoutingPolicyOut */
+        RoutingPolicyOut: {
+            /** Fallback Enabled */
+            fallback_enabled: boolean;
+            /** Hard Cost Ceiling Usd */
+            hard_cost_ceiling_usd: string | null;
+            /** Policy Version */
+            policy_version: number;
+            preset: components["schemas"]["RoutingPreset"];
+            /** Role Routes */
+            role_routes: {
+                [key: string]: string[];
+            };
+            /** Workspace Id */
+            workspace_id: string;
+        } & {
+            [key: string]: unknown;
+        };
         /**
          * RoutingPreset
          * @enum {string}
          */
         RoutingPreset: "balanced" | "cost" | "latency" | "quality";
+        /** RunAnswerOut */
+        RunAnswerOut: {
+            /** Answer Id */
+            answer_id?: string | null;
+            /** Charts */
+            charts?: components["schemas"]["ChartOut"][] | null;
+            /** Summary Markdown */
+            summary_markdown?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
         /**
          * RunMode
          * @enum {string}
          */
         RunMode: "quick" | "deep";
+        /** RunOut */
+        RunOut: {
+            answer?: components["schemas"]["RunAnswerOut"] | null;
+            /** Clarification Prompt */
+            clarification_prompt?: string | null;
+            /** Clarification Revision */
+            clarification_revision?: number | null;
+            /** Conversation Id */
+            conversation_id?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Error */
+            error?: string | null;
+            mode?: components["schemas"]["RunMode"] | null;
+            /** Question */
+            question?: string | null;
+            /** Run Id */
+            run_id: string;
+            /** Semantic Version Id */
+            semantic_version_id?: string | null;
+            /** Snapshot Id */
+            snapshot_id?: string | null;
+            /** Status */
+            status: string;
+            /** Workspace Id */
+            workspace_id: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** RunPageOut */
+        RunPageOut: {
+            /** Next Before */
+            next_before: string | null;
+            /** Runs */
+            runs: components["schemas"]["RunOut"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** RunUsageOut */
+        RunUsageOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Incomplete */
+            incomplete: boolean;
+            mode?: components["schemas"]["RunMode"] | null;
+            /** Question */
+            question?: string | null;
+            /** Run Id */
+            run_id: string;
+            /** Status */
+            status?: string | null;
+            /** Total Cost Usd */
+            total_cost_usd: string;
+            /** Total Tokens */
+            total_tokens: number;
+            /** Used Attempts */
+            used_attempts: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** SaveProviderKeyRequest */
         SaveProviderKeyRequest: {
             /** Api Key */
             api_key: string;
             provider_id: components["schemas"]["ProviderId"];
+        };
+        /** SnapshotListOut */
+        SnapshotListOut: {
+            /** Snapshots */
+            snapshots: components["schemas"]["SnapshotOut"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** SnapshotOut */
+        SnapshotOut: {
+            /** Approved */
+            approved?: boolean | null;
+            /** Consistency Level */
+            consistency_level?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            reimport?: components["schemas"]["ReimportOut"] | null;
+            /** Semantic Version Id */
+            semantic_version_id?: string | null;
+            /** Sha256 */
+            sha256?: string | null;
+            /** Snapshot Id */
+            snapshot_id: string;
+            /** Source Family */
+            source_family?: string | null;
+            /** Source Id */
+            source_id: string;
+            /** Table Details */
+            table_details?: components["schemas"]["TableDetailOut"][] | null;
+            /** Tables */
+            tables: string[];
+            /** Total Normalized Bytes */
+            total_normalized_bytes?: number | null;
+            /** Total Rows */
+            total_rows: number;
+            /** Version */
+            version: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** TableDetailOut */
+        TableDetailOut: {
+            /** Columns */
+            columns: components["schemas"]["ColumnDetailOut"][];
+            /** Name */
+            name: string;
+            /** Normalized Bytes */
+            normalized_bytes?: number | null;
+            /** Row Count */
+            row_count: number;
+        } & {
+            [key: string]: unknown;
         };
         /** UpdatePinRequest */
         UpdatePinRequest: {
@@ -687,6 +990,19 @@ export interface components {
             role_routes?: {
                 [key: string]: string[];
             } | null;
+        };
+        /** UsageOut */
+        UsageOut: {
+            /** Models */
+            models: components["schemas"]["ModelUsageOut"][];
+            /** Run Count */
+            run_count: number;
+            /** Runs */
+            runs: components["schemas"]["RunUsageOut"][];
+            /** Workspace Id */
+            workspace_id: string;
+        } & {
+            [key: string]: unknown;
         };
         /** ValidationError */
         ValidationError: {
@@ -929,9 +1245,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PinListOut"];
                 };
             };
             /** @description Validation Error */
@@ -966,9 +1280,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PinOut"];
                 };
             };
             /** @description Validation Error */
@@ -1038,9 +1350,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PinOut"];
                 };
             };
             /** @description Validation Error */
@@ -1105,9 +1415,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ProvidersOut"];
                 };
             };
             /** @description Validation Error */
@@ -1172,9 +1480,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["RoutingPolicyOut"];
                 };
             };
             /** @description Validation Error */
@@ -1209,9 +1515,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["RoutingPolicyOut"];
                 };
             };
             /** @description Validation Error */
@@ -1245,9 +1549,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["RunPageOut"];
                 };
             };
             /** @description Validation Error */
@@ -1284,7 +1586,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CreateRunOut"];
                 };
             };
             /** @description Validation Error */
@@ -1316,9 +1618,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["RunOut"];
                 };
             };
             /** @description Validation Error */
@@ -1703,9 +2003,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["SnapshotListOut"];
                 };
             };
             /** @description Validation Error */
@@ -1914,9 +2212,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["UsageOut"];
                 };
             };
             /** @description Validation Error */
