@@ -1673,16 +1673,17 @@ def create_app(
         return Response(content=data, media_type="application/octet-stream")
 
     @app.get("/api/v1/workspaces/{workspace_id}/usage")
-    def get_usage(workspace_id: str) -> dict[str, Any]:
+    def get_usage(workspace_id: str, since: datetime | None = None) -> dict[str, Any]:
         c: AppContainer = app.state.container
         try:
-            ws_runs = app.state.repo_runs.list_runs(workspace_id, limit=RUN_PAGE_MAX)
+            ws_runs = app.state.repo_runs.list_runs(workspace_id, limit=RUN_PAGE_MAX, since=since)
+            run_totals = c.budget_ledger.get_runs_totals([r["run_id"] for r in ws_runs])
         except SQLAlchemyError as exc:
             logger.exception("Failed to query runs for usage from DB")
             raise _db_unavailable("load usage") from exc
         totals = [
             {
-                **c.budget_ledger.get_run_totals(r["run_id"]),
+                **run_totals[r["run_id"]],
                 "mode": r.get("mode", "quick"),
                 "status": r.get("status", "queued"),
                 "created_at": r.get("created_at", ""),

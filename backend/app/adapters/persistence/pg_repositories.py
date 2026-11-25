@@ -4,7 +4,7 @@ from decimal import Decimal
 import uuid
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -297,12 +297,18 @@ class PgRunRepository:
             }
 
     def list_runs(
-        self, workspace_id: str, limit: int | None = None, before: datetime | None = None
+        self,
+        workspace_id: str,
+        limit: int | None = None,
+        before: datetime | None = None,
+        since: datetime | None = None,
     ) -> list[dict[str, Any]]:
         with self._sf() as db:
             stmt = select(RunRow).where(RunRow.workspace_id == workspace_id)
             if before is not None:
                 stmt = stmt.where(RunRow.created_at < before)
+            if since is not None:
+                stmt = stmt.where(RunRow.created_at >= since)
             stmt = stmt.order_by(RunRow.created_at.desc(), RunRow.run_id.desc())
             if limit is not None:
                 stmt = stmt.limit(limit)
@@ -1012,6 +1018,35 @@ class PgBudgetLedger:
                 row = db.get(BudgetReservationRow, reservation_id, with_for_update=True)
                 if row and not row.settled:
                     row.unresolved_reason = reason[:500]
+
+    def get_runs_totals(self, run_ids: list[str]) -> dict[str, dict[str, object]]:
+        with self._sf() as db:
+            rows = db.execute(
+                select(
+                    BudgetReservationRow.run_id,
+                    func.count(),
+                    func.sum(func.coalesce(BudgetReservationRow.actual_tokens, BudgetReservationRow.reserved_tokens)),
+                    func.sum(func.coalesce(BudgetReservationRow.actual_cost_usd, BudgetReservationRow.reserved_cost_usd, 0)),
+                    func.max(case((BudgetReservationRow.settled.is_(False), 1), else_=0)),
+                )
+                .where(BudgetReservationRow.run_id.in_(run_ids))
+                .group_by(BudgetReservationRow.run_id)
+            ).all()
+        found = {
+            run_id: {
+                "run_id": run_id,
+                "used_attempts": int(count),
+                "total_tokens": int(tokens or 0),
+                "total_cost_usd": str(cost or Decimal("0")),
+                "incomplete": bool(incomplete),
+            }
+            for run_id, count, tokens, cost, incomplete in rows
+        }
+        return {
+            run_id: found.get(run_id)
+            or {"run_id": run_id, "used_attempts": 0, "total_tokens": 0, "total_cost_usd": "0", "incomplete": False}
+            for run_id in run_ids
+        }
 
     def get_run_totals(self, run_id: str) -> dict[str, object]:
         with self._sf() as db:

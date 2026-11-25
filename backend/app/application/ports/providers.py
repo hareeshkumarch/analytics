@@ -83,6 +83,8 @@ class BudgetLedger(Protocol):
 
     def get_run_totals(self, run_id: str) -> dict[str, object]: ...
 
+    def get_runs_totals(self, run_ids: list[str]) -> dict[str, dict[str, object]]: ...
+
     def reserve(
         self,
         run_id: str,

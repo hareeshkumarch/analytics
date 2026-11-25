@@ -138,6 +138,9 @@ class AtomicBudgetLedger:
             if res is not None and not res.settled:
                 self._has_unresolved[res.run_id] = True
 
+    def get_runs_totals(self, run_ids: list[str]) -> dict[str, dict[str, object]]:
+        return {run_id: self.get_run_totals(run_id) for run_id in run_ids}
+
     def get_run_totals(self, run_id: str) -> dict[str, object]:
         with self._lock:
             return {

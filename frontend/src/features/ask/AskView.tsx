@@ -59,6 +59,11 @@ interface StoredRun {
   clarification_revision?: number;
 }
 
+interface RunPage {
+  runs: StoredRun[];
+  next_before: string | null;
+}
+
 type HistoryFilter = "all" | "done" | "running" | "failed";
 
 const TERMINAL = new Set(["completed", "failed", "cancelled"]);
@@ -223,7 +228,7 @@ export function AskView() {
   const snapshotsQuery = useSnapshots();
   const runsQuery = useQuery({
     queryKey: ["runs", activeWorkspaceId],
-    queryFn: () => apiFetch<{ runs: StoredRun[] }>(workspacePath(activeWorkspaceId, "/runs")),
+    queryFn: () => apiFetch<RunPage>(workspacePath(activeWorkspaceId, "/runs")),
     // Poll only while a recent run is unfinished; an old "running" record is stale and must not poll forever.
     refetchInterval: (q) => {
       const now = Date.now();
@@ -284,9 +289,26 @@ export function AskView() {
     };
   }, []);
 
+  const [olderRuns, setOlderRuns] = useState<{ runs: StoredRun[]; next: string | null | undefined }>({ runs: [], next: undefined });
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const olderCursor = olderRuns.next === undefined ? runsQuery.data?.next_before ?? null : olderRuns.next;
+
+  async function loadOlderRuns() {
+    if (!olderCursor || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const page = await apiFetch<RunPage>(
+        workspacePath(activeWorkspaceId, `/runs?before=${encodeURIComponent(olderCursor)}`)
+      );
+      setOlderRuns((prev) => ({ runs: [...prev.runs, ...page.runs], next: page.next_before }));
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
+
   // Merge saved runs: add unknown ones, and refresh status/answer of runs that aren't streaming here.
   useEffect(() => {
-    const saved = runsQuery.data?.runs;
+    const saved = runsQuery.data ? [...runsQuery.data.runs, ...olderRuns.runs] : undefined;
     if (!saved) return;
     setSessions((prev) => {
       const byRun = new Map(saved.map((r) => [r.run_id, r]));
@@ -320,7 +342,7 @@ export function AskView() {
       const added = saved.filter((r) => !known.has(r.run_id)).map(fromStored);
       return added.length || updated.some((s, i) => s !== prev[i]) ? [...updated, ...added] : prev;
     });
-  }, [runsQuery.data]);
+  }, [runsQuery.data, olderRuns.runs]);
 
   useEffect(() => {
     setPinnedRunIds(new Set((pinsQuery.data?.pins ?? []).map((pin) => pin.run_id)));
@@ -759,6 +781,11 @@ export function AskView() {
             );
           })}
         </ul>
+      )}
+      {olderCursor && (
+        <button type="button" onClick={() => void loadOlderRuns()} disabled={loadingOlder} className={cx(btn.ghost, "mt-1 w-full")}>
+          {loadingOlder ? "Loading…" : "Load older questions"}
+        </button>
       )}
     </nav>
   );

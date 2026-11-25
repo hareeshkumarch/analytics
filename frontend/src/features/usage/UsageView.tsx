@@ -44,6 +44,7 @@ const WINDOW_OPTIONS: { value: WindowKey; label: string }[] = [
   { value: "all", label: "All time" },
 ];
 
+const HOUR_MS = 3600 * 1000;
 const WINDOW_HOURS: Record<WindowKey, number | null> = { "24h": 24, "7d": 168, "30d": 720, "90d": 2160, all: null };
 
 const STATUS_OPTIONS: RichOption[] = [
@@ -126,9 +127,12 @@ export function UsageView() {
   const surfaceColor = useThemeColor("surface", "#FFFFFF");
   const inkColor = useThemeColor("ink", "#18181B");
 
+  const windowHours = WINDOW_HOURS[windowFilter];
+  const since =
+    windowHours === null ? null : new Date((Math.floor(Date.now() / HOUR_MS) - windowHours) * HOUR_MS).toISOString();
   const { data, isLoading, error, dataUpdatedAt } = useQuery({
-    queryKey: ["usage", ws.id],
-    queryFn: () => apiFetch<UsageResponse>(ws.path("/usage")),
+    queryKey: ["usage", ws.id, since],
+    queryFn: () => apiFetch<UsageResponse>(ws.path(since ? `/usage?since=${encodeURIComponent(since)}` : "/usage")),
     refetchInterval: REFRESH_MS,
   });
 
