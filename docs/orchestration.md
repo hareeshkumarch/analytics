@@ -17,8 +17,12 @@ read-only execution, evidence capture, and call limits.
 Each specialist may delegate one focused check through Deep Agents' `task` tool. Delegates inherit
 only the approved analytics tools and share the run's tool and model budgets. The general-purpose
 subagent, filesystem tools, shell, and interpreter remain disabled. The evidence reviewer returns
-a structured approval, gaps, and contradictions; rejected reviews can add a bounded remediation
-task and a second review. A deterministic evidence check still blocks uncited claims. The answer
+a structured approval, gaps, and contradictions. When a review is rejected and the budget allows, the
+planner sees the gaps, contradictions and findings and decides the next step: one remediation task
+(a data or reconciliation specialist with its own objective) followed by an automatic re-review, or
+stopping with a reason that becomes an answer limitation. An unusable planner reply falls back to a
+data-specialist remediation, and any planner fallback is flagged in `plan.updated` (`fallback`) and in
+the answer's limitations. A deterministic evidence check still blocks uncited claims. The answer
 composer receives only specialist findings and validated claims, and cannot access dataset tools.
 Set `AGENT_RUNTIME=legacy` to use the previous hand-written specialist loop with the bounded default
 plan and summary assembly.
