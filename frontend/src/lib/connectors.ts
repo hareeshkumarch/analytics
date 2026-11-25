@@ -1,17 +1,7 @@
+import type { ConnectorFamily } from "@/lib/api/types";
 import type { RichOption } from "@/lib/types";
 
-/** Backend connector families (ConnectorFamily in backend/app/domain/models.py). */
-export type Family =
-  | "uploaded_file"
-  | "uploaded_sqlite"
-  | "uploaded_duckdb"
-  | "remote_file"
-  | "postgresql"
-  | "mysql"
-  | "google_sheets"
-  | "rest_json"
-  | "airtable"
-  | "bigquery";
+export type Family = ConnectorFamily;
 
 /** Catalog entries. Several entries are presets of one backend family (e.g. Supabase → postgresql). */
 export type ConnectorId =

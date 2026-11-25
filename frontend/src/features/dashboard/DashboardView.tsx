@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { RichSelect, RichOption } from "@/components/RichSelect";
 import { Badge, EmptyState, FilterChips, Notice, SearchInput, Skeleton, Spinner, btn, cardCls, cx } from "@/components/ui";
 import { SnapshotSummary, datasetLabel, relativeTime, useSnapshots, useWorkspace } from "@/lib/workspace";
+import type { UpdatePinRequest } from "@/lib/api/types";
 
 interface PinItem {
   pin_id: string;
@@ -110,7 +111,7 @@ export function DashboardView() {
   async function setAutoRefresh(pin: PinItem, enabled: boolean) {
     setActionError(null);
     try {
-      await apiFetch(ws.path(`/pins/${encodeURIComponent(pin.pin_id)}`), { method: "PATCH", body: JSON.stringify({ auto_refresh: enabled }) });
+      await apiFetch(ws.path(`/pins/${encodeURIComponent(pin.pin_id)}`), { method: "PATCH", body: JSON.stringify({ auto_refresh: enabled } satisfies UpdatePinRequest) });
       await qc.invalidateQueries({ queryKey: ["pins", ws.id] });
     } catch (err) {
       setActionError(errorMessage(err, "Couldn't change this pin."));

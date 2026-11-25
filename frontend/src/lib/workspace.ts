@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api/client";
 import { useUiStore } from "@/lib/store";
+import type { ProviderId } from "@/lib/api/types";
 
 export function workspacePath(workspaceId: string, path: string): string {
   return `/workspaces/${encodeURIComponent(workspaceId)}${path}`;
@@ -102,7 +103,7 @@ export function useSnapshots<T extends SnapshotSummary = SnapshotSummary>() {
 }
 
 export interface ProviderStatus {
-  provider_id: string;
+  provider_id: ProviderId;
   api_profile: string;
   endpoint_profile_id: string;
   configured: boolean;

@@ -285,7 +285,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** New users must find their own data before they can see the product work.
 - **How to fix:** A button on the Ask setup checklist and the Data page that imports `fixtures/inr_acceptance/*.csv` as a ready-made dataset and suggests a few example questions.
 
-### I7 Typed API client generated from the backend
+### I7 Typed API client generated from the backend (requests done; responses open)
+- **Status (2026-11-25):** `make openapi` exports the API's OpenAPI document to `frontend/openapi.json` (`python -m app.api.openapi_export`) and generates `frontend/src/lib/api/schema.ts` with `openapi-typescript` (`npm run gen:api`). `lib/api/types.ts` names the generated schemas, and every request body the frontend sends (runs, clarify, connector probe/discover/extract with the import form, approval, routing, provider key, pins, exports) is checked against them; `ConnectorFamily`, `RunMode` and `ProviderId` come from the backend instead of hand-written unions. A backend test fails when `openapi.json` is stale and CI fails when `schema.ts` doesn't match it. Typing the save-key request caught Settings sending an unchecked provider string. Still open: most endpoints return untyped dicts, so response types stay hand-written until the backend declares `response_model`s.
 - **Reason:** Frontend types are hand-written per screen and can drift from the API.
 - **How to fix:** Generate types from `/api/openapi.json` with `openapi-typescript`, and use them in `lib/api`.
 

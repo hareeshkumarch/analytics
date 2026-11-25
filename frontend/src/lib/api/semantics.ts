@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "@/lib/api/client";
 import { useWorkspace } from "@/lib/workspace";
+import type { ApproveSemanticsRequest } from "@/lib/api/types";
 
 interface MetricDefinition {
   metric_id: string;
@@ -45,7 +46,7 @@ export function useApproveSemantics(snapshotId: string) {
     mutationFn: (expectedVersion: number) =>
       apiFetch<SemanticVersion>(ws.path(`/semantics/${encodeURIComponent(snapshotId)}/approve`), {
         method: "POST",
-        body: JSON.stringify({ expected_version: expectedVersion }),
+        body: JSON.stringify({ expected_version: expectedVersion } satisfies ApproveSemanticsRequest),
       }),
     onSuccess: (next) => qc.setQueryData(key, next),
     onError: (err) => {

@@ -28,6 +28,7 @@ import { AnswerCharts, type AnswerChart } from "@/components/AnswerCharts";
 import { ExportMenu } from "@/features/ask/ExportMenu";
 import { SampleDataButton } from "@/components/SampleDataButton";
 import { SAMPLE_QUESTIONS, isSampleDataset } from "@/lib/sample";
+import type { CreatePinRequest } from "@/lib/api/types";
 
 interface Session {
   id: string;
@@ -653,7 +654,7 @@ export function AskView() {
           title: active.question.trim().slice(0, 255) || "Pinned answer",
           question_text: active.question,
           run_id: runId,
-        }),
+        } satisfies CreatePinRequest),
       });
       setPinnedRunIds((previous) => new Set(previous).add(runId));
       await queryClient.invalidateQueries({ queryKey: ["pins", activeWorkspaceId] });

@@ -9,6 +9,7 @@ import { Badge, Notice, Spinner, btn, cardCls, cx, inputCls } from "@/components
 import { ProviderLogo } from "@/components/ConnectorLogo";
 import { PRESET_OPTIONS, RoutingPreset, useRoutingPolicy } from "@/lib/routing";
 import { humanize, useProviders, useWorkspace } from "@/lib/workspace";
+import type { SaveProviderKeyRequest } from "@/lib/api/types";
 
 const FALLBACK_OPTIONS: RichOption[] = [
   { value: "on", label: "Fall back on failure", sublabel: "Try the next eligible model when a route fails" },
@@ -103,14 +104,14 @@ export function SettingsView() {
 
   async function handleSaveKey(e: React.FormEvent) {
     e.preventDefault();
-    if (!apiKey.trim() || !providerId) return;
+    if (!apiKey.trim() || !provider) return;
     setSaveMsg(null);
     setProbeMsg(null);
     setSaving(true);
     try {
       await apiFetch<{ provider_id: string; status: string }>(ws.path("/settings/provider-key"), {
         method: "PUT",
-        body: JSON.stringify({ provider_id: providerId, api_key: apiKey.trim() }),
+        body: JSON.stringify({ provider_id: provider.provider_id, api_key: apiKey.trim() } satisfies SaveProviderKeyRequest),
       });
       setApiKey("");
       setSaveMsg({ text: `Key saved for ${humanize(providerId)}. It is encrypted and can't be read back.`, ok: true });

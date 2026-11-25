@@ -1,3 +1,5 @@
+import type { ClarifyRunRequest, CreateRunRequest } from "@/lib/api/types";
+
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "/api/v1";
 
 /** Error thrown by apiFetch. `status` is 0 when the API could not be reached at all. */
@@ -109,19 +111,13 @@ export interface CreateRunResponse {
 
 export function createRun(
   workspaceId: string,
-  payload: {
-    question: string;
-    mode: "quick" | "deep";
-    snapshot_id?: string;
-    semantic_version_id?: string;
-    follow_up_of?: string;
-  },
+  payload: Omit<CreateRunRequest, "background_async" | "execute_inline">,
   idempotencyKey: string
 ): Promise<CreateRunResponse> {
   return apiFetch<CreateRunResponse>(`/workspaces/${encodeURIComponent(workspaceId)}/runs`, {
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
-    body: JSON.stringify({ ...payload, background_async: true }),
+    body: JSON.stringify({ ...payload, background_async: true } satisfies CreateRunRequest),
   });
 }
 
@@ -139,7 +135,7 @@ export function clarifyRun(
 ): Promise<{ run_id: string; status: string; revision: number }> {
   return apiFetch(`/workspaces/${encodeURIComponent(workspaceId)}/runs/${encodeURIComponent(runId)}/clarify`, {
     method: "POST",
-    body: JSON.stringify({ revision, answer }),
+    body: JSON.stringify({ revision, answer } satisfies ClarifyRunRequest),
   });
 }
 

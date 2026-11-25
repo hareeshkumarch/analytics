@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { API_BASE, apiFetch, errorMessage } from "@/lib/api/client";
 import { btn } from "@/components/ui";
 import { workspacePath } from "@/lib/workspace";
+import type { CreateExportRequest } from "@/lib/api/types";
 
 const FORMATS = [
   { id: "pdf", label: "PDF", ext: "pdf" },
@@ -53,7 +54,7 @@ export function ExportMenu({ workspaceId, runId, question }: { workspaceId: stri
     try {
       const created = await apiFetch<{ artifact_id: string }>(workspacePath(workspaceId, "/exports"), {
         method: "POST",
-        body: JSON.stringify({ run_id: runId, format: format.id }),
+        body: JSON.stringify({ run_id: runId, format: format.id } satisfies CreateExportRequest),
       });
       const res = await fetch(`${API_BASE}${workspacePath(workspaceId, `/exports/${encodeURIComponent(created.artifact_id)}`)}`);
       if (!res.ok) throw new Error(`The export couldn't be downloaded (HTTP ${res.status}).`);

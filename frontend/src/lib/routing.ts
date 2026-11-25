@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api/client";
 import { workspacePath } from "@/lib/workspace";
 import type { RichOption } from "@/components/RichSelect";
+import type { UpdateRoutingRequest } from "@/lib/api/types";
 
 export type RoutingPreset = "balanced" | "cost" | "latency" | "quality";
 
@@ -38,7 +39,7 @@ export function useRoutingPolicy(workspaceId: string) {
     ) => {
       const current = qc.getQueryData<RoutingPolicy>(key) ?? query.data;
       if (!current) throw new Error("Routing policy not loaded yet");
-      const body = {
+      const body: UpdateRoutingRequest = {
         expected_version: current.policy_version,
         preset: patch.preset ?? current.preset,
         fallback_enabled: patch.fallback_enabled ?? current.fallback_enabled,

@@ -1,6 +1,6 @@
 import type React from "react";
 
-export type RunMode = "quick" | "deep";
+export type { RunMode } from "@/lib/api/types";
 
 export interface RichOption {
   value: string;

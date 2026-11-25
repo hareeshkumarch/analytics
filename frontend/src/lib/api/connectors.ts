@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api/client";
+import type { ConnectorExtractRequest, ConnectorProbeRequest } from "@/lib/api/types";
 import type { SemanticVersion } from "@/lib/api/semantics";
 import type { Family, SourcePayload } from "@/lib/connectors";
 import { SnapshotSummary, workspacePath } from "@/lib/workspace";
@@ -21,16 +22,16 @@ export interface ExtractResult {
   semantics: SemanticVersion;
 }
 
-export interface ImportLineage {
-  source_id?: string;
-  form?: { connector_id: string; values: Record<string, string | boolean> };
-}
+export type ImportLineage = Pick<ConnectorExtractRequest, "source_id" | "form">;
 
-interface ExtractRequest extends SourcePayload, ImportLineage {
-  selected_tables: string[];
-}
+type ExtractRequest = ConnectorExtractRequest & SourcePayload & { selected_tables: string[] };
 
-function post<T>(workspaceId: string, step: "probe" | "discover" | "extract", body: object, signal: AbortSignal): Promise<T> {
+function post<T>(
+  workspaceId: string,
+  step: "probe" | "discover" | "extract",
+  body: ConnectorProbeRequest | ConnectorExtractRequest,
+  signal: AbortSignal
+): Promise<T> {
   return apiFetch<T>(workspacePath(workspaceId, `/connectors/${step}`), { method: "POST", body: JSON.stringify(body), signal });
 }
 
