@@ -85,6 +85,7 @@ SSE_HEARTBEAT_SECONDS = 15.0
 SSE_WORKER_POLL_SECONDS = 1.0
 RUN_PAGE_DEFAULT = 200
 RUN_PAGE_MAX = 500
+RUN_LIST_ANSWER_KEYS = ("answer_id", "summary_markdown")
 
 logger = logging.getLogger(__name__)
 
@@ -1246,7 +1247,10 @@ def create_app(
     ) -> dict[str, Any]:
         try:
             runs = app.state.repo_runs.list_runs(workspace_id, limit=limit + 1, before=before)
-            page = runs[:limit]
+            page = [
+                {**run, "answer": {k: run["answer"][k] for k in RUN_LIST_ANSWER_KEYS if k in run["answer"]}}
+                for run in runs[:limit]
+            ]
             return {"runs": page, "next_before": page[-1]["created_at"] if len(runs) > limit else None}
         except SQLAlchemyError as exc:
             logger.exception("Failed to query runs from DB")
