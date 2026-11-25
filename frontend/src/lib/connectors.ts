@@ -144,6 +144,19 @@ const FORMAT_OPTIONS: RichOption[] = [
   { value: "arrow", label: "Arrow / Feather" },
 ];
 
+function caPemField(showWhen: (values: Values) => boolean): FieldDef {
+  return {
+    key: "ca_pem",
+    label: "CA certificate (optional)",
+    type: "textarea",
+    secret: true,
+    placeholder: "-----BEGIN CERTIFICATE-----",
+    help: "Paste your provider's CA certificate if it isn't publicly trusted (for example AWS RDS, Azure or Cloud SQL). It's used for this connection only and never stored.",
+    showWhen,
+    validate: (value) => (value.includes("-----BEGIN CERTIFICATE-----") ? null : "Paste the PEM text, starting with -----BEGIN CERTIFICATE-----."),
+  };
+}
+
 function postgresFields(o: { hostPlaceholder: string; hostHelp?: string; database?: string; username?: string; sslmode?: string }): FieldDef[] {
   return [
     { key: "host", label: "Host", placeholder: o.hostPlaceholder, required: true, half: true, help: o.hostHelp, validate: hostOnly },
@@ -160,6 +173,7 @@ function postgresFields(o: { hostPlaceholder: string; hostHelp?: string; databas
     { key: "database", label: "Database", placeholder: "analytics", defaultValue: o.database ?? "", required: true, half: true },
     { key: "schema", label: "Schema", defaultValue: "public", half: true },
     { key: "sslmode", label: "TLS mode", type: "select", defaultValue: o.sslmode ?? "require", options: SSL_OPTIONS },
+    caPemField((v) => v.sslmode === "verify-full" || v.sslmode === "verify-ca"),
     { key: "username", label: "Username", secret: true, required: true, half: true, defaultValue: o.username ?? "" },
     { key: "password", label: "Password", type: "password", secret: true, required: true, half: true },
   ];
@@ -180,6 +194,7 @@ function mysqlFields(o: { hostPlaceholder: string; tls: string }): FieldDef[] {
     },
     { key: "database", label: "Database", placeholder: "analytics", required: true, half: true },
     { key: "tls_mode", label: "TLS mode", type: "select", defaultValue: o.tls, options: MYSQL_TLS_OPTIONS, half: true },
+    caPemField((v) => v.tls_mode === "verify-full"),
     { key: "username", label: "Username", secret: true, required: true, half: true },
     { key: "password", label: "Password", type: "password", secret: true, required: true, half: true },
   ];

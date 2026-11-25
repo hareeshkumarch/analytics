@@ -99,7 +99,7 @@ def propose_metrics_from_schema(schema: TableSchema) -> tuple[MetricDefinition, 
         proposals.append(
             MetricDefinition(
                 metric_id=f"{schema.table_name}__{col.name}__sum",
-                display_name=f"Total {col.name}",
+                display_name=f"{schema.table_name} total {col.name}",
                 expression=f"SUM({col.name})",
                 grain=schema.table_name,
                 unit=currency or "units",

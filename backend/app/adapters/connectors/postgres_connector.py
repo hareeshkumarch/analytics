@@ -4,6 +4,7 @@ from typing import Any, Callable, Iterable
 import pyarrow as pa
 
 from app.adapters.connectors.destination_policy import DestinationPolicy, validate_and_resolve_host
+from app.adapters.connectors.tls import ca_file, ca_pem_from
 from app.adapters.parsers.registry import serialize_arrow_ipc_checked
 from app.application.ports.clock import Clock
 from app.application.ports.connectors import (
@@ -26,6 +27,8 @@ from app.domain.models import (
 def _quote_pg_ident(ident: str) -> str:
     return '"' + ident.replace('"', '""') + '"'
 
+
+VERIFYING_SSLMODES = frozenset({"verify-ca", "verify-full"})
 
 class PostgresConnector:
     family = ConnectorFamily.POSTGRESQL
@@ -59,15 +62,23 @@ class PostgresConnector:
         if not user or not dbname:
             raise ValidationError("PostgreSQL connector requires host, database, and read-only credentials")
 
-        return psycopg.connect(
-            host=host,
-            port=port,
-            dbname=dbname,
-            user=user,
-            password=password,
-            sslmode=sslmode,
-            connect_timeout=5,
-        )
+        settings: dict[str, Any] = {
+            "host": host,
+            "port": port,
+            "dbname": dbname,
+            "user": user,
+            "password": password,
+            "sslmode": sslmode,
+            "connect_timeout": 5,
+        }
+        pem = ca_pem_from(credentials)
+        if sslmode in VERIFYING_SSLMODES and pem is not None:
+            with ca_file(pem) as path:
+                settings["sslrootcert"] = path
+                return psycopg.connect(**settings)
+        if sslmode == "verify-full":
+            settings["sslrootcert"] = "system"
+        return psycopg.connect(**settings)
 
     def probe(self, config: dict[str, Any], credentials: dict[str, str]) -> ProbeResult:
         with self._connect(config, credentials) as conn:

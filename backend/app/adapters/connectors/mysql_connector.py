@@ -5,6 +5,7 @@ from typing import Any, Callable, Iterable
 import pyarrow as pa
 
 from app.adapters.connectors.destination_policy import DestinationPolicy, validate_and_resolve_host
+from app.adapters.connectors.tls import ca_pem_from
 from app.adapters.parsers.registry import serialize_arrow_ipc_checked
 from app.application.ports.clock import Clock
 from app.application.ports.connectors import (
@@ -31,13 +32,13 @@ def _quote_mysql_ident(ident: str) -> str:
 MYSQL_TLS_MODES = ("disable", "require", "verify-full")
 
 
-def _tls_context(mode: str) -> ssl.SSLContext | None:
+def _tls_context(mode: str, ca_pem: str | None = None) -> ssl.SSLContext | None:
     """TLS for managed MySQL/MariaDB (Azure, Cloud SQL, RDS). Unset keeps the previous plaintext behaviour."""
     if mode in ("", "disable"):
         return None
     if mode not in MYSQL_TLS_MODES:
         raise ValidationError(f"Unsupported tls_mode {mode!r}", remediation=f"Use one of: {', '.join(MYSQL_TLS_MODES)}.")
-    ctx = ssl.create_default_context()
+    ctx = ssl.create_default_context(cadata=ca_pem) if ca_pem and mode == "verify-full" else ssl.create_default_context()
     if mode == "require":
         # Encrypt without verifying the certificate (RDS uses its own CA, not in the system store).
         ctx.check_hostname = False
@@ -76,7 +77,10 @@ class MySqlConnector:
         if not user or not database:
             raise ValidationError("MySQL connector requires host, database, and read-only credentials")
 
-        tls = _tls_context(str(config.get("tls_mode", "") or ""))
+        try:
+            tls = _tls_context(str(config.get("tls_mode", "") or ""), ca_pem_from(credentials))
+        except ssl.SSLError as exc:
+            raise ValidationError("The CA certificate could not be read.", remediation="Paste the full PEM certificate.") from exc
         return pymysql.connect(
             host=host,
             port=port,

@@ -124,6 +124,7 @@ def test_csv_currency_metadata_and_profiling_proposal() -> None:
     schema = TableSchema("t", parsed.columns, parsed.row_count, parsed.normalized_bytes)
     debit_metric = next(m for m in propose_metrics_from_schema(schema) if m.expression == "SUM(debit)")
     assert (debit_metric.currency, debit_metric.unit) == ("INR", "INR")
+    assert debit_metric.display_name == f"{schema.table_name} total debit"
 
 
 def test_tsv_shares_inference() -> None:
