@@ -19,7 +19,11 @@ interface PinItem {
   run_id: string;
   version: number;
   created_at: string;
+  auto_refresh?: boolean;
+  latest_run_id?: string | null;
 }
+
+const ACTIVE_RUN = new Set(["queued", "running", "awaiting_input"]);
 
 interface RunSummary {
   run_id: string;
@@ -66,6 +70,11 @@ export function DashboardView() {
   const runsQuery = useQuery({
     queryKey: ["runs", ws.id],
     queryFn: () => apiFetch<{ runs: RunSummary[] }>(ws.path("/runs")),
+    refetchInterval: (query) => {
+      const runs = query.state.data?.runs ?? [];
+      const latest = new Set((pinsQuery.data?.pins ?? []).map((p) => p.latest_run_id).filter(Boolean));
+      return runs.some((r) => latest.has(r.run_id) && ACTIVE_RUN.has(r.status)) ? 5000 : false;
+    },
   });
   const snapshotsQuery = useSnapshots();
 
@@ -89,8 +98,24 @@ export function DashboardView() {
   }
 
   const pins = pinsQuery.data?.pins ?? [];
+
+  /** The newest finished answer for a pin: its latest re-run once that completes, otherwise the pinned run. */
+  function shownRun(pin: PinItem): RunSummary | undefined {
+    const latest = pin.latest_run_id ? runsById.get(pin.latest_run_id) : undefined;
+    return latest?.status === "completed" ? latest : runsById.get(pin.run_id);
+  }
+
+  async function setAutoRefresh(pin: PinItem, enabled: boolean) {
+    setActionError(null);
+    try {
+      await apiFetch(ws.path(`/pins/${encodeURIComponent(pin.pin_id)}`), { method: "PATCH", body: JSON.stringify({ auto_refresh: enabled }) });
+      await qc.invalidateQueries({ queryKey: ["pins", ws.id] });
+    } catch (err) {
+      setActionError(errorMessage(err, "Couldn't change this pin."));
+    }
+  }
   const datasetOptions: RichOption[] = useMemo(() => {
-    const ids = Array.from(new Set(pins.map((p) => runsById.get(p.run_id)?.snapshot_id).filter((id): id is string => Boolean(id))));
+    const ids = Array.from(new Set(pins.map((p) => shownRun(p)?.snapshot_id).filter((id): id is string => Boolean(id))));
     return [
       { value: "all", label: "All datasets" },
       ...ids.map((id) => {
@@ -105,7 +130,7 @@ export function DashboardView() {
   const visible = pins
     .filter((p) => !q || `${p.title} ${p.question_text}`.toLowerCase().includes(q))
     .filter((p) => cutoff === null || Date.parse(p.created_at) >= cutoff)
-    .filter((p) => dataset === "all" || runsById.get(p.run_id)?.snapshot_id === dataset)
+    .filter((p) => dataset === "all" || shownRun(p)?.snapshot_id === dataset)
     .sort((a, b) =>
       sort === "title"
         ? a.title.localeCompare(b.title)
@@ -235,7 +260,10 @@ export function DashboardView() {
       {visible.length > 0 && (
         <ul className="grid gap-3 xl:grid-cols-2">
           {visible.map((pin) => {
-            const run = runsById.get(pin.run_id);
+            const run = shownRun(pin);
+            const latest = pin.latest_run_id ? runsById.get(pin.latest_run_id) : undefined;
+            const updating = Boolean(latest && ACTIVE_RUN.has(latest.status));
+            const latestFailed = latest?.status === "failed";
             const snap = run?.snapshot_id ? snapshotById.get(run.snapshot_id) : undefined;
             const newer = newerVersion(snap);
             const text = excerpt(run?.answer?.summary_markdown);
@@ -244,7 +272,11 @@ export function DashboardView() {
               <li key={pin.pin_id} className={cx(cardCls, "flex flex-col gap-3 p-5")}>
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <h2 className="min-w-0 flex-1 font-display text-[15.5px] font-semibold leading-snug text-ink">{pin.title}</h2>
-                  {newer ? (
+                  {updating ? (
+                    <Badge tone="info" dot pulse>
+                      Updating
+                    </Badge>
+                  ) : newer ? (
                     <Badge tone="warn" dot>
                       Newer data: v{newer.version}
                     </Badge>
@@ -258,13 +290,23 @@ export function DashboardView() {
                 <p className={cx("text-[13.5px] leading-relaxed", text ? "text-body" : "text-secondary")}>
                   {text || (runsQuery.isLoading ? "Loading the answer…" : "The saved answer isn't available.")}
                 </p>
+                {latestFailed && <p className="text-xs text-err">The latest re-run failed; this is the earlier answer.</p>}
                 <AnswerCharts charts={run?.answer?.charts} small />
+                <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-body">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-plum"
+                    checked={Boolean(pin.auto_refresh)}
+                    onChange={(e) => void setAutoRefresh(pin, e.target.checked)}
+                  />
+                  Re-run automatically when newer data is approved
+                </label>
                 <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
                   <span className="text-[12px] text-secondary">
                     {snap ? `${datasetLabel(snap)} v${snap.version} · ` : ""}pinned {relativeTime(pin.created_at)}
                   </span>
                   <span className="flex flex-wrap gap-1.5">
-                    <Link href={`/ask?run=${encodeURIComponent(pin.run_id)}`} className={cx(btn.secondary, "px-3")}>
+                    <Link href={`/ask?run=${encodeURIComponent(run?.run_id ?? pin.run_id)}`} className={cx(btn.secondary, "px-3")}>
                       Open
                     </Link>
                     <button

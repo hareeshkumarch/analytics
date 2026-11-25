@@ -273,10 +273,11 @@ class TestRestartAndRefresh(unittest.TestCase):
                     events = app2.state.repo_events.list_after("run_stale", 0)
                     self.assertEqual(events[-1].type.value, "run.finished")
 
-                    for pin_id, question in (("pin_a", "first question"), ("pin_b", "second question")):
-                        app2.state.pins.setdefault("ws1", []).append(
-                            {"pin_id": pin_id, "workspace_id": "ws1", "title": question, "question_text": question, "run_id": "run_stale", "version": 1, "created_at": "2026-01-01T00:00:00+00:00"}
-                        )
+                    app2.state.repo_runs.create_run(
+                        run_id="run_other", workspace_id="ws1", conversation_id="conv_ws1", mode="quick", status="completed", question="q2"
+                    )
+                    for pin_id, question, run_id in (("pin_a", "first question", "run_stale"), ("pin_b", "second question", "run_other")):
+                        app2.state.repo_pins.create_pin(pin_id=pin_id, workspace_id="ws1", title=question, question_text=question, run_id=run_id)
                     first = client.post("/api/v1/workspaces/ws1/pins/pin_a/refresh")
                     second = client.post("/api/v1/workspaces/ws1/pins/pin_b/refresh")
                     self.assertEqual(first.status_code, 202)

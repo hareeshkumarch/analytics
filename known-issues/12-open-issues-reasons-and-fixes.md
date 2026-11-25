@@ -268,7 +268,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** Refreshing a source means re-entering every field.
 - **How to fix:** Keep the redacted config per source (already stored), and add "Import new version" in Data that pre-fills it and asks only for secrets. Do #8 first.
 
-### I4 Automatic re-run of pins on new data (UX)
+### I4 Automatic re-run of pins on new data (UX) (done)
+- **Status (2026-11-25):** Pins have an "auto re-run" setting (`PATCH /pins/{id}`, stored in the pin's `artifact_json`). Approving definitions for a newer version of a source re-runs every opted-in pin whose latest answer used an older version of that source; the approve response lists them in `refreshed_pin_ids`, and a failed re-run is logged without failing the approval. Re-run, manual or automatic, now uses the newest approved version of the pin's own source (it used to take the newest approved dataset in the workspace) and records `latest_run_id`. Dashboard cards show the latest completed answer, an "Updating" badge while a re-run is in progress, and a note when the latest re-run failed. The unused in-memory pin cache was removed.
 - **Reason:** Dashboard shows "Newer data", but the user has to click Re-run.
 - **How to fix:** An optional per-pin setting that re-runs automatically when a newer approved snapshot of the same source appears, with the latest result shown on the card.
 

@@ -940,6 +940,8 @@ class PgPinRepository:
                         "run_id": run_id,
                         "version": 1,
                         "created_at": now.isoformat(),
+                        "auto_refresh": bool((artifact_json or {}).get("auto_refresh")),
+                        "latest_run_id": None,
                     }
         except IntegrityError:
             # uq_pins_ws_run: a concurrent request already pinned this run; return that pin.
@@ -964,9 +966,20 @@ class PgPinRepository:
                     "run_id": p.run_id,
                     "version": p.version,
                     "created_at": p.created_at.isoformat(),
+                    "auto_refresh": bool((p.artifact_json or {}).get("auto_refresh")),
+                    "latest_run_id": (p.artifact_json or {}).get("latest_run_id"),
                 }
                 for p in pins
             ]
+
+    def update_pin_state(self, workspace_id: str, pin_id: str, changes: dict[str, Any]) -> bool:
+        with self._sf() as db:
+            with db.begin():
+                pin = db.get(PinRow, pin_id, with_for_update=True)
+                if pin is None or pin.workspace_id != workspace_id:
+                    return False
+                pin.artifact_json = {**(pin.artifact_json or {}), **changes}
+                return True
 
     def delete_pin(self, workspace_id: str, pin_id: str) -> bool:
         with self._sf() as db:

@@ -268,6 +268,10 @@ class CreatePinRequest(StrictApiModel):
     run_id: str = Field(..., min_length=1, max_length=64)
 
 
+class UpdatePinRequest(StrictApiModel):
+    auto_refresh: bool
+
+
 class CreateExportRequest(StrictApiModel):
     format: Literal["csv", "html", "pdf", "docx"] = "html"
     run_id: str = ""

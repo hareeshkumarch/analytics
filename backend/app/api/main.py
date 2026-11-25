@@ -44,6 +44,7 @@ from app.api.schemas import (
     ConnectorProbeRequest,
     CreateExportRequest,
     CreatePinRequest,
+    UpdatePinRequest,
     CreateRunRequest,
     SaveProviderKeyRequest,
     UpdateRoutingRequest,
@@ -269,7 +270,6 @@ def create_app(
     app.state.idempotency = {}
     app.state.snapshots = {}
     app.state.semantics = {}
-    app.state.pins = {}
     app.state.encrypted_keys = {}
     app.state.undecryptable_keys = set()
     app.state.routing_policies = {}
@@ -754,11 +754,8 @@ def create_app(
             ),
         )
         snapshot_id = imported["snapshot"]["snapshot_id"]
-        semantics = await asyncio.to_thread(
-            approve_semantics,
-            workspace_id,
-            snapshot_id,
-            ApproveSemanticsRequest(expected_version=int(imported["semantics"]["version"])),
+        semantics = await approve_semantics(
+            workspace_id, snapshot_id, ApproveSemanticsRequest(expected_version=int(imported["semantics"]["version"]))
         )
         return {"snapshot": {**imported["snapshot"], "approved": True}, "semantics": semantics}
 
@@ -899,9 +896,13 @@ def create_app(
         return sem
 
     @app.post("/api/v1/workspaces/{workspace_id}/semantics/{snapshot_id}/approve")
-    def approve_semantics(workspace_id: str, snapshot_id: str, payload: ApproveSemanticsRequest) -> dict[str, Any]:
+    async def approve_semantics(workspace_id: str, snapshot_id: str, payload: ApproveSemanticsRequest) -> dict[str, Any]:
+        res = await asyncio.to_thread(_approve_semantics, snapshot_id, payload.expected_version)
+        return {**res, "refreshed_pin_ids": await _auto_refresh_pins(workspace_id, snapshot_id)}
+
+    def _approve_semantics(snapshot_id: str, expected_version: int) -> dict[str, Any]:
         try:
-            res = app.state.repo_snapshots.approve_semantics(snapshot_id, payload.expected_version)
+            res: dict[str, Any] = app.state.repo_snapshots.approve_semantics(snapshot_id, expected_version)
         except NotFoundError as exc:
             raise HTTPException(status_code=404, detail="Semantic version not found") from exc
         except VersionConflictError as exc:
@@ -1609,7 +1610,6 @@ def create_app(
             raise _db_unavailable("delete the run") from exc
         for store in (app.state.runs, app.state.answers, app.state.events, app.state.evidence):
             store.pop(run_id, None)
-        app.state.pins[workspace_id] = [p for p in app.state.pins.get(workspace_id, []) if p.get("run_id") != run_id]
         return {"run_id": run_id, "deleted": True}
 
     @app.delete("/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}")
@@ -1677,51 +1677,97 @@ def create_app(
         except SQLAlchemyError as exc:
             logger.exception("Failed to create pin in DB")
             raise _db_unavailable("pin the answer") from exc
-        app.state.pins.setdefault(workspace_id, []).append(res)
         return res
 
     @app.delete("/api/v1/workspaces/{workspace_id}/pins/{pin_id}")
     def delete_pin(workspace_id: str, pin_id: str) -> dict[str, Any]:
-        removed = False
         try:
             removed = app.state.repo_pins.delete_pin(workspace_id, pin_id)
         except SQLAlchemyError as exc:
             logger.exception("Failed to delete pin in DB")
             raise _db_unavailable("remove the pin") from exc
-        mem = app.state.pins.get(workspace_id, [])
-        kept = [p for p in mem if p.get("pin_id") != pin_id]
-        removed = removed or len(kept) != len(mem)
-        app.state.pins[workspace_id] = kept
         if not removed:
             raise HTTPException(status_code=404, detail="Pin not found")
         return {"pin_id": pin_id, "deleted": True}
 
+    @app.patch("/api/v1/workspaces/{workspace_id}/pins/{pin_id}")
+    def update_pin(workspace_id: str, pin_id: str, payload: UpdatePinRequest) -> dict[str, Any]:
+        try:
+            if not app.state.repo_pins.update_pin_state(workspace_id, pin_id, {"auto_refresh": payload.auto_refresh}):
+                raise HTTPException(status_code=404, detail="Pin not found")
+            return next(p for p in app.state.repo_pins.list_pins(workspace_id) if p["pin_id"] == pin_id)
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to update pin")
+            raise _db_unavailable("update the pin") from exc
+
+    def _snapshot_record(snapshot_id: str | None) -> dict[str, Any] | None:
+        if not snapshot_id:
+            return None
+        snap: dict[str, Any] | None = app.state.snapshots.get(snapshot_id) or app.state.repo_snapshots.get_snapshot(snapshot_id)
+        return snap
+
+    def _newest_approved_in_source(workspace_id: str, source_id: str) -> dict[str, Any] | None:
+        return next(
+            (
+                s
+                for s in app.state.repo_snapshots.list_snapshots(workspace_id)
+                if s["source_id"] == source_id and s.get("approved")
+            ),
+            None,
+        )
+
     @app.post("/api/v1/workspaces/{workspace_id}/pins/{pin_id}/refresh", status_code=202)
     async def refresh_pin(workspace_id: str, pin_id: str) -> dict[str, Any]:
-        pins = app.state.pins.get(workspace_id, [])
+        pins = await asyncio.to_thread(app.state.repo_pins.list_pins, workspace_id)
         pin = next((p for p in pins if p["pin_id"] == pin_id), None)
-        if not pin and hasattr(app.state, "repo_pins"):
-            for p in app.state.repo_pins.list_pins(workspace_id):
-                if p["pin_id"] == pin_id:
-                    pin = p
-                    break
         if not pin:
             raise HTTPException(status_code=404, detail="Pin not found")
-        original_run = app.state.runs.get(pin["run_id"])
-        if original_run is None and hasattr(app.state, "repo_runs"):
-            original_run = app.state.repo_runs.get_run(pin["run_id"])
+        original_run = await asyncio.to_thread(app.state.repo_runs.get_run, pin["run_id"])
         try:
             mode = RunMode(str((original_run or {}).get("mode", RunMode.QUICK.value)))
         except ValueError:
             mode = RunMode.QUICK
+        pinned_snapshot = await asyncio.to_thread(_snapshot_record, (original_run or {}).get("snapshot_id"))
+        newest = (
+            await asyncio.to_thread(_newest_approved_in_source, workspace_id, pinned_snapshot["source_id"])
+            if pinned_snapshot
+            else None
+        )
         refreshed = await create_run(
             workspace_id,
-            CreateRunRequest(question=pin["question_text"], mode=mode, background_async=True),
+            CreateRunRequest(
+                question=pin["question_text"],
+                mode=mode,
+                background_async=True,
+                snapshot_id=newest["snapshot_id"] if newest else None,
+            ),
             # Called directly, so the Header() default object would otherwise act as a shared idempotency key.
             idempotency_key=None,
         )
         run_data = json.loads(refreshed.body)
+        await asyncio.to_thread(
+            app.state.repo_pins.update_pin_state, workspace_id, pin_id, {"latest_run_id": run_data["run_id"]}
+        )
         return {"pin_id": pin_id, "refresh_run_id": run_data["run_id"], "status": run_data["status"]}
+
+    async def _auto_refresh_pins(workspace_id: str, snapshot_id: str) -> list[str]:
+        approved = await asyncio.to_thread(_snapshot_record, snapshot_id)
+        if not approved:
+            return []
+        refreshed: list[str] = []
+        for pin in await asyncio.to_thread(app.state.repo_pins.list_pins, workspace_id):
+            if not pin.get("auto_refresh"):
+                continue
+            try:
+                current = await asyncio.to_thread(app.state.repo_runs.get_run, pin.get("latest_run_id") or pin["run_id"])
+                bound = await asyncio.to_thread(_snapshot_record, (current or {}).get("snapshot_id"))
+                if not bound or bound["source_id"] != approved["source_id"] or int(bound["version"]) >= int(approved["version"]):
+                    continue
+                await refresh_pin(workspace_id, pin["pin_id"])
+                refreshed.append(pin["pin_id"])
+            except Exception:  # noqa: BLE001
+                logger.exception("Automatic refresh of pin %s failed", pin["pin_id"])
+        return refreshed
 
     @app.post("/api/v1/workspaces/{workspace_id}/exports", status_code=201)
     async def create_export(workspace_id: str, payload: CreateExportRequest) -> dict[str, Any]:
