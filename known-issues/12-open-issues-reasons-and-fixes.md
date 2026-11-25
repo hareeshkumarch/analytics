@@ -158,7 +158,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** `/runs` returns every run with its full answer (used by Ask and Dashboard), `/usage` returns every run every 15 s, and `list_snapshots` runs one query per snapshot.
 - **How to fix:** Keyset pagination (`?limit=&before=`), a summary response without `answer_json`, a lateral join for semantics, a server-side time filter for `/usage`, and "Load more" in the UI.
 
-### #23 Uploads are sent twice (UX)
+### #23 Uploads are sent twice (UX) (fixed for files)
+- **Status (2026-11-25):** Fixed for uploaded files. `POST /workspaces/{ws}/uploads` streams the raw body (size-checked while reading) into a workspace-scoped staging area and returns an `upload_id`; probe, discover and extract reference it, it's deleted after a successful import, and unused uploads are swept after 24 hours. The Data page uploads once and no longer base64-encodes files. `raw_base64` still works for API clients. Remote links are still downloaded once for discover and again for extract.
 - **Reason:** Files travel as base64 JSON (about 1.33× their size) to both discover and extract, and links are downloaded twice.
 - **How to fix:** `POST /uploads` (multipart) returns an `upload_id` that discover and extract use. Cache link downloads per job.
 

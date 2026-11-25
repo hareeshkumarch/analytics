@@ -41,3 +41,11 @@ export async function discoverSource(workspaceId: string, payload: SourcePayload
 export function extractSource(workspaceId: string, request: ExtractRequest, signal: AbortSignal): Promise<ExtractResult> {
   return post<ExtractResult>(workspaceId, "extract", request, signal);
 }
+
+export function uploadFile(workspaceId: string, data: Blob): Promise<{ upload_id: string; byte_size: number }> {
+  return apiFetch(workspacePath(workspaceId, "/uploads"), {
+    method: "POST",
+    headers: { "Content-Type": "application/octet-stream" },
+    body: data,
+  });
+}

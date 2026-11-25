@@ -910,26 +910,3 @@ export const SINGLE_TABLE_FORMATS = new Set(["csv", "tsv", "parquet", "arrow"]);
 
 export const FILE_ACCEPT =
   ".csv,.tsv,.tab,.xlsx,.json,.ndjson,.jsonl,.parquet,.pq,.arrow,.arrows,.feather,.sqlite,.sqlite3,.db,.duckdb,.ddb";
-
-export function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(binary);
-}
-
-/** Base64 of a file without blocking on a byte-by-byte string build (uses the browser's encoder). */
-export function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error ?? new Error("Could not read the file"));
-    reader.onload = () => {
-      const result = String(reader.result ?? "");
-      const comma = result.indexOf(",");
-      resolve(comma >= 0 ? result.slice(comma + 1) : result);
-    };
-    reader.readAsDataURL(file);
-  });
-}

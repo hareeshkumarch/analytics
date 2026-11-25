@@ -8,14 +8,13 @@ import {
   FILE_ACCEPT,
   SINGLE_TABLE_FORMATS,
   SourcePayload,
-  bytesToBase64,
   datasetName,
   detectFileFormat,
-  fileToBase64,
   sanitizeDatasetName,
   toPayload,
 } from "@/lib/connectors";
-import { formatBytes } from "@/lib/workspace";
+import { uploadFile } from "@/lib/api/connectors";
+import { formatBytes, useWorkspace } from "@/lib/workspace";
 
 interface FileDraft {
   file: File | null;
@@ -29,6 +28,7 @@ const PASTED_CSV: DetectedFormat = { family: "uploaded_file", format: "csv", lab
 const PASTED_NAME = "pasted_data";
 
 export function useFileSource(maxBytes: number | undefined) {
+  const ws = useWorkspace();
   const [draft, setDraft] = useState<FileDraft>(EMPTY);
   const detected = draft.file ? detectFileFormat(draft.file.name) : draft.text.trim() ? PASTED_CSV : null;
   const size = useMemo(() => (draft.file ? draft.file.size : new TextEncoder().encode(draft.text).length), [draft.file, draft.text]);
@@ -54,10 +54,10 @@ export function useFileSource(maxBytes: number | undefined) {
 
   async function build(def: ConnectorDef): Promise<SourcePayload> {
     if (!detected) throw new Error("Choose a supported file first.");
-    const raw = draft.file ? await fileToBase64(draft.file) : bytesToBase64(new TextEncoder().encode(draft.text));
+    const { upload_id } = await uploadFile(ws.id, draft.file ?? new Blob([draft.text], { type: "text/csv" }));
     const base = toPayload(def, {});
     const format = detected.family === "uploaded_file" ? { format: detected.format } : {};
-    return { ...base, family: detected.family, config: { ...base.config, ...format, raw_base64: raw, table_name: draft.name.trim() } };
+    return { ...base, family: detected.family, config: { ...base.config, ...format, upload_id, table_name: draft.name.trim() } };
   }
 
   return {

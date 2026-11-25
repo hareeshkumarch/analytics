@@ -30,7 +30,7 @@ from app.adapters.providers.nim_adapter import NvidiaNimAdapter
 from app.adapters.providers.openai_adapter import OpenAiResponsesAdapter
 from app.adapters.providers.registry import ProviderRegistry
 from app.adapters.providers.xai_adapter import XaiResponsesAdapter
-from app.adapters.storage.local_fs import LocalArtifactStore
+from app.adapters.storage.local_fs import LocalArtifactStore, LocalUploadStore
 from app.application.ports.clock import SystemClock
 from app.application.ports.providers import BudgetLedger
 from app.application.services.budget_service import AtomicBudgetLedger
@@ -53,6 +53,7 @@ from app.domain.providers import (
 class AppContainer:
     clock: SystemClock
     artifacts: LocalArtifactStore
+    uploads: LocalUploadStore
     parsers: ParserRegistry
     connectors: ConnectorRegistry
     providers: ProviderRegistry
@@ -208,6 +209,7 @@ def build_container(
     return AppContainer(
         clock=clock,
         artifacts=artifacts,
+        uploads=LocalUploadStore(root),
         parsers=parsers,
         connectors=connectors,
         providers=providers,

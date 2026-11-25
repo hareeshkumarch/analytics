@@ -97,10 +97,15 @@ def validate_loopback_bind(host: str) -> None:
 
 
 @contextlib.contextmanager
-def _materialized_connector_config(family: ConnectorFamily, raw_config: dict[str, Any]) -> Iterator[dict[str, Any]]:
+def _materialized_connector_config(
+    family: ConnectorFamily, raw_config: dict[str, Any], upload_bytes: bytes | None = None
+) -> Iterator[dict[str, Any]]:
     cfg = dict(raw_config)
     cfg.pop("file_path", None)
     cfg.pop("raw_bytes", None)
+    cfg.pop("upload_id", None)
+    if upload_bytes is not None:
+        cfg["raw_bytes"] = upload_bytes
     tmp_dir: str | None = None
     if "raw_base64" in cfg:
         try:
@@ -130,7 +135,7 @@ def _materialized_connector_config(family: ConnectorFamily, raw_config: dict[str
 
 
 _URL_CONFIG_KEYS = ("url",)
-_DROPPED_CONFIG_KEYS = ("raw_base64", "raw_bytes", "file_path")
+_DROPPED_CONFIG_KEYS = ("raw_base64", "raw_bytes", "file_path", "upload_id")
 
 
 def _redacted_source_config(raw_config: dict[str, Any]) -> dict[str, Any]:
@@ -460,11 +465,34 @@ def create_app(
             },
         }
 
+    async def _upload_bytes(workspace_id: str, config: dict[str, Any]) -> bytes | None:
+        upload_id = config.get("upload_id")
+        if upload_id is None:
+            return None
+        return await asyncio.to_thread(app.state.container.uploads.read, workspace_id, str(upload_id))
+
+    @app.post("/api/v1/workspaces/{workspace_id}/uploads", status_code=201)
+    async def create_upload(workspace_id: str, request: Request) -> dict[str, Any]:
+        limit = DEFAULT_DATA_LIMITS.max_uploaded_file_bytes
+        too_large = LimitExceededError(f"Uploaded file exceeds the {limit:,} bytes limit")
+        if int(request.headers.get("content-length") or 0) > limit:
+            raise too_large
+        body = bytearray()
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body) > limit:
+                raise too_large
+        if not body:
+            raise ValidationError("The uploaded file is empty")
+        upload_id = await asyncio.to_thread(app.state.container.uploads.save, workspace_id, bytes(body))
+        return {"upload_id": upload_id, "byte_size": len(body)}
+
     @app.post("/api/v1/workspaces/{workspace_id}/connectors/probe")
     async def probe_connector(workspace_id: str, payload: ConnectorProbeRequest) -> dict[str, Any]:
         c: AppContainer = app.state.container
         try:
-            with _materialized_connector_config(payload.family, payload.config) as cfg:
+            upload = await _upload_bytes(workspace_id, payload.config)
+            with _materialized_connector_config(payload.family, payload.config, upload) as cfg:
                 res = await _call_connector(
                     c.connectors.get_discovery(payload.family).probe, cfg, payload.credentials
                 )
@@ -491,7 +519,8 @@ def create_app(
     @app.post("/api/v1/workspaces/{workspace_id}/connectors/discover")
     async def discover_connector(workspace_id: str, payload: ConnectorProbeRequest) -> dict[str, Any]:
         c: AppContainer = app.state.container
-        with _materialized_connector_config(payload.family, payload.config) as cfg:
+        upload = await _upload_bytes(workspace_id, payload.config)
+        with _materialized_connector_config(payload.family, payload.config, upload) as cfg:
             tables = await _call_connector(
                 c.connectors.get_discovery(payload.family).discover, cfg, payload.credentials
             )
@@ -544,7 +573,8 @@ def create_app(
             limits=DEFAULT_DATA_LIMITS,
             version=version,
         )
-        with _materialized_connector_config(payload.family, payload.config) as cfg:
+        upload = await _upload_bytes(workspace_id, payload.config)
+        with _materialized_connector_config(payload.family, payload.config, upload) as cfg:
             batches, manifest = await _call_connector(
                 c.connectors.get_extractor(payload.family).extract,
                 cfg,
@@ -652,6 +682,8 @@ def create_app(
             raise _db_unavailable("save the imported dataset") from exc
         app.state.snapshots[manifest.snapshot_id] = snap_dict
         app.state.semantics[manifest.snapshot_id] = sem_dict
+        if upload is not None:
+            c.uploads.delete(workspace_id, str(payload.config["upload_id"]))
 
         return {
             "snapshot": snap_dict,

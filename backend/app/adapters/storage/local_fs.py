@@ -2,12 +2,14 @@ import hashlib
 import os
 import shutil
 import threading
+import time
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import BinaryIO, Iterator
 
 from app.application.ports.storage import StoredArtifact
-from app.domain.errors import LimitExceededError, NotFoundError, SecurityPolicyError
+from app.domain.errors import LimitExceededError, NotFoundError, SecurityPolicyError, ValidationError
 from app.domain.limits import DataLimits, DEFAULT_DATA_LIMITS
 
 
@@ -116,3 +118,42 @@ class LocalArtifactStore:
         job_dir = (self._staging_dir / safe_job).resolve()
         if job_dir.exists() and str(job_dir).startswith(str(self._staging_dir.resolve())):
             shutil.rmtree(job_dir, ignore_errors=True)
+
+
+UPLOAD_MAX_AGE_SECONDS = 24 * 3600
+
+
+class LocalUploadStore:
+    def __init__(self, root_dir: str | Path, max_age_seconds: int = UPLOAD_MAX_AGE_SECONDS) -> None:
+        self._root = Path(root_dir).resolve() / "uploads"
+        self._root.mkdir(parents=True, exist_ok=True)
+        self._max_age_seconds = max_age_seconds
+
+    def _path(self, workspace_id: str, upload_id: str) -> Path:
+        if not upload_id.startswith("upl_") or not upload_id[4:].isalnum():
+            raise ValidationError("upload_id is not valid")
+        namespace = hashlib.sha256(workspace_id.encode("utf-8")).hexdigest()[:16]
+        return self._root / namespace / upload_id
+
+    def _sweep(self) -> None:
+        cutoff = time.time() - self._max_age_seconds
+        for path in self._root.glob("*/upl_*"):
+            if path.stat().st_mtime < cutoff:
+                path.unlink(missing_ok=True)
+
+    def save(self, workspace_id: str, data: bytes) -> str:
+        self._sweep()
+        upload_id = f"upl_{uuid.uuid4().hex}"
+        path = self._path(workspace_id, upload_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        return upload_id
+
+    def read(self, workspace_id: str, upload_id: str) -> bytes:
+        path = self._path(workspace_id, upload_id)
+        if not path.is_file():
+            raise NotFoundError("This upload has expired or was already imported. Choose the file again.")
+        return path.read_bytes()
+
+    def delete(self, workspace_id: str, upload_id: str) -> None:
+        self._path(workspace_id, upload_id).unlink(missing_ok=True)
