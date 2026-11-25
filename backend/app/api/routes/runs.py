@@ -23,10 +23,11 @@ from app.domain.errors import (
 from app.domain.limits import (
     DEFAULT_GLOBAL_LIMITS,
 )
-from app.domain.models import RunMode, RunStatus
+from app.domain.models import RunStatus
 
 from app.api.support import TERMINAL_RUN_STATUSES, SSE_HEARTBEAT_SECONDS, SSE_WORKER_POLL_SECONDS, RUN_PAGE_DEFAULT, RUN_PAGE_MAX, RUN_LIST_ANSWER_KEYS
 from app.api.context import ApiContext
+from app.jobs.outbox import dispatch_pending
 from app.api.responses import CreateRunOut, RunOut, RunPageOut
 
 logger = logging.getLogger(__name__)
@@ -97,6 +98,7 @@ def register(ctx: ApiContext) -> APIRouter:
                 question=payload.question,
                 snapshot_id=snapshot_id or None,
                 semantic_version_id=semantic_version_id or None,
+                enqueue=execution_mode == "celery" and payload.background_async and not payload.execute_inline,
             )
         except SQLAlchemyError as exc:
             logger.exception("Failed to create run in DB")
@@ -125,32 +127,7 @@ def register(ctx: ApiContext) -> APIRouter:
             await _execute_bounded_run()
         elif payload.background_async:
             if execution_mode == "celery":
-                try:
-                    from app.jobs.tasks import run_investigation_task
-
-                    run_investigation_task.delay(
-                        run_id,
-                        workspace_id,
-                        payload.question,
-                        payload.mode.value,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    logger.exception("Could not enqueue run %s", run_id)
-                    run_rec["status"] = RunStatus.FAILED.value
-                    run_rec["outcome"] = "failed"
-                    run_rec["error"] = f"Worker queue unavailable: {exc}"[:500]
-                    app.state.repo_runs.update_status(
-                        run_id,
-                        RunStatus.FAILED,
-                        outcome="failed",
-                        error=run_rec["error"],
-                    )
-                    _publish_api_event(
-                        run_id,
-                        "run.finished",
-                        {"status": RunStatus.FAILED.value, "error": run_rec["error"]},
-                    )
-                    raise HTTPException(status_code=503, detail="Investigation worker queue is unavailable") from exc
+                await asyncio.to_thread(dispatch_pending, app.state.repo_runs)
             else:
                 app.state.bg_tasks[run_id] = asyncio.create_task(_execute_bounded_run())
 
@@ -358,6 +335,7 @@ def register(ctx: ApiContext) -> APIRouter:
             run_id,
             expected_revision=payload.revision,
             answer=answer,
+            enqueue=os.environ.get("RUN_EXECUTION_MODE", "inline").strip().lower() == "celery",
         )
         if updated is None or event is None:
             raise HTTPException(status_code=409, detail="Clarification revision conflict")
@@ -367,33 +345,7 @@ def register(ctx: ApiContext) -> APIRouter:
 
         execution_mode = os.environ.get("RUN_EXECUTION_MODE", "inline").strip().lower()
         if execution_mode == "celery":
-            try:
-                from app.jobs.tasks import run_investigation_task
-
-                run_investigation_task.delay(
-                    run_id,
-                    workspace_id,
-                    str(run_rec.get("question") or ""),
-                    str(run_rec.get("mode") or RunMode.QUICK.value),
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Could not resume run %s", run_id)
-                run_rec["status"] = RunStatus.FAILED.value
-                run_rec["outcome"] = "failed"
-                run_rec["error"] = f"Worker queue unavailable: {exc}"[:500]
-                await asyncio.to_thread(
-                    app.state.repo_runs.update_status,
-                    run_id,
-                    RunStatus.FAILED,
-                    outcome="failed",
-                    error=run_rec["error"],
-                )
-                _publish_api_event(
-                    run_id,
-                    "run.finished",
-                    {"status": RunStatus.FAILED.value, "error": run_rec["error"]},
-                )
-                raise HTTPException(status_code=503, detail="Could not resume the run") from exc
+            await asyncio.to_thread(dispatch_pending, app.state.repo_runs)
         else:
             app.state.bg_tasks[run_id] = asyncio.create_task(ctx.execute_run_record(run_rec))
         return {

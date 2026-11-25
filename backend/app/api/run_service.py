@@ -14,8 +14,11 @@ from app.domain.errors import (
 from app.domain.models import RunMode, RunStatus
 
 from app.api.context import ApiContext
+from app.jobs.outbox import dispatch_pending
 
 logger = logging.getLogger(__name__)
+
+OUTBOX_POLL_SECONDS = 5.0
 
 
 def register(ctx: ApiContext) -> None:
@@ -133,9 +136,24 @@ def register(ctx: ApiContext) -> None:
             if app.state.bg_tasks.get(run_id) is current_task:
                 app.state.bg_tasks.pop(run_id, None)
 
+    async def _dispatch_outbox_forever() -> None:
+        while True:
+            try:
+                await asyncio.to_thread(dispatch_pending, app.state.repo_runs)
+            except Exception:
+                logger.exception("Outbox dispatch failed")
+            await asyncio.sleep(OUTBOX_POLL_SECONDS)
+
+    @app.on_event("shutdown")
+    async def _stop_outbox_dispatcher() -> None:
+        task = getattr(app.state, "outbox_task", None)
+        if task is not None:
+            task.cancel()
+
     @app.on_event("startup")
     async def _resume_active_runs() -> None:
         if os.environ.get("RUN_EXECUTION_MODE", "inline").strip().lower() == "celery":
+            app.state.outbox_task = asyncio.create_task(_dispatch_outbox_forever())
             return
         try:
             active_runs = app.state.repo_runs.list_active_runs()

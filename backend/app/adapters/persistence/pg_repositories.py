@@ -1,5 +1,5 @@
 from dataclasses import asdict, replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import uuid
 from typing import Any
@@ -63,6 +63,13 @@ def _append_run_event(
     return event
 
 
+RUN_JOB = "run_investigation"
+OUTBOX_STALE_SECONDS = 60
+
+
+def _add_run_job(db: Session, run_id: str) -> None:
+    db.add(OutboxJobRow(job_id=f"job_{uuid.uuid4().hex[:12]}", job_type=RUN_JOB, payload_json={"run_id": run_id}, status="pending"))
+
 class PgEventLog:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._sf = session_factory
@@ -75,10 +82,13 @@ class PgEventLog:
         outcome: str | None = None,
         error: str | None = None,
         only_if_not_cancelled: bool = False,
+        fence: int | None = None,
     ) -> RunEvent | None:
         with self._sf() as db:
             with db.begin():
                 run = db.get(RunRow, event.run_id, with_for_update=True)
+                if run is not None and fence is not None and run.owner_generation != fence:
+                    return None
                 if run is None:
                     raise ValueError(f"Run {event.run_id} does not exist")
                 if only_if_not_cancelled and run.status == RunStatus.CANCELLED.value:
@@ -194,6 +204,7 @@ class PgRunRepository:
         snapshot_id: str | None = None,
         semantic_version_id: str | None = None,
         policy_hash: str = "default",
+        enqueue: bool = False,
     ) -> dict[str, Any]:
         with self._sf() as db:
             with db.begin():
@@ -216,6 +227,9 @@ class PgRunRepository:
                     created_at=now,
                 )
                 db.add(row)
+                if enqueue:
+                    db.flush()
+                    _add_run_job(db, run_id)
             return {
                 "run_id": run_id,
                 "workspace_id": workspace_id,
@@ -393,22 +407,36 @@ class PgRunRepository:
             row = db.get(RunRow, run_id)
             return dict(row.orchestration_json or {}) if row else {}
 
-    def save_plan(self, run_id: str, plan: dict[str, Any]) -> bool:
+    def claim_run(self, run_id: str) -> int | None:
+        with self._sf() as db:
+            with db.begin():
+                row = db.get(RunRow, run_id, with_for_update=True)
+                if not row or row.status not in {RunStatus.QUEUED.value, RunStatus.RUNNING.value}:
+                    return None
+                row.status = RunStatus.RUNNING.value
+                row.owner_generation = (row.owner_generation or 0) + 1
+                return int(row.owner_generation)
+
+    def save_plan(self, run_id: str, plan: dict[str, Any], fence: int | None = None) -> bool:
         with self._sf() as db:
             with db.begin():
                 row = db.get(RunRow, run_id, with_for_update=True)
                 if not row or row.status == RunStatus.CANCELLED.value:
+                    return False
+                if fence is not None and row.owner_generation != fence:
                     return False
                 state = dict(row.orchestration_json or {})
                 state["plan"] = plan
                 row.orchestration_json = state
         return True
 
-    def pause_for_clarification(self, run_id: str, prompt: str) -> tuple[RunEvent, ...]:
+    def pause_for_clarification(self, run_id: str, prompt: str, fence: int | None = None) -> tuple[RunEvent, ...]:
         with self._sf() as db:
             with db.begin():
                 row = db.get(RunRow, run_id, with_for_update=True)
                 if not row or row.status not in {RunStatus.QUEUED.value, RunStatus.RUNNING.value}:
+                    return ()
+                if fence is not None and row.owner_generation != fence:
                     return ()
                 state = dict(row.orchestration_json or {})
                 revision = int(state.get("clarification_revision", 0))
@@ -434,6 +462,7 @@ class PgRunRepository:
         run_id: str,
         expected_revision: int,
         answer: str,
+        enqueue: bool = False,
     ) -> tuple[dict[str, Any] | None, RunEvent | None]:
         with self._sf() as db:
             with db.begin():
@@ -457,6 +486,8 @@ class PgRunRepository:
                     EventType.RUN_STATUS,
                     {"status": RunStatus.QUEUED.value, "revision": revision + 1},
                 )
+                if enqueue:
+                    _add_run_job(db, run_id)
         return self.get_run(run_id), event
 
     def count_queued_runs(self) -> int:
@@ -505,25 +536,46 @@ class PgRunRepository:
                     row.last_event_sequence = event.sequence
         return True
 
-    def enqueue_outbox_job(self, job_type: str, payload: dict[str, Any]) -> str:
-        job_id = f"job_{uuid.uuid4().hex[:12]}"
+    def claim_outbox_jobs(self, limit: int = 20, stale_after_seconds: int = OUTBOX_STALE_SECONDS) -> list[dict[str, Any]]:
+        now = datetime.now(timezone.utc)
+        stale = now - timedelta(seconds=stale_after_seconds)
         with self._sf() as db:
             with db.begin():
-                db.add(
-                    OutboxJobRow(
-                        job_id=job_id,
-                        job_type=job_type,
-                        payload_json=payload,
-                        status="pending",
+                rows = db.scalars(
+                    select(OutboxJobRow)
+                    .where(
+                        (OutboxJobRow.status == "pending")
+                        | ((OutboxJobRow.status == "publishing") & (OutboxJobRow.claimed_at < stale))
                     )
-                )
-        return job_id
+                    .order_by(OutboxJobRow.created_at)
+                    .limit(limit)
+                    .with_for_update(skip_locked=True)
+                ).all()
+                for row in rows:
+                    row.status = "publishing"
+                    row.claimed_at = now
+                    row.attempts += 1
+                return [{"job_id": r.job_id, "job_type": r.job_type, "payload": dict(r.payload_json)} for r in rows]
 
-    def save_answer(self, answer: Answer, final_status: str = "completed") -> bool:
+    def finish_outbox_job(self, job_id: str, published: bool) -> None:
+        with self._sf() as db:
+            with db.begin():
+                row = db.get(OutboxJobRow, job_id, with_for_update=True)
+                if row is None:
+                    return
+                if published:
+                    db.delete(row)
+                else:
+                    row.status = "pending"
+                    row.claimed_at = None
+
+    def save_answer(self, answer: Answer, final_status: str = "completed", fence: int | None = None) -> bool:
         with self._sf() as db:
             with db.begin():
                 row = db.get(RunRow, answer.run_id, with_for_update=True)
                 if not row or row.status == RunStatus.CANCELLED.value:
+                    return False
+                if fence is not None and row.owner_generation != fence:
                     return False
                 existing_ans = dict(row.answer_json or {})
                 existing_ans.update(

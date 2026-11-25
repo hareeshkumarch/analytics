@@ -113,7 +113,8 @@ def _execute_persisted_run(run_id: str) -> dict[str, str]:
     semantics = snapshots.get_semantics(snapshot_id) if snapshot_id else None
     policy = _policy_for_run(routing, container, workspace_id)
     _load_saved_credentials(container, credentials, workspace_id)
-    if not runs.update_status(run_id, RunStatus.RUNNING, unless_cancelled=True):
+    fence = runs.claim_run(run_id)
+    if fence is None:
         latest = runs.get_run(run_id) or run
         return {"run_id": run_id, "status": str(latest.get("status") or RunStatus.CANCELLED.value), "answer_id": ""}
 
@@ -143,6 +144,7 @@ def _execute_persisted_run(run_id: str) -> dict[str, str]:
                     persisted,
                     status=status,
                     only_if_not_cancelled=True,
+                    fence=fence,
                 )
             elif persisted.type == EventType.RUN_FINISHED:
                 final_status = str(persisted.payload.get("status") or RunStatus.COMPLETED.value)
@@ -153,18 +155,23 @@ def _execute_persisted_run(run_id: str) -> dict[str, str]:
                     outcome=outcome,
                     error=str(persisted.payload.get("error") or "") or None,
                     only_if_not_cancelled=True,
+                    fence=fence,
                 )
             else:
-                stored = events.append(persisted, only_if_not_cancelled=True)
+                stored = events.append(persisted, only_if_not_cancelled=True, fence=fence)
             if stored is not None:
                 sequence = stored.sequence
 
     def save_plan(plan: dict[str, Any]) -> None:
-        runs.save_plan(run_id, plan)
+        runs.save_plan(run_id, plan, fence=fence)
 
     def is_cancelled() -> bool:
         current = runs.get_run(run_id)
-        return current is None or current.get("status") == RunStatus.CANCELLED.value
+        return (
+            current is None
+            or current.get("status") == RunStatus.CANCELLED.value
+            or current.get("owner_generation") != fence
+        )
 
     prior_events = events.list_after(run_id, 0)
     tool_events = [
@@ -215,7 +222,7 @@ def _execute_persisted_run(run_id: str) -> dict[str, str]:
             on_plan=save_plan,
         )
     except ClarificationRequired as exc:
-        runs.pause_for_clarification(run_id, exc.prompt)
+        runs.pause_for_clarification(run_id, exc.prompt, fence=fence)
         latest = runs.get_run(run_id) or run
         if latest.get("status") == RunStatus.AWAITING_INPUT.value:
             return {
@@ -245,6 +252,7 @@ def _execute_persisted_run(run_id: str) -> dict[str, str]:
                     outcome="failed",
                     error=public_message(exc),
                     only_if_not_cancelled=True,
+                    fence=fence,
                 )
         latest = runs.get_run(run_id) or run
         return {"run_id": run_id, "status": str(latest.get("status") or RunStatus.FAILED.value), "answer_id": ""}
@@ -272,6 +280,7 @@ def _execute_persisted_run(run_id: str) -> dict[str, str]:
                 status=final_status,
                 outcome="answered",
                 only_if_not_cancelled=True,
+                    fence=fence,
             )
             if persisted is None:
                 latest = runs.get_run(run_id) or latest
@@ -280,7 +289,7 @@ def _execute_persisted_run(run_id: str) -> dict[str, str]:
                     "answer_id": "",
                     "status": str(latest.get("status") or RunStatus.CANCELLED.value),
                 }
-    if not runs.save_answer(answer, final_status=final_status):
+    if not runs.save_answer(answer, final_status=final_status, fence=fence):
         latest = runs.get_run(run_id) or latest
         return {
             "run_id": run_id,
