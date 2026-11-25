@@ -7,6 +7,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
+from opentelemetry import trace
+
 request_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("request_id", default=None)
 run_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("run_id", default=None)
 
@@ -31,6 +33,8 @@ class ContextFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         record.request_id = request_id_var.get()
         record.run_id = run_id_var.get()
+        span_context = trace.get_current_span().get_span_context()
+        record.trace_id = format(span_context.trace_id, "032x") if span_context.is_valid else None
         return True
 
 
@@ -42,7 +46,7 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
         }
-        for key in ("request_id", "run_id"):
+        for key in ("request_id", "run_id", "trace_id"):
             value = getattr(record, key, None)
             if value:
                 entry[key] = value

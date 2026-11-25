@@ -5,11 +5,15 @@ from dataclasses import dataclass, field
 from decimal import Decimal, DivisionByZero, InvalidOperation
 from typing import Any
 
+from opentelemetry import trace
+
 from app.application.ports.providers import ToolCallResult, ToolDefinition
 from app.application.ports.query import SnapshotQueryPort
 from app.domain.errors import DomainError, QueryValidationError
 from app.domain.limits import DEFAULT_GLOBAL_LIMITS
 from app.domain.query_ir import AggregateFunction, FilterOperator, QueryIRParseError, parse_query_ir
+
+_tracer = trace.get_tracer("ledgerline.query")
 
 MAX_ROWS_TO_MODEL = 50
 MAX_QUERY_ROWS = 1000
@@ -447,7 +451,12 @@ class AnalyticsToolbox:
             return self._error(RUN_QUERY_TOOL.name, f"Invalid query (not counted against the budget): {exc}")
         semantic_version_id = str((self.semantics or {}).get("semantic_version_id") or "")
         try:
-            result, sql = self.engine.run(self.snapshot, ir, semantic_version_id, MAX_QUERY_ROWS)
+            with _tracer.start_as_current_span(
+                "query.run", attributes={"query.operation": ir.operation, "snapshot.id": str(self.snapshot.get("snapshot_id") or "")}
+            ) as span:
+                result, sql = self.engine.run(self.snapshot, ir, semantic_version_id, MAX_QUERY_ROWS)
+                span.set_attribute("query.rows", result.row_count)
+                span.set_attribute("query.truncated", result.truncated)
         except QueryValidationError as exc:
             self.budget.refund(analytical=True)
             return self._error(RUN_QUERY_TOOL.name, f"Invalid query (not counted against the budget): {exc}")

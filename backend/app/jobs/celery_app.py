@@ -1,6 +1,6 @@
 import os
 from celery import Celery
-from celery.signals import setup_logging, worker_process_shutdown
+from celery.signals import setup_logging, worker_process_init, worker_process_shutdown
 
 from app.domain.limits import DEEP_BUDGET_LIMITS
 
@@ -34,6 +34,13 @@ def _configure_worker_logging(**_: object) -> None:
     from app.bootstrap.logging_setup import configure_logging
 
     configure_logging()
+
+
+@worker_process_init.connect
+def _configure_worker_tracing(**_: object) -> None:
+    from app.bootstrap.tracing import configure_tracing
+
+    configure_tracing("ledgerline-worker")
 
 
 @worker_process_shutdown.connect

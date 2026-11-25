@@ -25,6 +25,7 @@ from app.adapters.persistence.pg_repositories import (
     PgRunRepository,
     PgSnapshotRepository,
 )
+from app.bootstrap.tracing import instrument_app
 from app.bootstrap.logging_setup import clean_request_id, configure_logging, request_id_var
 from app.bootstrap.container import AppContainer, build_container
 from app.domain.errors import (
@@ -196,6 +197,7 @@ def create_app(
             },
         )
 
+    instrument_app(app)
     ctx = ApiContext(app)
     run_service.register(ctx)
     for area in (system, connectors, snapshots, settings, runs, pins, exports, usage):

@@ -5,6 +5,8 @@ import time
 from typing import Any, Callable, Generator, cast
 import uuid
 
+from opentelemetry import trace
+
 from app.adapters.providers.registry import ProviderRegistry
 from app.application.ports.clock import Clock
 from app.adapters.providers.http_utils import STREAM_UNSUPPORTED
@@ -22,6 +24,8 @@ from app.domain.providers import (
     RoutingPolicy,
     RoutingPreset,
 )
+
+_tracer = trace.get_tracer("ledgerline.routing")
 
 
 def _drain(stream: Generator[str, None, ModelResponse], on_piece: Callable[[str], None]) -> ModelResponse:
@@ -350,16 +354,28 @@ class RoutingService:
                     and current_request.structured_schema is None
                 )
                 try:
-                    if streams and stream_fn is not None:
-                        try:
-                            resp = _drain(stream_fn(current_request, prov_profile, model, api_key), emit)
-                        except ProviderError as stream_exc:
-                            if stream_exc.code != STREAM_UNSUPPORTED or partial[0]:
-                                raise
+                    with _tracer.start_as_current_span(
+                        "model.call",
+                        attributes={
+                            "llm.provider": model.provider_id.value,
+                            "llm.model": model.model_id,
+                            "llm.role": request.role.value,
+                            "llm.streaming": bool(streams),
+                            "run.id": request.run_id,
+                        },
+                    ) as span:
+                        if streams and stream_fn is not None:
+                            try:
+                                resp = _drain(stream_fn(current_request, prov_profile, model, api_key), emit)
+                            except ProviderError as stream_exc:
+                                if stream_exc.code != STREAM_UNSUPPORTED or partial[0]:
+                                    raise
+                                resp = gateway.invoke(current_request, prov_profile, model, api_key)
+                                emit(resp.text)
+                        else:
                             resp = gateway.invoke(current_request, prov_profile, model, api_key)
-                            emit(resp.text)
-                    else:
-                        resp = gateway.invoke(current_request, prov_profile, model, api_key)
+                        span.set_attribute("llm.input_tokens", resp.input_tokens)
+                        span.set_attribute("llm.output_tokens", resp.output_tokens + resp.reasoning_tokens)
                 except ProviderError as exc:
                     last_error = exc
                     self._ledger.release_unresolved(reservation.reservation_id, str(exc))
