@@ -267,6 +267,7 @@ def create_app(
     app.state.evidence = {}
     app.state.event_queues = {}
     app.state.event_lock = threading.RLock()
+    app.state.run_event_locks = {}
     app.state.bg_tasks = {}
     app.state.active_run_semaphore = asyncio.Semaphore(DEFAULT_GLOBAL_LIMITS.max_active_root_runs)
     app.state.idempotency = {}
@@ -411,13 +412,24 @@ def create_app(
             raise HTTPException(status_code=404, detail="Snapshot not found in this workspace")
         return snap
 
-    def _publish_event(run_id: str, evt_dict: dict[str, Any], *, skip_if_cancelled: bool = False) -> bool:
+    def _run_lock(run_id: str) -> threading.RLock:
         with app.state.event_lock:
-            rec = app.state.runs.get(run_id)
+            lock: threading.RLock | None = app.state.run_event_locks.get(run_id)
+            if lock is None:
+                lock = threading.RLock()
+                app.state.run_event_locks[run_id] = lock
+            return lock
+
+    def _publish_event(run_id: str, evt_dict: dict[str, Any], *, skip_if_cancelled: bool = False) -> bool:
+        # The per-run lock orders one run's events; the global lock only guards the shared maps, never database I/O.
+        with _run_lock(run_id):
+            with app.state.event_lock:
+                rec = app.state.runs.get(run_id)
             if rec is None and hasattr(app.state, "repo_runs"):
                 rec = app.state.repo_runs.get_run(run_id)
                 if rec:
-                    app.state.runs[run_id] = rec
+                    with app.state.event_lock:
+                        rec = app.state.runs.setdefault(run_id, rec)
             if rec is not None:
                 if skip_if_cancelled and rec["status"] == RunStatus.CANCELLED.value:
                     return False
@@ -456,13 +468,14 @@ def create_app(
                     evt_dict = {**evt_dict, "sequence": persisted.sequence}
                 except Exception:
                     logger.exception("Failed to persist event to DB")
-            if rec is not None:
-                rec["last_event_sequence"] = max(
-                    int(rec.get("last_event_sequence") or 0), int(evt_dict["sequence"])
-                )
-            app.state.events.setdefault(run_id, []).append(evt_dict)
-
-            for loop, q in app.state.event_queues.get(run_id, []):
+            with app.state.event_lock:
+                if rec is not None:
+                    rec["last_event_sequence"] = max(
+                        int(rec.get("last_event_sequence") or 0), int(evt_dict["sequence"])
+                    )
+                app.state.events.setdefault(run_id, []).append(evt_dict)
+                subscribers = list(app.state.event_queues.get(run_id, []))
+            for loop, q in subscribers:
                 try:
                     loop.call_soon_threadsafe(q.put_nowait, evt_dict)
                 except RuntimeError:
@@ -1588,7 +1601,7 @@ def create_app(
             run_rec = app.state.runs.get(run_id)
         if not run_rec or run_rec["workspace_id"] != workspace_id:
             raise HTTPException(status_code=404, detail="Run not found")
-        with app.state.event_lock:
+        with _run_lock(run_id):
             events = app.state.events.get(run_id, [])
             if events and events[-1]["type"] == "run.finished":
                 return {"run_id": run_id, "status": str(events[-1]["payload"].get("status", run_rec["status"]))}
@@ -1621,7 +1634,7 @@ def create_app(
         except SQLAlchemyError as exc:
             logger.exception("Failed to delete run %s", run_id)
             raise _db_unavailable("delete the run") from exc
-        for store in (app.state.runs, app.state.answers, app.state.events, app.state.evidence):
+        for store in (app.state.runs, app.state.answers, app.state.events, app.state.evidence, app.state.run_event_locks):
             store.pop(run_id, None)
         return {"run_id": run_id, "deleted": True}
 
