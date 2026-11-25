@@ -197,7 +197,8 @@ The **UX** tag marks items that users directly notice.
 ### #30 Clarification UI (implemented; runtime verification pending)
 - The Ask view now displays `clarification.required`, submits the answer with its revision, and follows the resumed run. Verify page reload, stale revisions, and both execution modes (see [08](08-frontend-gaps.md)).
 
-### #31 No follow-up questions (UX)
+### #31 No follow-up questions (UX) (fixed)
+- **Status (2026-11-25):** `POST /runs` takes `follow_up_of`; the new run joins that run's conversation and dataset, and a plain question now starts its own conversation instead of sharing one per workspace. Inline and worker runs pass the conversation's last 3 completed questions and answer summaries (answers trimmed to 1,500 characters) to the agents as `<previous_turns>`. A Follow up box appears under completed answers. History is not yet grouped by conversation.
 - **Reason:** Every run shares one conversation id per workspace and gets no earlier context.
 - **How to fix:**
   1. Accept an optional `conversation_id` in `CreateRunRequest`.

@@ -114,6 +114,7 @@ export function createRun(
     mode: "quick" | "deep";
     snapshot_id?: string;
     semantic_version_id?: string;
+    follow_up_of?: string;
   },
   idempotencyKey: string
 ): Promise<CreateRunResponse> {

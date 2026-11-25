@@ -11,7 +11,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { EvidenceContext, SafeMarkdown } from "@/components/SafeMarkdown";
 import { EvidencePanel } from "@/features/ask/EvidencePanel";
 import { RichSelect } from "@/components/RichSelect";
-import { Badge, Details, FilterChips, Notice, SearchInput, Spinner, btn, cx } from "@/components/ui";
+import { Badge, Details, FilterChips, Notice, SearchInput, Spinner, btn, cx, inputCls } from "@/components/ui";
 import {
   RunLimits,
   datasetLabel,
@@ -292,6 +292,7 @@ export function AskView() {
 
   const [olderRuns, setOlderRuns] = useState<{ runs: StoredRun[]; next: string | null | undefined }>({ runs: [], next: undefined });
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [followUpDraft, setFollowUpDraft] = useState("");
   const olderCursor = olderRuns.next === undefined ? runsQuery.data?.next_before ?? null : olderRuns.next;
 
   async function loadOlderRuns() {
@@ -463,11 +464,11 @@ export function AskView() {
     setUrlParam("run", s.runId);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const question = draftQuestion.trim();
-    if (!question || submitting || !canAsk || !snapshot) return;
-
+  async function startRun(
+    question: string,
+    target: { snapshotId: string; semanticVersionId?: string; followUpOf?: string },
+    restore: (question: string) => void
+  ) {
     const id = newId();
     const mode = runMode;
     setSubmitError(null);
@@ -483,7 +484,7 @@ export function AskView() {
         events: [],
         error: null,
         createdAt: new Date().toISOString(),
-        snapshotId: snapshot.snapshot_id,
+        snapshotId: target.snapshotId,
         streaming: false,
         connectionLost: false,
         traceLoaded: true,
@@ -496,13 +497,18 @@ export function AskView() {
     ]);
     setActiveId(id);
     setOpenEvidence(null);
-    setDraftQuestion("");
     setSubmitting(true);
 
     try {
       const res = await createRun(
         activeWorkspaceId,
-        { question, mode, snapshot_id: snapshot.snapshot_id, semantic_version_id: snapshot.semantic_version_id ?? undefined },
+        {
+          question,
+          mode,
+          snapshot_id: target.snapshotId,
+          semantic_version_id: target.semanticVersionId,
+          follow_up_of: target.followUpOf,
+        },
         newId()
       );
       if (unmounted.current) return;
@@ -513,11 +519,31 @@ export function AskView() {
       // Put the question back so nothing typed is lost.
       setSessions((prev) => prev.filter((s) => s.id !== id));
       setActiveId(null);
-      setDraftQuestion(question);
+      restore(question);
       setSubmitError({ message: errorMessage(err, "Couldn't start the run."), hint: errorHint(err) });
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const question = draftQuestion.trim();
+    if (!question || submitting || !canAsk || !snapshot) return;
+    setDraftQuestion("");
+    await startRun(
+      question,
+      { snapshotId: snapshot.snapshot_id, semanticVersionId: snapshot.semantic_version_id ?? undefined },
+      setDraftQuestion
+    );
+  }
+
+  async function handleFollowUp(e: React.FormEvent) {
+    e.preventDefault();
+    const question = followUpDraft.trim();
+    if (!question || submitting || !active?.runId || !active.snapshotId) return;
+    setFollowUpDraft("");
+    await startRun(question, { snapshotId: active.snapshotId, followUpOf: active.runId }, setFollowUpDraft);
   }
 
   async function handleCancel() {
@@ -973,6 +999,25 @@ export function AskView() {
                     <div className="h-3 w-[72%] animate-pulse bg-bubble" />
                   </div>
                 )
+              )}
+
+              {active.status === "completed" && active.runId && (
+                <form onSubmit={(e) => void handleFollowUp(e)} className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row">
+                  <label htmlFor="follow-up" className="sr-only">
+                    Ask a follow-up question
+                  </label>
+                  <input
+                    id="follow-up"
+                    value={followUpDraft}
+                    onChange={(e) => setFollowUpDraft(e.target.value)}
+                    placeholder="Ask a follow-up about this answer"
+                    maxLength={4000}
+                    className={cx(inputCls, "min-h-[40px] flex-1")}
+                  />
+                  <button type="submit" disabled={submitting || !followUpDraft.trim()} className={btn.secondary}>
+                    Follow up
+                  </button>
+                </form>
               )}
 
               {toolEvents.length > 0 && (

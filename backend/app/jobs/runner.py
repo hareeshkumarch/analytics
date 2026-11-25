@@ -204,6 +204,7 @@ def execute_persisted_run(run_id: str) -> dict[str, str]:
             evidence_lookup=lambda evidence_id: evidence.get(run_id, evidence_id),
             task_history_loader=load_task_history,
             clarification_answer=orchestration_state.get("clarification_answer"),
+            prior_turns=runs.conversation_turns(workspace_id, str(run.get("conversation_id") or ""), run_id),
             initial_plan=orchestration_state.get("plan"),
             on_plan=save_plan,
         )

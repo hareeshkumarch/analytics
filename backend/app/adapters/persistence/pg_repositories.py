@@ -360,6 +360,32 @@ class PgRunRepository:
                 db.delete(run)
                 return True
 
+    def conversation_turns(
+        self, workspace_id: str, conversation_id: str, before_run_id: str, limit: int = 3
+    ) -> list[dict[str, str]]:
+        with self._sf() as db:
+            current = db.get(RunRow, before_run_id)
+            if current is None:
+                return []
+            rows = db.scalars(
+                select(RunRow)
+                .where(
+                    RunRow.workspace_id == workspace_id,
+                    RunRow.conversation_id == conversation_id,
+                    RunRow.status == RunStatus.COMPLETED.value,
+                    RunRow.created_at < current.created_at,
+                )
+                .order_by(RunRow.created_at.desc())
+                .limit(limit)
+            ).all()
+            return [
+                {
+                    "question": str((row.answer_json or {}).get("question", "")),
+                    "answer": str((row.answer_json or {}).get("summary_markdown", "")),
+                }
+                for row in reversed(rows)
+            ]
+
     def get_orchestration_state(self, run_id: str) -> dict[str, Any]:
         with self._sf() as db:
             row = db.get(RunRow, run_id)

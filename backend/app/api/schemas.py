@@ -240,6 +240,7 @@ class CreateRunRequest(StrictApiModel):
     semantic_version_id: str | None = None
     execute_inline: bool = False
     background_async: bool = True
+    follow_up_of: str | None = Field(default=None, max_length=64, pattern=r"^run_[A-Za-z0-9]+$")
 
 
 class ClarifyRunRequest(StrictApiModel):

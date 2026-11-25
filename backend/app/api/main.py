@@ -1056,6 +1056,9 @@ def create_app(
 
                 prior_tool_invocations, prior_analytical_calls = _prior_tool_usage(run_id)
                 orchestration_state = app.state.repo_runs.get_orchestration_state(run_id)
+                prior_turns = app.state.repo_runs.conversation_turns(
+                    workspace_id, str(run_rec.get("conversation_id") or ""), run_id
+                )
                 answer = await asyncio.to_thread(
                     orch.execute_local,
                     run_id=run_id,
@@ -1075,6 +1078,7 @@ def create_app(
                     evidence_lookup=lambda evidence_id: app.state.repo_evidence.get(run_id, evidence_id),
                     task_history_loader=lambda task_id: _load_task_history(run_id, task_id),
                     clarification_answer=orchestration_state.get("clarification_answer"),
+                    prior_turns=prior_turns,
                     initial_plan=orchestration_state.get("plan"),
                     on_plan=lambda plan: app.state.repo_runs.save_plan(run_id, plan),
                 )
@@ -1160,12 +1164,20 @@ def create_app(
                 f"Global queue limit ({DEFAULT_GLOBAL_LIMITS.max_queued_runs} queued runs) reached."
             )
 
+        parent = None
+        if payload.follow_up_of:
+            parent = await asyncio.to_thread(app.state.repo_runs.get_run, payload.follow_up_of)
+            if not parent or parent["workspace_id"] != workspace_id:
+                raise HTTPException(status_code=404, detail="The run to follow up on was not found")
         snapshot_id, semantic_version_id = await asyncio.to_thread(
-            _resolve_binding, workspace_id, payload.snapshot_id, payload.semantic_version_id
+            _resolve_binding,
+            workspace_id,
+            payload.snapshot_id or (parent["snapshot_id"] if parent else None),
+            payload.semantic_version_id,
         )
         run_id = f"run_{uuid.uuid4().hex[:12]}"
         now = datetime.now(timezone.utc).isoformat()
-        conv_id = f"conv_{workspace_id}"
+        conv_id = str(parent["conversation_id"]) if parent else f"conv_{run_id.removeprefix('run_')}"
         try:
             run_rec = await asyncio.to_thread(
                 app.state.repo_runs.create_run,
