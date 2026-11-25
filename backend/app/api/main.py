@@ -52,6 +52,7 @@ from app.adapters.query.snapshot_engine import SnapshotQueryEngine
 from app.adapters.query.sqlglot_compiler import SqlGlotQueryCompiler
 from app.application.services.orchestration_service import InvestigationOrchestrator
 from app.application.services.ingestion import table_artifact_id, table_key
+from app.application.services.charts import chart_from_dict
 from app.application.services.profiling import profile_arrow_table, propose_metrics_from_schema
 from app.bootstrap.container import AppContainer, build_container
 from app.application.services.routing_service import routing_policy_from_saved
@@ -85,7 +86,8 @@ SSE_HEARTBEAT_SECONDS = 15.0
 SSE_WORKER_POLL_SECONDS = 1.0
 RUN_PAGE_DEFAULT = 200
 RUN_PAGE_MAX = 500
-RUN_LIST_ANSWER_KEYS = ("answer_id", "summary_markdown")
+EXPORT_ARTIFACT_PREFIX = "exp_"
+RUN_LIST_ANSWER_KEYS = ("answer_id", "summary_markdown", "charts")
 
 logger = logging.getLogger(__name__)
 
@@ -1679,7 +1681,7 @@ def create_app(
                         )
                         for cl in ans_data.get("claims", [])
                     ),
-                    charts=(),
+                    charts=tuple(chart_from_dict(ch) for ch in ans_data.get("charts") or ()),
                     limitations=tuple(ans_data.get("limitations", ())),
                     snapshot_id=ans_data.get("snapshot_id"),
                     semantic_version_id=ans_data.get("semantic_version_id"),
@@ -1716,7 +1718,7 @@ def create_app(
             raw = await asyncio.to_thread(c.export_service.export_html, ans)
             ctype = "text/html"
 
-        art_id = f"exp_{uuid.uuid4().hex[:10]}"
+        art_id = f"{EXPORT_ARTIFACT_PREFIX}{uuid.uuid4().hex[:10]}"
         staged = c.artifacts.stage_bytes(art_id, f"export.{fmt}", raw, ctype)
         stored = c.artifacts.publish_staged(art_id, staged, art_id)
         c.artifacts.cleanup_job_staging(art_id)
@@ -1731,8 +1733,14 @@ def create_app(
     @app.get("/api/v1/workspaces/{workspace_id}/exports/{artifact_id}")
     def download_export(workspace_id: str, artifact_id: str) -> Response:
         c: AppContainer = app.state.container
+        if not artifact_id.startswith(EXPORT_ARTIFACT_PREFIX):
+            raise HTTPException(status_code=404, detail="Export not found")
         data = c.artifacts.read_bytes(artifact_id)
-        return Response(content=data, media_type="application/octet-stream")
+        return Response(
+            content=data,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{artifact_id}"', "X-Content-Type-Options": "nosniff"},
+        )
 
     @app.get("/api/v1/workspaces/{workspace_id}/usage")
     def get_usage(workspace_id: str, since: datetime | None = None) -> dict[str, Any]:

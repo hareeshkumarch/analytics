@@ -33,6 +33,7 @@ from app.adapters.query.snapshot_engine import SnapshotQueryEngine
 from app.adapters.query.sqlglot_compiler import SqlGlotQueryCompiler
 from app.application.ports.query import SnapshotQueryPort
 from app.application.services.analytics_tools import AnalyticsToolbox, ToolBudget
+from app.application.services.charts import build_answer_charts
 from app.domain.errors import BudgetExhaustedError, ClarificationRequired, public_message
 from app.domain.events import EventType, RunEvent
 from app.domain.limits import DEFAULT_GLOBAL_LIMITS, REPLAN_TASKS
@@ -733,6 +734,7 @@ class InvestigationOrchestrator:
     ) -> Answer:
         seq = 1
         emit_lock = threading.Lock()
+        run_evidence: list[dict[str, Any]] = []
 
         def _cancelled() -> bool:
             return bool(should_cancel and should_cancel())
@@ -756,8 +758,11 @@ class InvestigationOrchestrator:
 
         def _tool_callback(task_id: str) -> Callable[[dict[str, Any], dict[str, Any] | None], None]:
             def _on_tool(entry: dict[str, Any], evidence: dict[str, Any] | None) -> None:
-                if evidence is not None and on_evidence is not None:
-                    on_evidence({**evidence, "task_id": task_id})
+                if evidence is not None:
+                    with emit_lock:
+                        run_evidence.append(evidence)
+                    if on_evidence is not None:
+                        on_evidence({**evidence, "task_id": task_id})
                 _emit(EventType.TOOL_RESULT, {"task_id": task_id, **entry})
 
             return _on_tool
@@ -1301,7 +1306,10 @@ class InvestigationOrchestrator:
             run_id=run_id,
             summary_markdown=answer_markdown,
             claims=tuple(collected_claims),
-            charts=(),
+            charts=build_answer_charts(
+                run_evidence,
+                {e for c in collected_claims for e in c.evidence_ids} | set(_EVIDENCE_ID_RE.findall(answer_markdown)),
+            ),
             limitations=tuple(answer_limitations),
             snapshot_id=snapshot_id,
             semantic_version_id=semantic_version_id,

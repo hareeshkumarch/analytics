@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, errorMessage } from "@/lib/api/client";
 import { anyText, useUrlState } from "@/lib/url";
+import { AnswerCharts, type AnswerChart } from "@/components/AnswerCharts";
 import { PageHeader } from "@/components/PageHeader";
 import { RichSelect, RichOption } from "@/components/RichSelect";
 import { Badge, EmptyState, FilterChips, Notice, SearchInput, Skeleton, Spinner, btn, cardCls, cx } from "@/components/ui";
@@ -25,7 +26,7 @@ interface RunSummary {
   status: string;
   mode?: string;
   snapshot_id?: string | null;
-  answer?: { summary_markdown?: string } | null;
+  answer?: { summary_markdown?: string; charts?: AnswerChart[] } | null;
   created_at?: string;
 }
 
@@ -257,6 +258,7 @@ export function DashboardView() {
                 <p className={cx("text-[13.5px] leading-relaxed", text ? "text-body" : "text-secondary")}>
                   {text || (runsQuery.isLoading ? "Loading the answer…" : "The saved answer isn't available.")}
                 </p>
+                <AnswerCharts charts={run?.answer?.charts} small />
                 <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
                   <span className="text-[12px] text-secondary">
                     {snap ? `${datasetLabel(snap)} v${snap.version} · ` : ""}pinned {relativeTime(pin.created_at)}

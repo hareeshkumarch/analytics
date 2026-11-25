@@ -3,7 +3,7 @@ import re
 
 import pyarrow as pa
 
-from app.domain.models import ChartSpec, ColumnProfile, ColumnSchema, MetricDefinition, TableSchema
+from app.domain.models import ColumnProfile, ColumnSchema, MetricDefinition, TableSchema
 
 ISO_CURRENCIES = frozenset(
     {
@@ -14,7 +14,6 @@ ISO_CURRENCIES = frozenset(
 )
 MEASURE_HINTS = ("amount", "total", "price", "cost", "revenue", "sales", "fee", "value", "balance", "spend")
 NUMERIC_TYPE_HINTS = ("int", "decimal", "float", "double", "numeric", "real")
-TEMPORAL_HINTS = ("date", "time", "timestamp")
 _TOKEN = re.compile(r"[a-z0-9]+")
 
 
@@ -120,40 +119,3 @@ def propose_metrics_from_schema(schema: TableSchema) -> tuple[MetricDefinition, 
         )
     )
     return tuple(proposals)
-
-
-def recommend_chart_candidates(
-    schema: TableSchema,
-    profiles: tuple[ColumnProfile, ...],
-    artifact_id: str,
-    evidence_id: str,
-) -> tuple[ChartSpec, ...]:
-    date_cols = [c.name for c in schema.columns if any(h in t for t in _tokens(c.name) for h in TEMPORAL_HINTS)]
-    num_cols = [c.name for c in schema.columns if _is_numeric(c.arrow_type)]
-    cat_cols = [
-        p.column_name
-        for p in profiles
-        if 1 < p.distinct_count <= 25 and p.column_name not in date_cols and p.column_name not in num_cols
-    ]
-
-    def chart(kind: str, suffix: str, title: str, x_field: str | None) -> ChartSpec:
-        return ChartSpec(
-            chart_id=f"chart_{schema.table_name}_{suffix}",
-            chart_type=kind,
-            title=title,
-            x_field=x_field,
-            y_fields=(num_cols[0],),
-            unit=None,
-            timezone="UTC",
-            artifact_id=artifact_id,
-            evidence_id=evidence_id,
-        )
-
-    charts: list[ChartSpec] = []
-    if date_cols and num_cols:
-        charts.append(chart("line", "trend", f"{num_cols[0]} over {date_cols[0]}", date_cols[0]))
-    if cat_cols and num_cols:
-        charts.append(chart("bar", "breakdown", f"{num_cols[0]} by {cat_cols[0]}", cat_cols[0]))
-    if num_cols:
-        charts.append(chart("kpi", "kpi", f"Total {num_cols[0]}", None))
-    return tuple(charts)

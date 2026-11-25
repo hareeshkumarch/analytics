@@ -246,6 +246,10 @@ class TestToolLoop(unittest.TestCase):
             self.assertIn("2 tool results", ans.summary_markdown)
             ev = tool_events[1].payload["evidence_id"]
             self.assertEqual(ans.claims[0].evidence_ids, (ev,))
+            self.assertEqual(len(ans.charts), 1)
+            chart = ans.charts[0]
+            self.assertEqual((chart.chart_type, chart.evidence_id, chart.x_field), ("bar", ev, "region"))
+            self.assertEqual(chart.rows, (("north", 12.5), ("south", 5.0)))
             second = gw.requests[1]
             assistant = [m for m in second.messages if m.get("role") == "assistant"][0]
             self.assertEqual(assistant["provider_state"]["continuation"], {"note": "x"})

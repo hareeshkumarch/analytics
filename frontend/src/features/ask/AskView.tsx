@@ -24,6 +24,8 @@ import {
 } from "@/lib/workspace";
 import type { RunMode } from "@/lib/types";
 import { setUrlParam } from "@/lib/url";
+import { AnswerCharts, type AnswerChart } from "@/components/AnswerCharts";
+import { ExportMenu } from "@/features/ask/ExportMenu";
 
 interface Session {
   id: string;
@@ -32,6 +34,7 @@ interface Session {
   runId: string | null;
   status: string;
   answer: string;
+  charts: AnswerChart[];
   /** The answer text came from the saved run; replayed answer.delta events must not be appended again. */
   answerFromServer: boolean;
   events: SseEnvelope[];
@@ -52,7 +55,7 @@ interface StoredRun {
   question: string;
   mode: RunMode;
   status: string;
-  answer?: { summary_markdown?: string } | null;
+  answer?: { summary_markdown?: string; charts?: AnswerChart[] } | null;
   error?: string | null;
   created_at?: string;
   snapshot_id?: string | null;
@@ -99,6 +102,7 @@ function fromStored(run: StoredRun): Session {
     runId: run.run_id,
     status: run.status,
     answer,
+    charts: run.answer?.charts ?? [],
     answerFromServer: Boolean(answer),
     events: [],
     error: run.error ?? null,
@@ -326,12 +330,15 @@ export function AskView() {
         const r = byRun.get(s.runId);
         if (!r) return s;
         const serverAnswer = r.answer?.summary_markdown ?? "";
+        const serverCharts = r.answer?.charts ?? s.charts;
+        const sameCharts = serverCharts.map((c) => c.chart_id).join() === s.charts.map((c) => c.chart_id).join();
         const nextError = r.error ?? s.error;
         const prompt = r.clarification_prompt ?? null;
         const revision = r.clarification_revision ?? s.clarificationRevision;
         if (
           r.status === s.status &&
           (!serverAnswer || serverAnswer === s.answer) &&
+          sameCharts &&
           nextError === s.error &&
           prompt === s.clarificationPrompt &&
           revision === s.clarificationRevision
@@ -340,6 +347,7 @@ export function AskView() {
           ...s,
           status: r.status,
           answer: serverAnswer || s.answer,
+          charts: serverCharts,
           answerFromServer: Boolean(serverAnswer) || s.answerFromServer,
           error: nextError,
           connectionLost: s.connectionLost && !isTerminal(r.status),
@@ -363,10 +371,10 @@ export function AskView() {
     if (match) {
       setActiveId(match.id);
       setPendingRunParam(null);
-    } else if (runsQuery.isSuccess) {
+    } else if (runsQuery.isSuccess && !runsQuery.data.runs.some((r) => r.run_id === pendingRunParam)) {
       setPendingRunParam(null);
     }
-  }, [pendingRunParam, sessions, runsQuery.isSuccess]);
+  }, [pendingRunParam, sessions, runsQuery.isSuccess, runsQuery.data]);
 
   const patch = useCallback(
     (id: string, fn: (s: Session) => Partial<Session>) =>
@@ -501,6 +509,7 @@ export function AskView() {
         runId: null,
         status: "queued",
         answer: "",
+        charts: [],
         answerFromServer: false,
         events: [],
         error: null,
@@ -915,6 +924,9 @@ export function AskView() {
                       {copied ? "Copied" : "Copy"}
                     </button>
                   )}
+                  {active.status === "completed" && active.runId && active.answer && (
+                    <ExportMenu workspaceId={activeWorkspaceId} runId={active.runId} question={active.question} />
+                  )}
                   {active.status === "completed" && active.runId && (
                     pinnedRunIds.has(active.runId) ? (
                       <Link href="/dashboard" className={btn.secondary}>
@@ -1002,6 +1014,7 @@ export function AskView() {
                   <EvidenceContext.Provider value={active.runId ? setOpenEvidence : null}>
                     <SafeMarkdown content={active.answer} />
                   </EvidenceContext.Provider>
+                  {active.status === "completed" && <AnswerCharts charts={active.charts} />}
                 </ErrorBoundary>
               ) : (
                 isWorking && (

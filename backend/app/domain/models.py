@@ -216,12 +216,10 @@ class ChartSpec:
     chart_id: str
     chart_type: str
     title: str
-    x_field: str | None
+    x_field: str
     y_fields: tuple[str, ...]
-    unit: str | None
-    timezone: str
-    artifact_id: str
     evidence_id: str
+    rows: tuple[tuple[str | float | None, ...], ...]
     truncated: bool = False
 
 

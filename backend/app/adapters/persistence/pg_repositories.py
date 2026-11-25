@@ -1,4 +1,4 @@
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from decimal import Decimal
 import uuid
@@ -543,6 +543,7 @@ class PgRunRepository:
                             }
                             for c in answer.claims
                         ],
+                        "charts": [asdict(chart) for chart in answer.charts],
                     }
                 )
                 row.answer_json = existing_ans
