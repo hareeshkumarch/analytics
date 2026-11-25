@@ -276,7 +276,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** Usage shows totals per run only.
 - **How to fix:** Use the persistent budget ledger ([07](07-in-memory-state.md)), expose attempt rows (model, role, tokens, cost, latency), and add model and provider filters and charts.
 
-### I6 "Try with sample data" for first-time users (UX)
+### I6 "Try with sample data" for first-time users (UX) (done)
+- **Status (2026-11-25):** `POST /workspaces/{ws}/samples/inr_acceptance/import` imports the four INR fixture CSVs as one dataset (orders, refunds, fees, payouts) through the normal import path and approves its proposed definitions. The Docker image copies the fixtures to `/app/samples` (`SAMPLE_DATA_DIR`). "Try with sample data" appears in the Ask setup checklist and on the Data page, and Ask suggests three example questions while the sample is selected.
 - **Reason:** New users must find their own data before they can see the product work.
 - **How to fix:** A button on the Ask setup checklist and the Data page that imports `fixtures/inr_acceptance/*.csv` as a ready-made dataset and suggests a few example questions.
 

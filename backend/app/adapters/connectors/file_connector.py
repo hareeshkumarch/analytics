@@ -2,7 +2,7 @@ import hashlib
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from app.adapters.parsers.registry import ParserRegistry
+from app.adapters.parsers.registry import ParsedTable, ParserRegistry
 from app.application.ports.clock import Clock
 from app.application.ports.connectors import (
     DiscoveredTable,
@@ -11,7 +11,7 @@ from app.application.ports.connectors import (
     ProbeResult,
 )
 from app.domain.errors import ConnectorError, LimitExceededError, ValidationError
-from app.domain.limits import DEFAULT_DATA_LIMITS
+from app.domain.limits import DEFAULT_DATA_LIMITS, DataLimits
 from app.domain.models import (
     ConnectorFamily,
     ConsistencyLevel,
@@ -35,6 +35,20 @@ class UploadedFileConnector:
             supports_incremental=False,
         )
 
+    def _read_inputs(self, config: dict[str, Any]) -> list[tuple[bytes, str, str]]:
+        files = config.get("files")
+        if files is None:
+            return [self._read_config_bytes(config)]
+        fmt = str(config.get("format", "")).lower()
+        return [(bytes(raw), fmt, str(name)) for name, raw in files]
+
+    def _parse_all(self, config: dict[str, Any], limits: DataLimits) -> tuple[list[ParsedTable], str]:
+        parsed: list[ParsedTable] = []
+        fmt = ""
+        for raw_bytes, fmt, table_name in self._read_inputs(config):
+            parsed.extend(self._parsers.get(fmt).parse(raw_bytes, table_name, limits, config.get("options")))
+        return parsed, fmt
+
     def _read_config_bytes(self, config: dict[str, Any]) -> tuple[bytes, str, str]:
         fmt = str(config.get("format", "")).lower()
         table_name = str(config.get("table_name") or "uploaded_table")
@@ -49,26 +63,24 @@ class UploadedFileConnector:
         return path.read_bytes(), fmt, table_name
 
     def probe(self, config: dict[str, Any], credentials: dict[str, str]) -> ProbeResult:
-        raw_bytes, fmt, _ = self._read_config_bytes(config)
+        inputs = self._read_inputs(config)
+        fmt = inputs[0][1] if inputs else ""
         self._parsers.get(fmt)
-        if len(raw_bytes) > DEFAULT_DATA_LIMITS.max_uploaded_file_bytes:
+        size = sum(len(raw) for raw, _, _ in inputs)
+        if size > DEFAULT_DATA_LIMITS.max_uploaded_file_bytes:
             raise LimitExceededError("Uploaded file exceeds 40,000,000 bytes limit")
         return ProbeResult(
             ok=True,
             family=self.family,
-            message=f"Validated {fmt.upper()} file ({len(raw_bytes)} bytes)",
+            message=f"Validated {fmt.upper()} file ({size} bytes)",
             capabilities=self.capabilities(),
-            details={"format": fmt, "byte_size": str(len(raw_bytes))},
+            details={"format": fmt, "byte_size": str(size)},
         )
 
     def discover(
         self, config: dict[str, Any], credentials: dict[str, str]
     ) -> tuple[DiscoveredTable, ...]:
-        raw_bytes, fmt, table_name = self._read_config_bytes(config)
-        parser = self._parsers.get(fmt)
-        parsed_tables = parser.parse(
-            raw_bytes, table_name, DEFAULT_DATA_LIMITS, config.get("options")
-        )
+        parsed_tables, fmt = self._parse_all(config, DEFAULT_DATA_LIMITS)
         return tuple(
             DiscoveredTable(
                 name=pt.table_name,
@@ -89,9 +101,7 @@ class UploadedFileConnector:
         if is_cancelled():
             raise ConnectorError("Extraction cancelled before start")
         started_at = self._clock.now()
-        raw_bytes, fmt, table_name = self._read_config_bytes(config)
-        parser = self._parsers.get(fmt)
-        parsed_tables = parser.parse(raw_bytes, table_name, request.limits, config.get("options"))
+        parsed_tables, fmt = self._parse_all(config, request.limits)
 
         selected = set(request.selected_tables) if request.selected_tables else None
         if selected is not None and not any(pt.table_name in selected for pt in parsed_tables):

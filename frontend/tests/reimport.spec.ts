@@ -17,12 +17,12 @@ const SNAPSHOT = {
 };
 
 test("a dataset can be imported again with its saved settings", async ({ page }) => {
-  let extractBody: Record<string, unknown> | null = null;
+  const seen: { body: Record<string, unknown> | null } = { body: null };
   await page.route("**/api/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/snapshots")) return route.fulfill({ json: { snapshots: [SNAPSHOT] } });
     if (path.endsWith("/connectors/extract")) {
-      extractBody = JSON.parse(route.request().postData() ?? "{}");
+      seen.body = JSON.parse(route.request().postData() ?? "{}");
       return route.fulfill({ status: 500, json: { detail: "stop here" } });
     }
     if (path.endsWith("/connectors/probe")) return route.fulfill({ json: { ok: true, family: "mysql", message: "ok" } });
@@ -43,14 +43,14 @@ test("a dataset can be imported again with its saved settings", async ({ page })
   await add.getByLabel("Password").fill("s3cret");
   await add.getByRole("button", { name: "Test connection" }).click();
   await add.getByRole("button", { name: "Import 1 table" }).click();
-  await expect.poll(() => extractBody).not.toBeNull();
-  expect(extractBody).toMatchObject({
+  await expect.poll(() => seen.body).not.toBeNull();
+  expect(seen.body).toMatchObject({
     source_id: "src_abc_123",
     selected_tables: ["orders"],
     credentials: { username: "reader", password: "s3cret" },
     form: { connector_id: "mysql", values: { host: "db.example.com", database: "shop" } },
   });
-  expect(JSON.stringify((extractBody as { form: unknown }).form)).not.toContain("s3cret");
+  expect(JSON.stringify(seen.body?.form)).not.toContain("s3cret");
   await add.getByRole("button", { name: "Change source" }).click();
   await expect(add.getByRole("heading", { name: "Add data" })).toBeVisible();
 });

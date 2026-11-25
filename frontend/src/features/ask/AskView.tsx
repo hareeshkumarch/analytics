@@ -26,6 +26,8 @@ import type { RunMode } from "@/lib/types";
 import { setUrlParam } from "@/lib/url";
 import { AnswerCharts, type AnswerChart } from "@/components/AnswerCharts";
 import { ExportMenu } from "@/features/ask/ExportMenu";
+import { SampleDataButton } from "@/components/SampleDataButton";
+import { SAMPLE_QUESTIONS, isSampleDataset } from "@/lib/sample";
 
 interface Session {
   id: string;
@@ -462,7 +464,7 @@ export function AskView() {
   // Readiness: a provider key and an approved dataset are both required before asking.
   const anyProvider = providers.data ? providers.data.providers.some((p) => p.configured) : null;
   const hasApproved = snapshotsQuery.data ? approvedSnapshots.length > 0 : null;
-  const blockers: { key: string; title: string; body: string; href: string; cta: string }[] = [];
+  const blockers: { key: string; title: string; body: string; href: string; cta: string; sample?: boolean }[] = [];
   if (anyProvider === false) {
     blockers.push({
       key: "provider",
@@ -478,9 +480,10 @@ export function AskView() {
       title: snapshots.length ? "Approve a dataset" : "Connect your data",
       body: snapshots.length
         ? "Your imported data needs its definitions approved before questions can use it."
-        : "Import a file, a database or an app on the Data page.",
+        : "Import a file, a database or an app on the Data page, or start with sample shop data.",
       href: "/data",
       cta: snapshots.length ? "Review datasets" : "Add data",
+      sample: !snapshots.length,
     });
   }
   const canAsk = blockers.length === 0 && Boolean(snapshot);
@@ -886,9 +889,12 @@ export function AskView() {
                     <span className="block text-[13.5px] font-medium text-ink">{b.title}</span>
                     <span className="block text-[12.5px] text-secondary">{b.body}</span>
                   </span>
-                  <Link href={b.href} className={btn.secondary}>
-                    {b.cta}
-                  </Link>
+                  <span className="flex flex-wrap items-start gap-2">
+                    {b.sample && <SampleDataButton onImported={(snap) => setChosenSnapshot(snap.snapshot_id)} />}
+                    <Link href={b.href} className={btn.secondary}>
+                      {b.cta}
+                    </Link>
+                  </span>
                 </li>
               ))}
             </ol>
@@ -896,6 +902,27 @@ export function AskView() {
         )}
 
         {composer}
+        {!active && isSampleDataset(snapshot) && (
+          <section aria-label="Example questions" className="space-y-2">
+            <p className="text-xs text-secondary">Questions to try on the sample data:</p>
+            <ul className="flex flex-wrap gap-2">
+              {SAMPLE_QUESTIONS.map((q) => (
+                <li key={q}>
+                  <button
+                    type="button"
+                    className="min-h-[36px] border border-border bg-surface px-3 text-left text-[13px] text-body transition-colors hover:border-ink hover:text-ink"
+                    onClick={() => {
+                      setDraftQuestion(q);
+                      textareaRef.current?.focus();
+                    }}
+                  >
+                    {q}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         {submitError && (
           <Notice tone="err" title={submitError.message}>
             {submitError.hint}

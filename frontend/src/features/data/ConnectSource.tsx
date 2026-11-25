@@ -19,6 +19,7 @@ import {
 } from "@/lib/connectors";
 import { datasetLabel, useHealth } from "@/lib/workspace";
 import { ConnectorCatalog } from "@/features/data/ConnectorCatalog";
+import { SampleDataButton } from "@/components/SampleDataButton";
 import { FileSource, useFileSource } from "@/features/data/FileSource";
 import { SourceForm } from "@/features/data/SourceForm";
 import { StepProgress } from "@/features/data/StepProgress";
@@ -352,6 +353,10 @@ export function ConnectSource({
             <p className="mt-1 text-xs text-secondary">
               Pick a source. Each import becomes a read-only snapshot, and credentials are only used for that import.
             </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-panel px-3.5 py-3">
+            <span className="min-w-0 flex-1 text-[13px] text-body">No data handy? Import a small shop dataset with orders, refunds, fees and payouts.</span>
+            <SampleDataButton onImported={(snap) => onImported(snap.snapshot_id)} />
           </div>
           <ConnectorCatalog onSelect={setSelectedId} />
         </div>

@@ -8,6 +8,7 @@ import hashlib
 import json
 import logging
 import os
+from pathlib import Path
 import re
 import shutil
 import tempfile
@@ -108,6 +109,13 @@ def _materialized_connector_config(
     cfg.pop("file_path", None)
     cfg.pop("raw_bytes", None)
     cfg.pop("upload_id", None)
+    cfg.pop("files", None)
+    sample = cfg.pop("sample", None)
+    if sample is not None:
+        if family != ConnectorFamily.UPLOADED_FILE:
+            raise ValidationError("Sample data is imported as uploaded files.")
+        cfg["files"] = _sample_files(str(sample))
+        cfg["format"] = "csv"
     if upload_bytes is not None:
         cfg["raw_bytes"] = upload_bytes
     tmp_dir: str | None = None
@@ -138,8 +146,25 @@ def _materialized_connector_config(
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+SAMPLE_DATASETS = {"inr_acceptance": "Sample shop payments (INR)"}
+
+
+def _sample_dir(name: str) -> Path:
+    root = os.getenv("SAMPLE_DATA_DIR") or str(Path(__file__).resolve().parents[3] / "fixtures")
+    return Path(root) / name
+
+
+def _sample_files(name: str) -> list[tuple[str, bytes]]:
+    if name not in SAMPLE_DATASETS:
+        raise ValidationError(f"Unknown sample dataset {name!r}.")
+    files = [(p.stem, p.read_bytes()) for p in sorted(_sample_dir(name).glob("*.csv"))]
+    if not files:
+        raise NotFoundError("The sample data isn't installed on this server.")
+    return files
+
+
 _URL_CONFIG_KEYS = ("url",)
-_DROPPED_CONFIG_KEYS = ("raw_base64", "raw_bytes", "file_path", "upload_id")
+_DROPPED_CONFIG_KEYS = ("raw_base64", "raw_bytes", "file_path", "upload_id", "files")
 
 
 def _without_url_secrets(value: str) -> str:
@@ -716,6 +741,26 @@ def create_app(
             "snapshot": snap_dict,
             "semantics": sem_dict,
         }
+
+    @app.post("/api/v1/workspaces/{workspace_id}/samples/{sample_name}/import", status_code=201)
+    async def import_sample(workspace_id: str, sample_name: str) -> dict[str, Any]:
+        tables = [name for name, _ in await asyncio.to_thread(_sample_files, sample_name)]
+        imported = await extract_connector(
+            workspace_id,
+            ConnectorExtractRequest(
+                family=ConnectorFamily.UPLOADED_FILE,
+                config={"format": "csv", "sample": sample_name},
+                selected_tables=tables,
+            ),
+        )
+        snapshot_id = imported["snapshot"]["snapshot_id"]
+        semantics = await asyncio.to_thread(
+            approve_semantics,
+            workspace_id,
+            snapshot_id,
+            ApproveSemanticsRequest(expected_version=int(imported["semantics"]["version"])),
+        )
+        return {"snapshot": {**imported["snapshot"], "approved": True}, "semantics": semantics}
 
     @app.get("/api/v1/workspaces/{workspace_id}/snapshots")
     def list_snapshots(workspace_id: str) -> dict[str, Any]:
