@@ -227,6 +227,37 @@ class DeepAgentTaskRunner:
         data = response.structured_output if isinstance(response.structured_output, dict) else parse_strict_json(response.text, schema)
         return data, response.provider_id.value, response.model_id
 
+    def run_text(
+        self,
+        *,
+        role: AgentRole,
+        system_prompt: str,
+        user_prompt: str,
+        run_id: str,
+        policy: RoutingPolicy,
+        on_delta: Callable[[str], None],
+        on_reset: Callable[[], None],
+        deadline: float | None = None,
+    ) -> tuple[str, str, str]:
+        messages = ({"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt})
+        remaining = 120 if deadline is None else int(deadline - time.monotonic())
+        response = self._routing.execute_step(
+            request=ModelRequest(
+                request_id=f"text_{uuid.uuid4().hex[:12]}",
+                run_id=run_id,
+                role=role,
+                model_id="",
+                messages=messages,
+                max_output_tokens=12_000,
+                timeout_seconds=max(30, min(120, remaining)),
+            ),
+            policy=policy,
+            estimated_input_tokens=estimate_input_tokens(messages),
+            on_delta=on_delta,
+            on_reset=on_reset,
+        )
+        return response.text, response.provider_id.value, response.model_id
+
     def set_checkpointer(self, checkpointer: Any | None) -> None:
         self._checkpointer = checkpointer
 

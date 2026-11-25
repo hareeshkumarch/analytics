@@ -1,11 +1,12 @@
 from decimal import Decimal
 import re
 import threading
-from typing import Any
+from typing import Any, Callable, Generator, cast
 import uuid
 
 from app.adapters.providers.registry import ProviderRegistry
 from app.application.ports.clock import Clock
+from app.adapters.providers.http_utils import STREAM_UNSUPPORTED
 from app.application.ports.providers import BudgetLedger, ModelRequest, ModelResponse
 from app.application.services.budget_service import DEFAULT_MAX_TOKENS
 from app.domain.errors import CircuitOpenError, ProviderError
@@ -20,6 +21,15 @@ from app.domain.providers import (
     RoutingPolicy,
     RoutingPreset,
 )
+
+
+def _drain(stream: Generator[str, None, ModelResponse], on_piece: Callable[[str], None]) -> ModelResponse:
+    while True:
+        try:
+            piece = next(stream)
+        except StopIteration as done:
+            return cast(ModelResponse, done.value)
+        on_piece(piece)
 
 
 def routing_policy_from_saved(saved: dict[str, Any] | None, default: RoutingPolicy) -> RoutingPolicy:
@@ -243,7 +253,16 @@ class RoutingService:
         policy: RoutingPolicy,
         estimated_input_tokens: int,
         manual_model_id: str | None = None,
+        on_delta: Callable[[str], None] | None = None,
+        on_reset: Callable[[], None] | None = None,
     ) -> ModelResponse:
+        partial = [False]
+
+        def emit(piece: str) -> None:
+            partial[0] = True
+            if on_delta is not None:
+                on_delta(piece)
+
         candidates = self.select_candidates(
             role=request.role,
             policy=policy,
@@ -314,8 +333,28 @@ class RoutingService:
                 gateway = self._providers.get(model.provider_id)
                 api_key = self._api_keys[model.provider_id]
 
+                if partial[0] and on_reset is not None:
+                    on_reset()
+                partial[0] = False
+                stream_fn = getattr(gateway, "stream", None)
+                streams = (
+                    on_delta is not None
+                    and model.capabilities.streaming
+                    and stream_fn is not None
+                    and not current_request.tools
+                    and current_request.structured_schema is None
+                )
                 try:
-                    resp = gateway.invoke(current_request, prov_profile, model, api_key)
+                    if streams and stream_fn is not None:
+                        try:
+                            resp = _drain(stream_fn(current_request, prov_profile, model, api_key), emit)
+                        except ProviderError as stream_exc:
+                            if stream_exc.code != STREAM_UNSUPPORTED or partial[0]:
+                                raise
+                            resp = gateway.invoke(current_request, prov_profile, model, api_key)
+                            emit(resp.text)
+                    else:
+                        resp = gateway.invoke(current_request, prov_profile, model, api_key)
                 except ProviderError as exc:
                     last_error = exc
                     self._ledger.release_unresolved(reservation.reservation_id, str(exc))
@@ -371,6 +410,8 @@ class RoutingService:
             self._semaphores.release(sem_key)
             self._circuits.release_probe(cb_key)
 
+        if partial[0] and on_reset is not None:
+            on_reset()
         if last_error:
             raise last_error
         raise CircuitOpenError("All eligible provider circuits are currently open")

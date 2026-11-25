@@ -49,6 +49,8 @@ FINAL_ROUND_MIN_TIMEOUT_SECONDS = 30
 OLDER_RESULT_MAX_CHARS = 4_000
 OLDER_RESULT_ROWS = 10
 COMPOSER_ATTEMPT_RESERVE = 1
+STREAM_FLUSH_CHARS = 120
+STREAM_FLUSH_SECONDS = 0.25
 MIN_ATTEMPTS_PER_TASK = 2
 
 
@@ -1212,16 +1214,45 @@ class InvestigationOrchestrator:
                 ],
                 "limitations": answer_limitations,
             }
+            streamed = ""
+            pending = ""
+            last_flush = time.monotonic()
+            stream_started = False
+
+            def _flush_stream() -> None:
+                nonlocal streamed, pending, last_flush
+                if pending:
+                    _emit(EventType.ANSWER_DELTA, {"text": pending, "draft_id": "final_answer"})
+                    streamed += pending
+                    pending = ""
+                last_flush = time.monotonic()
+
+            def _on_composer_delta(piece: str) -> None:
+                nonlocal pending, stream_started
+                if not stream_started:
+                    _emit(EventType.ANSWER_RESET, {})
+                    stream_started = True
+                pending += piece
+                if len(pending) >= STREAM_FLUSH_CHARS or time.monotonic() - last_flush >= STREAM_FLUSH_SECONDS:
+                    _flush_stream()
+
+            def _on_composer_reset() -> None:
+                nonlocal streamed, pending, stream_started
+                streamed = pending = ""
+                stream_started = False
+
             try:
-                composed, composer_provider, composer_model = self._deep_agent_runner.run_control_agent(
+                composed, composer_provider, composer_model = self._deep_agent_runner.run_text(
                     role=AgentRole.ANSWER_COMPOSER,
                     system_prompt=composer_prompt,
                     user_prompt=json.dumps(composer_input, ensure_ascii=False, default=str),
                     run_id=run_id,
                     policy=policy,
+                    on_delta=_on_composer_delta,
+                    on_reset=_on_composer_reset,
                     deadline=deadline,
-                    should_cancel=_cancelled,
                 )
+                _flush_stream()
                 known_ids = {evidence_id for claim in collected_claims for evidence_id in claim.evidence_ids}
                 composed, _ = _strip_unknown_citations(composed, known_ids)
                 if composed.strip():
@@ -1230,6 +1261,7 @@ class InvestigationOrchestrator:
                         EventType.ROUTE_SELECTED,
                         {"task_id": "answer_composer", "provider": composer_provider, "model": composer_model},
                     )
+                if not stream_started or streamed.strip() != answer_markdown:
                     _emit(EventType.ANSWER_RESET, {})
                     _emit(EventType.ANSWER_DELTA, {"text": answer_markdown, "draft_id": "final_answer"})
             except Exception:

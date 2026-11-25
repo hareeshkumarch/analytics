@@ -1,8 +1,8 @@
-from typing import Any
+from typing import Any, Generator
 
 import httpx
 
-from app.adapters.providers.http_utils import classify_http_error, parse_strict_json
+from app.adapters.providers.http_utils import classify_http_error, parse_strict_json, read_chat_completions_event, stream_sse_text
 from app.adapters.providers.message_format import parse_arguments, to_chat_completions
 from app.application.ports.providers import ModelRequest, ModelResponse, ToolCallResult
 from app.domain.errors import ProviderError, ValidationError
@@ -50,6 +50,33 @@ class NvidiaNimAdapter:
                 },
             }
         return payload
+
+    def stream(
+        self,
+        request: ModelRequest,
+        provider_profile: ProviderProfile,
+        model_profile: ModelProfile,
+        api_key: str,
+    ) -> Generator[str, None, ModelResponse]:
+        if not api_key:
+            raise ProviderError("NVIDIA NIM API key not configured", code="setup_required", retryable=False)
+        text, state = yield from stream_sse_text(
+            f"{provider_profile.base_url.rstrip('/')}/chat/completions",
+            {**self.build_payload(request, model_profile), "stream": True, "stream_options": {"include_usage": True}},
+            {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            request.timeout_seconds,
+            self._transport,
+            "NVIDIA NIM",
+            read_chat_completions_event,
+        )
+        return ModelResponse(
+            provider_id=self.provider_id,
+            model_id=model_profile.model_id,
+            text=text,
+            finish_reason=str(state["finish_reason"]),
+            input_tokens=int(state["input_tokens"]),
+            output_tokens=int(state["output_tokens"]),
+        )
 
     def invoke(
         self,
