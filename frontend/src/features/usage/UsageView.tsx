@@ -4,6 +4,7 @@ import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { anyText, useUrlState } from "@/lib/url";
 import { apiFetch, errorMessage } from "@/lib/api/client";
 import { RichSelect, RichOption } from "@/components/RichSelect";
 import { PageHeader } from "@/components/PageHeader";
@@ -62,6 +63,11 @@ const MODE_OPTIONS: RichOption[] = [
   { value: "deep", label: "Deep" },
 ];
 
+const isWindowKey = (value: string): value is WindowKey => WINDOW_OPTIONS.some((o) => o.value === value);
+const isStatusFilter = (value: string): value is string => STATUS_OPTIONS.some((o) => o.value === value);
+const isModeFilter = (value: string): value is string => MODE_OPTIONS.some((o) => o.value === value);
+const isMetric = (value: string): value is Metric => value === "tokens" || value === "cost" || value === "runs";
+
 const STATUS_DOT: Record<string, string> = {
   completed: "bg-ok-dot",
   failed: "bg-err-dot",
@@ -115,11 +121,11 @@ function bucketRuns(runs: RunUsageItem[], windowKey: WindowKey) {
 
 export function UsageView() {
   const ws = useWorkspace();
-  const [windowFilter, setWindowFilter] = useState<WindowKey>("7d");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [modeFilter, setModeFilter] = useState("all");
-  const [search, setSearch] = useState("");
-  const [metric, setMetric] = useState<Metric>("tokens");
+  const [windowFilter, setWindowFilter] = useUrlState<WindowKey>("window", "7d", isWindowKey);
+  const [statusFilter, setStatusFilter] = useUrlState("status", "all", isStatusFilter);
+  const [modeFilter, setModeFilter] = useUrlState("mode", "all", isModeFilter);
+  const [search, setSearch] = useUrlState("q", "", anyText);
+  const [metric, setMetric] = useUrlState<Metric>("metric", "tokens", isMetric);
 
   const gridColor = useThemeColor("border", "#E4E4E7");
   const axisColor = useThemeColor("muted", "#696972");

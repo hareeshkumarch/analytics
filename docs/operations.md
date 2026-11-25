@@ -13,3 +13,5 @@
 ## Backup & Restore
 - Backup PostgreSQL + published artifacts: `make backup-dev`
 - Restore from backup directory: `make restore-dev BACKUP_DIR=./backups/<timestamp>`
+
+The web app calls the API at the relative path `/api/v1`, which Caddy serves on the same origin. To run `next dev` on its own, start it with `API_PROXY_ORIGIN=http://127.0.0.1:8000` so `/api` is proxied to the API, or set `NEXT_PUBLIC_API_BASE` to an absolute URL at build time.

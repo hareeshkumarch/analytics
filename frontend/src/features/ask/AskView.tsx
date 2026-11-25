@@ -68,6 +68,11 @@ interface RunPage {
 type HistoryFilter = "all" | "done" | "running" | "failed";
 
 const TERMINAL = new Set(["completed", "failed", "cancelled"]);
+const FINISHED_MESSAGES: Record<string, string> = {
+  completed: "Answer ready.",
+  failed: "The run failed.",
+  cancelled: "The run was cancelled.",
+};
 const isTerminal = (status: string) => TERMINAL.has(status);
 
 const OPERATION_LABELS: Record<string, string> = {
@@ -293,6 +298,7 @@ export function AskView() {
   const [olderRuns, setOlderRuns] = useState<{ runs: StoredRun[]; next: string | null | undefined }>({ runs: [], next: undefined });
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [followUpDraft, setFollowUpDraft] = useState("");
+  const [liveMessage, setLiveMessage] = useState("");
   const olderCursor = olderRuns.next === undefined ? runsQuery.data?.next_before ?? null : olderRuns.next;
 
   async function loadOlderRuns() {
@@ -406,6 +412,21 @@ export function AskView() {
   );
 
   const active = sessions.find((s) => s.id === activeId) ?? null;
+  const watched = useRef<{ id: string | null; status: string | null }>({ id: null, status: null });
+  const activeKey = active?.id ?? null;
+  const activeStatus = active?.status ?? null;
+
+  useEffect(() => {
+    const previous = watched.current;
+    watched.current = { id: activeKey, status: activeStatus };
+    if (previous.id !== activeKey) {
+      setLiveMessage("");
+      return;
+    }
+    const finished = activeStatus !== null && isTerminal(activeStatus);
+    const wasRunning = previous.status !== null && !isTerminal(previous.status);
+    if (finished && wasRunning) setLiveMessage(FINISHED_MESSAGES[activeStatus] ?? "");
+  }, [activeKey, activeStatus]);
 
   // Opening a saved run loads its trace once; a run that is still working resumes live updates.
   useEffect(() => {
@@ -672,15 +693,6 @@ export function AskView() {
   const presetLabel = PRESET_OPTIONS.find((o) => o.value === routing.data?.preset)?.label;
   const activeDataset = active?.snapshotId ? snapshotById.get(active.snapshotId) : undefined;
   const errorInfo = active?.error ? friendlyError(active.error) : null;
-  const liveMessage = active
-    ? active.status === "completed"
-      ? "Answer ready."
-      : active.status === "failed"
-        ? "The run failed."
-        : active.status === "cancelled"
-          ? "The run was cancelled."
-          : ""
-    : "";
 
   const composer = (
     <form

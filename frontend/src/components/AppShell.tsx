@@ -77,7 +77,7 @@ function BrandMark({ size = "h-8 w-8 text-[17px]" }: { size?: string }) {
   return (
     <div
       aria-hidden="true"
-      className={`${size} flex shrink-0 items-center justify-center rounded-none bg-plum font-display font-bold leading-none text-on-accent`}
+      className={`${size} flex shrink-0 items-center justify-center bg-plum font-display font-bold leading-none text-on-accent`}
     >
       L
     </div>
@@ -89,7 +89,7 @@ function RailTip({ show, children }: { show: boolean; children: React.ReactNode 
   return (
     <span
       role="tooltip"
-      className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-xs font-medium text-canvas opacity-0 shadow-pop transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+      className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 whitespace-nowrap bg-ink px-2.5 py-1.5 text-xs font-medium text-canvas opacity-0 shadow-pop transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
     >
       {children}
     </span>
@@ -169,7 +169,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   key={item.href}
                   href={item.href}
                   aria-current={active ? "page" : undefined}
-                  className={`inline-flex min-h-[40px] shrink-0 items-center rounded-none px-3.5 text-[13px] transition-colors ${
+                  className={`inline-flex min-h-[40px] shrink-0 items-center px-3.5 text-[13px] transition-colors ${
                     active ? "bg-ink font-medium text-canvas" : "text-body hover:bg-sidebar"
                   }`}
                 >
@@ -194,7 +194,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Link
             href="/ask"
             aria-label="Ledgerline home"
-            className={`group relative mb-6 flex items-center gap-2.5 rounded-xl ${collapsed ? "justify-center py-1" : "px-1.5 py-1"}`}
+            className={`group relative mb-6 flex items-center gap-2.5 ${collapsed ? "justify-center py-1" : "px-1.5 py-1"}`}
           >
             <BrandMark />
             {!collapsed && (
@@ -214,7 +214,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   href={item.href}
                   aria-label={collapsed ? item.label : undefined}
                   aria-current={active ? "page" : undefined}
-                  className={`group relative flex min-h-[42px] items-center gap-3 rounded-none text-[13.5px] transition-colors ${
+                  className={`group relative flex min-h-[42px] items-center gap-3 text-[13.5px] transition-colors ${
                     collapsed ? "justify-center" : "px-2.5"
                   } ${
                     active
@@ -241,7 +241,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <ThemeToggle />
             )}
             <div
-              className={`group relative flex items-center gap-2.5 rounded-xl border border-border bg-canvas ${
+              className={`group relative flex items-center gap-2.5 border border-border bg-canvas ${
                 collapsed ? "justify-center p-2.5" : "p-2.5"
               }`}
               title={collapsed ? `${workspaceId} workspace · local, no login` : undefined}
@@ -261,7 +261,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               onClick={toggle}
               aria-expanded={!collapsed}
               aria-label={collapsed ? "Expand sidebar (Ctrl+B)" : "Collapse sidebar (Ctrl+B)"}
-              className={`group relative flex min-h-[40px] w-full items-center gap-2.5 rounded-none text-[13px] text-secondary transition-colors hover:bg-surface hover:text-ink ${
+              className={`group relative flex min-h-[40px] w-full items-center gap-2.5 text-[13px] text-secondary transition-colors hover:bg-surface hover:text-ink ${
                 collapsed ? "justify-center" : "px-2.5"
               }`}
             >
@@ -281,7 +281,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {!collapsed && (
                 <>
                   <span className="flex-1 text-left">Collapse</span>
-                  <kbd className="rounded-md border border-border bg-surface px-1.5 py-0.5 font-sans text-[10.5px] text-secondary">
+                  <kbd className="border border-border bg-surface px-1.5 py-0.5 font-sans text-[10.5px] text-secondary">
                     Ctrl B
                   </kbd>
                 </>

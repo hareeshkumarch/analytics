@@ -162,7 +162,7 @@ export function RichSelect({
         disabled={disabled}
         onClick={() => (open ? setOpen(false) : openList())}
         onKeyDown={handleKeyDown}
-        className={`flex w-full items-center justify-between gap-2 rounded-none border bg-surface text-left text-[13.5px] text-ink transition-colors hover:border-plum disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border ${
+        className={`flex w-full items-center justify-between gap-2 border bg-surface text-left text-[13.5px] text-ink transition-colors hover:border-plum disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border ${
           open ? "border-plum ring-[3px] ring-plum-soft" : "border-border-strong"
         } ${compact ? "min-h-[40px] px-3 sm:min-w-[180px]" : "min-h-[44px] px-3.5"}`}
       >
@@ -170,7 +170,7 @@ export function RichSelect({
           {selected?.icon}
           <span className="truncate">{selected ? selected.label : placeholder}</span>
           {selected?.badge && !compact && (
-            <span className="hidden shrink-0 rounded-none bg-canvas px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-secondary sm:inline">
+            <span className="hidden shrink-0 bg-canvas px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-secondary sm:inline">
               {selected.badge}
             </span>
           )}
@@ -196,7 +196,7 @@ export function RichSelect({
           aria-labelledby={nameText ? labelId : undefined}
           aria-label={nameText ? undefined : placeholder}
           tabIndex={-1}
-          className={`absolute z-50 max-h-72 w-full min-w-[min(260px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] space-y-0.5 overflow-y-auto overscroll-contain rounded-none border border-border bg-surface p-1.5 shadow-pop ${
+          className={`absolute z-50 max-h-72 w-full min-w-[min(260px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] space-y-0.5 overflow-y-auto overscroll-contain border border-border bg-surface p-1.5 shadow-pop ${
             dropUp ? "bottom-full mb-1.5" : "top-full mt-1.5"
           } ${alignRight ? "right-0" : "left-0"}`}
         >
@@ -213,7 +213,7 @@ export function RichSelect({
                 onPointerEnter={() => !opt.disabled && setActiveIdx(idx)}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => choose(idx)}
-                className={`flex cursor-pointer items-center justify-between gap-3 rounded-none px-3 py-2.5 text-[13.5px] transition-colors ${
+                className={`flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 text-[13.5px] transition-colors ${
                   opt.disabled ? "cursor-not-allowed opacity-50" : ""
                 } ${isActive ? "bg-sidebar" : ""} text-ink`}
               >
@@ -222,7 +222,7 @@ export function RichSelect({
                   <div className="flex items-center gap-2">
                     <span className={`truncate ${isSelected ? "font-medium" : ""}`}>{opt.label}</span>
                     {opt.badge && (
-                      <span className="shrink-0 rounded-none bg-surface px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-secondary ring-1 ring-border">
+                      <span className="shrink-0 bg-surface px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-secondary ring-1 ring-border">
                         {opt.badge}
                       </span>
                     )}

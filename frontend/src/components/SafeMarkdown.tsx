@@ -24,7 +24,7 @@ function EvidenceChip({ id }: { id: string }) {
       type="button"
       onClick={() => open(id)}
       title="Show the query and rows behind this figure"
-      className="mx-0.5 inline-flex items-center rounded-md bg-plum-soft px-1.5 py-px align-baseline font-mono text-[0.78em] text-plum transition-colors hover:bg-plum hover:text-on-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-plum"
+      className="mx-0.5 inline-flex items-center bg-plum-soft px-1.5 py-px align-baseline font-mono text-[0.78em] text-plum transition-colors hover:bg-plum hover:text-on-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-plum"
     >
       {id}
     </button>
@@ -51,7 +51,7 @@ function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
       );
     } else if (token.startsWith("`")) {
       out.push(
-        <code key={key} className="rounded-md bg-panel px-1.5 py-0.5 font-mono text-[0.86em] text-ink">
+        <code key={key} className="bg-panel px-1.5 py-0.5 font-mono text-[0.86em] text-ink">
           {token.slice(1, -1)}
         </code>
       );
@@ -229,13 +229,13 @@ export function SafeMarkdown({ content }: { content: string }) {
             return <hr key={key} className="border-border" />;
           case "quote":
             return (
-              <blockquote key={key} className="rounded-r-lg border-l-2 border-plum/40 bg-panel/60 py-2 pl-4 pr-3 text-body">
+              <blockquote key={key} className="border-l-2 border-plum/40 bg-panel/60 py-2 pl-4 pr-3 text-body">
                 {renderInline(b.text, key)}
               </blockquote>
             );
           case "code":
             return (
-              <div key={key} className="overflow-hidden rounded-xl border border-border bg-panel">
+              <div key={key} className="overflow-hidden border border-border bg-panel">
                 {b.lang && (
                   <div className="border-b border-border px-3.5 py-1.5 font-mono text-[11px] uppercase tracking-wide text-secondary">
                     {b.lang}

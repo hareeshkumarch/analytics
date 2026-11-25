@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useRef } from "react";
 import { ThemePreference, useTheme } from "@/lib/theme";
 
 const OPTIONS: { value: ThemePreference; label: string }[] = [
@@ -47,6 +47,16 @@ const NEXT: Record<ThemePreference, ThemePreference> = { system: "light", light:
 
 export function ThemeToggle({ compact = false }: { compact?: boolean }) {
   const { preference, choose } = useTheme();
+  const radios = useRef<(HTMLButtonElement | null)[]>([]);
+
+  function onRadioKey(e: React.KeyboardEvent, index: number) {
+    const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const next = (index + step + OPTIONS.length) % OPTIONS.length;
+    choose(OPTIONS[next].value);
+    radios.current[next]?.focus();
+  }
 
   if (compact) {
     const current = OPTIONS.find((o) => o.value === preference)?.label ?? "System";
@@ -65,14 +75,19 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
 
   return (
     <div role="radiogroup" aria-label="Theme" className="grid grid-cols-3 border border-border bg-canvas p-0.5">
-      {OPTIONS.map((o) => {
+      {OPTIONS.map((o, index) => {
         const active = preference === o.value;
         return (
           <button
             key={o.value}
+            ref={(el) => {
+              radios.current[index] = el;
+            }}
             type="button"
             role="radio"
             aria-checked={active}
+            tabIndex={active ? 0 : -1}
+            onKeyDown={(e) => onRadioKey(e, index)}
             onClick={() => choose(o.value)}
             className={`flex min-h-[32px] items-center justify-center gap-1.5 text-[12px] transition-colors ${
               active ? "bg-surface font-medium text-ink shadow-card ring-1 ring-border" : "text-secondary hover:text-ink"

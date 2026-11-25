@@ -8,18 +8,18 @@ export function cx(...parts: (string | false | null | undefined)[]): string {
 
 export const btn = {
   primary:
-    "inline-flex min-h-[40px] items-center justify-center gap-2 rounded-none bg-plum px-[18px] text-[13.5px] font-medium text-on-accent transition-colors hover:bg-plum-deep disabled:cursor-not-allowed disabled:bg-plum/35",
+    "inline-flex min-h-[40px] items-center justify-center gap-2 bg-plum px-[18px] text-[13.5px] font-medium text-on-accent transition-colors hover:bg-plum-deep disabled:cursor-not-allowed disabled:bg-plum/35",
   secondary:
-    "inline-flex min-h-[40px] items-center justify-center gap-2 rounded-none border border-border-strong bg-surface px-[18px] text-[13.5px] text-ink transition-colors hover:border-plum disabled:cursor-not-allowed disabled:opacity-60",
+    "inline-flex min-h-[40px] items-center justify-center gap-2 border border-border-strong bg-surface px-[18px] text-[13.5px] text-ink transition-colors hover:border-plum disabled:cursor-not-allowed disabled:opacity-60",
   ghost:
-    "inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-none px-3 text-[13px] text-secondary transition-colors hover:bg-sidebar hover:text-ink disabled:cursor-not-allowed disabled:opacity-60",
+    "inline-flex min-h-[40px] items-center justify-center gap-1.5 px-3 text-[13px] text-secondary transition-colors hover:bg-sidebar hover:text-ink disabled:cursor-not-allowed disabled:opacity-60",
   link: "inline-flex min-h-[40px] items-center gap-1.5 px-1 text-[13px] font-medium text-ink underline decoration-border-strong underline-offset-4 hover:decoration-ink",
 };
 
 export const inputCls =
-  "min-h-[44px] w-full rounded-none border border-border-strong bg-surface px-3 text-sm text-ink placeholder:text-secondary transition-colors focus:border-plum focus:outline-none focus:ring-[3px] focus:ring-plum-soft disabled:opacity-60";
+  "min-h-[44px] w-full border border-border-strong bg-surface px-3 text-sm text-ink placeholder:text-secondary transition-colors focus:border-plum focus:outline-none focus:ring-[3px] focus:ring-plum-soft disabled:opacity-60";
 
-export const cardCls = "rounded-card border border-border bg-surface shadow-card";
+export const cardCls = " border border-border bg-surface shadow-card";
 
 export function Spinner({ className = "h-3.5 w-3.5" }: { className?: string }) {
   return (
@@ -89,7 +89,7 @@ export function Badge({
 }) {
   const t = BADGE_TONES[tone];
   return (
-    <span className={`inline-flex min-h-[24px] shrink-0 items-center gap-1.5 rounded-none px-2 text-[11.5px] font-medium ${t.pill}`}>
+    <span className={`inline-flex min-h-[24px] shrink-0 items-center gap-1.5 px-2 text-[11.5px] font-medium ${t.pill}`}>
       {dot && <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${t.dot} ${pulse ? "animate-pulse" : ""}`} />}
       {children}
     </span>
@@ -184,7 +184,7 @@ export function FilterChips<T extends string>({
             aria-pressed={active}
             onClick={() => onChange(o.value)}
             className={cx(
-              "inline-flex min-h-[34px] items-center gap-1.5 rounded-none border px-3 text-[12.5px] transition-colors",
+              "inline-flex min-h-[34px] items-center gap-1.5 border px-3 text-[12.5px] transition-colors",
               active ? "border-ink bg-ink font-medium text-canvas" : "border-border bg-surface text-body hover:border-border-strong hover:text-ink"
             )}
           >

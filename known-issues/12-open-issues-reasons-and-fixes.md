@@ -205,7 +205,8 @@ The **UX** tag marks items that users directly notice.
   2. Pass the earlier questions and summaries (trimmed) to the orchestrator.
   3. Group history by conversation, and add a "Follow up" box under an answer.
 
-### #32 Only the run and dataset are in the URL (UX)
+### #32 Only the run and dataset are in the URL (UX) (fixed)
+- **Status (2026-11-25):** Data already kept `?dataset=` and `?tab=`. A `useUrlState` hook now keeps the Usage filters (`window`, `status`, `mode`, `q`, `metric`) and Dashboard filters (`sort`, `q`, `window`, `dataset`) in the URL with `replaceState`, dropping defaults and ignoring invalid values.
 - **Reason:** The Data tab and the Usage and Dashboard filters reset on reload and can't be shared.
 - **How to fix:** Sync them to URL search params with `history.replaceState`, as `?run=` and `?dataset=` already do.
 
@@ -214,7 +215,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** A rendering error in one tab replaces the whole page.
 - **How to fix:** Add a small `ErrorBoundary` around each Data tab panel, the Ask answer card and the evidence sheet, and add `app/global-error.tsx`.
 
-### #35 Small accessibility gaps (UX)
+### #35 Small accessibility gaps (UX) (fixed)
+- **Status (2026-11-25):** The theme radiogroup uses a roving tabindex with arrow-key selection, and Ask announces Answer ready / failed / cancelled only when the run you're watching changes from running to finished, not when you open an old run.
 - **Reason:** The theme radiogroup has no arrow-key navigation, and Ask announces "Answer ready" when you merely open an old run.
 - **How to fix:** Roving tabindex for the radiogroup; announce only status changes while streaming.
 
@@ -227,7 +229,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** Simple Icons doesn't carry these brands. The official AWS Architecture Icons and Azure icons can't simply be added either: their terms allow only architecture diagrams, training and documentation ("Microsoft reserves all other rights"; AWS Trademark Guidelines §3(d) require prior written permission for other uses).
 - **How to fix:** Ask AWS and Microsoft for written permission to show their logos as connector logos, and use OpenAI's, Groq's and xAI's published brand assets if their guidelines allow product use. Once permitted, add the official SVG path as a `brand` entry in `ConnectorLogo.tsx`. Until then the drawn marks stay.
 
-### #39 Remaining clean-up (UI hygiene)
+### #39 Remaining clean-up (UI hygiene) (fixed)
+- **Status (2026-11-25):** `rounded-*` classes are gone (`rounded-full` stays; every other radius token is 0px). The API base defaults to the relative `/api/v1`, which Caddy serves on the same origin; `NEXT_PUBLIC_API_BASE` still overrides it, and `API_PROXY_ORIGIN` lets `next dev` proxy `/api` without Caddy.
 - **Reason:** `rounded-*` classes render square, and the API base URL is absolute.
 - **How to fix:** Drop the `rounded-*` classes, and use a relative `/api/v1` base through Caddy.
 

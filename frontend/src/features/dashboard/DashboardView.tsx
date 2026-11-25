@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, errorMessage } from "@/lib/api/client";
+import { anyText, useUrlState } from "@/lib/url";
 import { PageHeader } from "@/components/PageHeader";
 import { RichSelect, RichOption } from "@/components/RichSelect";
 import { Badge, EmptyState, FilterChips, Notice, SearchInput, Skeleton, Spinner, btn, cardCls, cx } from "@/components/ui";
@@ -29,6 +30,9 @@ interface RunSummary {
 }
 
 type WindowFilter = "any" | "7d" | "30d";
+const isWindowFilter = (value: string): value is WindowFilter => value === "any" || value === "7d" || value === "30d";
+
+const isSort = (value: string): value is string => SORT_OPTIONS.some((o) => o.value === value);
 
 const SORT_OPTIONS: RichOption[] = [
   { value: "newest", label: "Newest first" },
@@ -64,10 +68,10 @@ export function DashboardView() {
   });
   const snapshotsQuery = useSnapshots();
 
-  const [sort, setSort] = useState("newest");
-  const [query, setQuery] = useState("");
-  const [windowFilter, setWindowFilter] = useState<WindowFilter>("any");
-  const [dataset, setDataset] = useState("all");
+  const [sort, setSort] = useUrlState("sort", "newest", isSort);
+  const [query, setQuery] = useUrlState("q", "", anyText);
+  const [windowFilter, setWindowFilter] = useUrlState<WindowFilter>("window", "any", isWindowFilter);
+  const [dataset, setDataset] = useUrlState("dataset", "all", anyText);
   const [busyPin, setBusyPin] = useState<string | null>(null);
   const [confirmUnpin, setConfirmUnpin] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);

@@ -38,3 +38,25 @@ test("unknown pages show a way back", async ({ page }) => {
   await page.getByRole("link", { name: "Go to Ask" }).click();
   await expect(page).toHaveURL(/\/ask/);
 });
+
+test("usage filters survive a reload through the URL", async ({ page }) => {
+  await page.goto("/usage");
+  const windows = page.getByRole("group", { name: "Time window" });
+  await windows.getByRole("button", { name: "30 days" }).click();
+  await expect(page).toHaveURL(/window=30d/);
+  await page.reload();
+  await expect(page.getByRole("group", { name: "Time window" }).getByRole("button", { name: "30 days" })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("theme radiogroup moves selection with arrow keys", async ({ page }) => {
+  await page.goto("/ask");
+  const group = page.getByRole("radiogroup", { name: "Theme" });
+  const checked = group.getByRole("radio", { checked: true });
+  await checked.focus();
+  const before = await checked.textContent();
+  await page.keyboard.press("ArrowRight");
+  const after = group.getByRole("radio", { checked: true });
+  await expect(after).not.toHaveText(before ?? "");
+  await expect(after).toBeFocused();
+  await expect(group.getByRole("radio", { checked: false }).first()).toHaveAttribute("tabindex", "-1");
+});

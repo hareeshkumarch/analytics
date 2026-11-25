@@ -1,4 +1,4 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8080/api/v1";
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "/api/v1";
 
 /** Error thrown by apiFetch. `status` is 0 when the API could not be reached at all. */
 export class ApiError extends Error {
