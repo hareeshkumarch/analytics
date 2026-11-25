@@ -2,13 +2,16 @@
 
 import React, { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
+import { useQueryClient } from "@tanstack/react-query";
 import { ConnectorLogo, logoIdForFamily } from "@/components/ConnectorLogo";
 import { HScroll } from "@/components/HScroll";
 import { RichSelect } from "@/components/RichSelect";
 import { Badge, Notice, btn, cx } from "@/components/ui";
+import { ApiError, errorMessage } from "@/lib/api/client";
 import { useSemantics } from "@/lib/api/semantics";
+import { deleteSnapshot } from "@/lib/api/snapshots";
 import { familyLabel } from "@/lib/connectors";
-import { SnapshotSummary, datasetLabel, formatBytes, relativeTime } from "@/lib/workspace";
+import { SnapshotSummary, datasetLabel, formatBytes, relativeTime, useWorkspace } from "@/lib/workspace";
 import { DefinitionsTab } from "@/features/data/DefinitionsTab";
 import { DiagnosticsTab } from "@/features/data/DiagnosticsTab";
 import { PreviewTab } from "@/features/data/PreviewTab";
@@ -37,6 +40,7 @@ export function DatasetPanel({
   onOpenVersion,
   reveal,
   onRevealed,
+  onDeleted,
 }: {
   snapshot: SnapshotSummary;
   snapshots: SnapshotSummary[];
@@ -45,8 +49,33 @@ export function DatasetPanel({
   onOpenVersion: (snapshotId: string) => void;
   reveal: boolean;
   onRevealed: () => void;
+  onDeleted: () => void;
 }) {
   const base = useId();
+  const ws = useWorkspace();
+  const queryClient = useQueryClient();
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function removeDataset() {
+    if (!window.confirm(`Delete ${datasetLabel(snapshot)}? Its imported data is removed; past answers stay readable.`)) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      try {
+        await deleteSnapshot(ws.id, snapshot.snapshot_id);
+      } catch (err) {
+        if (!(err instanceof ApiError && err.status === 409 && window.confirm(`${err.message} Delete it anyway?`))) throw err;
+        await deleteSnapshot(ws.id, snapshot.snapshot_id, true);
+      }
+      await queryClient.invalidateQueries({ queryKey: ["snapshots", ws.id] });
+      onDeleted();
+    } catch (err) {
+      setDeleteError(errorMessage(err, "Couldn't delete this dataset."));
+    } finally {
+      setDeleting(false);
+    }
+  }
   const semantics = useSemantics(snapshot.snapshot_id);
   const approved = semantics.data?.approved ?? Boolean(snapshot.approved);
   const [table, setTable] = useState(snapshot.tables[0] ?? "");
@@ -111,16 +140,27 @@ export function DatasetPanel({
             <p className="mt-0.5 text-xs text-secondary">{meta.join(" · ")}</p>
           </div>
         </div>
-        {approved ? (
-          <Link href={`/ask?dataset=${encodeURIComponent(snapshot.snapshot_id)}`} className={btn.secondary}>
-            Ask about this data
-          </Link>
-        ) : (
-          <Badge tone="warn" dot>
-            Needs approval
-          </Badge>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {approved ? (
+            <Link href={`/ask?dataset=${encodeURIComponent(snapshot.snapshot_id)}`} className={btn.secondary}>
+              Ask about this data
+            </Link>
+          ) : (
+            <Badge tone="warn" dot>
+              Needs approval
+            </Badge>
+          )}
+          <button type="button" onClick={() => void removeDataset()} disabled={deleting} className={btn.ghost}>
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
+        </div>
       </div>
+
+      {deleteError && (
+        <Notice tone="err" title="Couldn't delete this dataset">
+          {deleteError}
+        </Notice>
+      )}
 
       {!approved && (
         <Notice

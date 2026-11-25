@@ -1512,6 +1512,49 @@ def create_app(
                 _publish_api_event(run_id, "run.finished", {"status": RunStatus.CANCELLED.value})
         return {"run_id": run_id, "status": run_rec["status"]}
 
+    @app.delete("/api/v1/workspaces/{workspace_id}/runs/{run_id}")
+    def delete_run(workspace_id: str, run_id: str) -> dict[str, Any]:
+        try:
+            run_rec = app.state.repo_runs.get_run(run_id)
+            if not run_rec or run_rec["workspace_id"] != workspace_id:
+                raise HTTPException(status_code=404, detail="Run not found")
+            if run_rec["status"] not in TERMINAL_RUN_STATUSES:
+                raise HTTPException(status_code=409, detail="Cancel the run before deleting it.")
+            app.state.repo_runs.delete_run(workspace_id, run_id)
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to delete run %s", run_id)
+            raise _db_unavailable("delete the run") from exc
+        for store in (app.state.runs, app.state.answers, app.state.events, app.state.evidence):
+            store.pop(run_id, None)
+        app.state.pins[workspace_id] = [p for p in app.state.pins.get(workspace_id, []) if p.get("run_id") != run_id]
+        return {"run_id": run_id, "deleted": True}
+
+    @app.delete("/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}")
+    def delete_snapshot(workspace_id: str, snapshot_id: str, force: bool = False) -> dict[str, Any]:
+        c: AppContainer = app.state.container
+        try:
+            existing = app.state.repo_snapshots.get_snapshot(snapshot_id)
+            if not existing or existing["workspace_id"] != workspace_id:
+                raise HTTPException(status_code=404, detail="Dataset not found")
+            pinned = app.state.repo_snapshots.pinned_runs_for_snapshot(workspace_id, snapshot_id)
+            if pinned and not force:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"{len(pinned)} pinned answer(s) use this dataset; delete with force=true to remove it anyway.",
+                )
+            removed = app.state.repo_snapshots.delete_snapshot(workspace_id, snapshot_id)
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to delete snapshot %s", snapshot_id)
+            raise _db_unavailable("delete the dataset") from exc
+        if removed is None:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+        for artifact_id in (removed.get("table_artifacts") or {}).values():
+            c.artifacts.delete(str(artifact_id))
+        c.artifacts.release_workspace_bytes(workspace_id, int(removed.get("total_normalized_bytes") or 0))
+        app.state.snapshots.pop(snapshot_id, None)
+        app.state.semantics.pop(snapshot_id, None)
+        return {"snapshot_id": snapshot_id, "deleted": True}
+
     @app.get("/api/v1/workspaces/{workspace_id}/pins")
     def list_pins(workspace_id: str) -> dict[str, Any]:
         try:

@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { API_BASE, apiFetch, cancelRun, clarifyRun, createRun, errorHint, errorMessage, newId } from "@/lib/api/client";
+import { API_BASE, apiFetch, cancelRun, clarifyRun, createRun, deleteRun, errorHint, errorMessage, newId } from "@/lib/api/client";
 import { subscribeRunEvents, SseEnvelope } from "@/lib/sse";
 import { useUiStore } from "@/lib/store";
 import { PRESET_OPTIONS, useRoutingPolicy } from "@/lib/routing";
@@ -532,6 +532,24 @@ export function AskView() {
     }
   }
 
+  async function handleDelete() {
+    if (!active?.runId || !window.confirm("Delete this question and its answer? Its evidence and any pin are removed too.")) return;
+    const { id, runId } = active;
+    try {
+      await deleteRun(activeWorkspaceId, runId);
+      closeStream(id);
+      setOlderRuns((prev) => ({ ...prev, runs: prev.runs.filter((r) => r.run_id !== runId) }));
+      queryClient.setQueryData<RunPage>(["runs", activeWorkspaceId], (page) =>
+        page ? { ...page, runs: page.runs.filter((r) => r.run_id !== runId) } : page
+      );
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+      setActiveId(null);
+      void queryClient.invalidateQueries({ queryKey: ["pins", activeWorkspaceId] });
+    } catch (err) {
+      patch(id, () => ({ error: errorMessage(err, "Couldn't delete this question.") }));
+    }
+  }
+
   async function handleClarificationSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!active?.runId || !active.clarificationPrompt || clarificationSubmitting) return;
@@ -872,6 +890,11 @@ export function AskView() {
                   {isBusy && active.runId && (
                     <button type="button" onClick={() => void handleCancel()} className={btn.secondary}>
                       Cancel
+                    </button>
+                  )}
+                  {!isBusy && active.runId && isTerminal(active.status) && (
+                    <button type="button" onClick={() => void handleDelete()} className={btn.ghost}>
+                      Delete
                     </button>
                   )}
                 </div>

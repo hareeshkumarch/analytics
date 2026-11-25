@@ -142,6 +142,10 @@ export function clarifyRun(
   });
 }
 
+export function deleteRun(workspaceId: string, runId: string): Promise<{ deleted: boolean }> {
+  return apiFetch(`/workspaces/${encodeURIComponent(workspaceId)}/runs/${encodeURIComponent(runId)}`, { method: "DELETE" });
+}
+
 /** crypto.randomUUID needs a secure context; fall back for plain-HTTP LAN access. */
 export function newId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();

@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api/client";
-import { useWorkspace } from "@/lib/workspace";
+import { useWorkspace, workspacePath } from "@/lib/workspace";
 
 interface ColumnProfile {
   column_name: string;
@@ -72,4 +72,9 @@ export function useSnapshotDiagnostics(snapshotId: string) {
     queryFn: () => apiFetch<SnapshotDiagnostics>(ws.path(`/snapshots/${encodeURIComponent(snapshotId)}/diagnostics`)),
     staleTime: Infinity,
   });
+}
+
+export function deleteSnapshot(workspaceId: string, snapshotId: string, force = false): Promise<{ deleted: boolean }> {
+  const query = force ? "?force=true" : "";
+  return apiFetch(workspacePath(workspaceId, `/snapshots/${encodeURIComponent(snapshotId)}${query}`), { method: "DELETE" });
 }

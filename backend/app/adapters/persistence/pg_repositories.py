@@ -4,7 +4,7 @@ from decimal import Decimal
 import uuid
 from typing import Any
 
-from sqlalchemy import case, delete, func, select, update
+from sqlalchemy import case, delete, func, inspect, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -339,6 +339,26 @@ class PgRunRepository:
                     }
                 )
             return res
+
+    def delete_run(self, workspace_id: str, run_id: str) -> bool:
+        with self._sf() as db:
+            with db.begin():
+                run = db.get(RunRow, run_id, with_for_update=True)
+                if run is None or run.workspace_id != workspace_id:
+                    return False
+                for model in (BudgetReservationRow, RunEventRow, RunEvidenceRow):
+                    db.execute(delete(model).where(model.run_id == run_id))
+                db.execute(delete(PinRow).where(PinRow.workspace_id == workspace_id, PinRow.run_id == run_id))
+                checkpoint_tables = {"checkpoint_writes", "checkpoint_blobs", "checkpoints"} & set(
+                    inspect(db.connection()).get_table_names()
+                )
+                for table in sorted(checkpoint_tables):
+                    db.execute(
+                        text(f"DELETE FROM {table} WHERE thread_id = :graph OR thread_id LIKE :tasks"),
+                        {"graph": f"run:{run_id}", "tasks": f"{run_id}:%"},
+                    )
+                db.delete(run)
+                return True
 
     def get_orchestration_state(self, run_id: str) -> dict[str, Any]:
         with self._sf() as db:
@@ -779,6 +799,30 @@ class PgSnapshotRepository:
                     item["approved"] = sem.approved
                 res.append(item)
             return res
+
+    def delete_snapshot(self, workspace_id: str, snapshot_id: str) -> dict[str, Any] | None:
+        with self._sf() as db:
+            with db.begin():
+                snap = db.get(SnapshotManifestRow, snapshot_id, with_for_update=True)
+                if snap is None or snap.workspace_id != workspace_id:
+                    return None
+                removed = dict(snap.manifest_json)
+                db.execute(delete(SemanticVersionRow).where(SemanticVersionRow.snapshot_id == snapshot_id))
+                source = db.get(SourceRow, snap.source_id)
+                if source is not None and source.current_snapshot_id == snapshot_id:
+                    source.current_snapshot_id = None
+                db.delete(snap)
+                return removed
+
+    def pinned_runs_for_snapshot(self, workspace_id: str, snapshot_id: str) -> list[str]:
+        with self._sf() as db:
+            return list(
+                db.scalars(
+                    select(PinRow.run_id)
+                    .join(RunRow, RunRow.run_id == PinRow.run_id)
+                    .where(PinRow.workspace_id == workspace_id, RunRow.snapshot_id == snapshot_id)
+                )
+            )
 
     def get_semantics(self, snapshot_id: str) -> dict[str, Any] | None:
         with self._sf() as db:

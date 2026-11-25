@@ -88,6 +88,10 @@ export function DataView() {
               onOpenVersion={(id) => select(id, undefined, true)}
               reveal={revealId === selected.snapshot_id}
               onRevealed={clearReveal}
+              onDeleted={() => {
+                setChosenId(null);
+                setUrlParam("dataset", null);
+              }}
             />
           )}
         </section>
