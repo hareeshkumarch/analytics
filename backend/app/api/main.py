@@ -1405,7 +1405,7 @@ def create_app(
 
     @app.post("/api/v1/workspaces/{workspace_id}/runs/{run_id}/clarify")
     async def clarify_run(workspace_id: str, run_id: str, payload: ClarifyRunRequest) -> dict[str, Any]:
-        run_rec = app.state.repo_runs.get_run(run_id) or app.state.runs.get(run_id)
+        run_rec = await asyncio.to_thread(app.state.repo_runs.get_run, run_id) or app.state.runs.get(run_id)
         if run_rec:
             app.state.runs[run_id] = run_rec
         if not run_rec or run_rec["workspace_id"] != workspace_id:
@@ -1416,7 +1416,7 @@ def create_app(
         if not answer:
             raise HTTPException(status_code=422, detail="Clarification answer cannot be blank")
         try:
-            queued_count = app.state.repo_runs.count_queued_runs()
+            queued_count = await asyncio.to_thread(app.state.repo_runs.count_queued_runs)
         except SQLAlchemyError as exc:
             logger.exception("Could not count queued runs before clarification resume")
             raise _db_unavailable("check the run queue") from exc
@@ -1424,7 +1424,8 @@ def create_app(
             raise BudgetExhaustedError(
                 f"Global queue limit ({DEFAULT_GLOBAL_LIMITS.max_queued_runs} queued runs) reached."
             )
-        updated, event = app.state.repo_runs.submit_clarification(
+        updated, event = await asyncio.to_thread(
+            app.state.repo_runs.submit_clarification,
             run_id,
             expected_revision=payload.revision,
             answer=answer,
@@ -1451,7 +1452,8 @@ def create_app(
                 run_rec["status"] = RunStatus.FAILED.value
                 run_rec["outcome"] = "failed"
                 run_rec["error"] = f"Worker queue unavailable: {exc}"[:500]
-                app.state.repo_runs.update_status(
+                await asyncio.to_thread(
+                    app.state.repo_runs.update_status,
                     run_id,
                     RunStatus.FAILED,
                     outcome="failed",
@@ -1473,7 +1475,7 @@ def create_app(
 
     @app.post("/api/v1/workspaces/{workspace_id}/runs/{run_id}/cancel")
     async def cancel_run(workspace_id: str, run_id: str) -> dict[str, Any]:
-        run_rec = app.state.repo_runs.get_run(run_id)
+        run_rec = await asyncio.to_thread(app.state.repo_runs.get_run, run_id)
         if run_rec:
             app.state.runs[run_id] = run_rec
         else:
@@ -1494,8 +1496,7 @@ def create_app(
                 was_running = run_rec["status"] == RunStatus.RUNNING.value
                 run_rec["status"] = RunStatus.CANCELLED.value
                 run_rec["outcome"] = "cancelled"
-                if hasattr(app.state, "repo_runs"):
-                    app.state.repo_runs.update_status(run_id, RunStatus.CANCELLED, outcome="cancelled")
+                app.state.repo_runs.update_status(run_id, RunStatus.CANCELLED, outcome="cancelled")
                 bg = app.state.bg_tasks.get(run_id)
                 if bg and not bg.done() and not was_running:
                     bg.cancel()
