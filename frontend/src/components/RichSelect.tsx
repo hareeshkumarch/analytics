@@ -204,6 +204,7 @@ export function RichSelect({
             const isSelected = opt.value === value;
             const isActive = idx === activeIdx;
             return (
+              // eslint-disable-next-line jsx-a11y/click-events-have-key-events -- the combobox handles keys via aria-activedescendant
               <li
                 key={opt.value}
                 id={optionId(idx)}

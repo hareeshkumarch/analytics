@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -97,13 +97,15 @@ export function DashboardView() {
     return newer ?? null;
   }
 
-  const pins = pinsQuery.data?.pins ?? [];
+  const pins = useMemo(() => pinsQuery.data?.pins ?? [], [pinsQuery.data]);
 
-  /** The newest finished answer for a pin: its latest re-run once that completes, otherwise the pinned run. */
-  function shownRun(pin: PinItem): RunSummary | undefined {
-    const latest = pin.latest_run_id ? runsById.get(pin.latest_run_id) : undefined;
-    return latest?.status === "completed" ? latest : runsById.get(pin.run_id);
-  }
+  const shownRun = useCallback(
+    (pin: PinItem): RunSummary | undefined => {
+      const latest = pin.latest_run_id ? runsById.get(pin.latest_run_id) : undefined;
+      return latest?.status === "completed" ? latest : runsById.get(pin.run_id);
+    },
+    [runsById]
+  );
 
   async function setAutoRefresh(pin: PinItem, enabled: boolean) {
     setActionError(null);
@@ -123,7 +125,7 @@ export function DashboardView() {
         return { value: id, label: s ? `${datasetLabel(s)} · v${s.version}` : "Removed dataset" };
       }),
     ];
-  }, [pins, runsById, snapshotById]);
+  }, [pins, shownRun, snapshotById]);
 
   const q = query.trim().toLowerCase();
   const cutoff = windowFilter === "7d" ? Date.now() - 7 * 864e5 : windowFilter === "30d" ? Date.now() - 30 * 864e5 : null;

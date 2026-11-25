@@ -293,7 +293,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** One file of about 70 KB holds every route, state and run execution, which makes changes risky.
 - **How to fix:** FastAPI routers per area (connectors, snapshots, runs, pins, settings, usage) plus a run service. See [10](10-solid-refactors.md) §1.
 
-### I9 Frontend tests and linting
+### I9 Frontend tests and linting (done)
+- **Status (2026-11-25):** ESLint 9 (`next/core-web-vitals`, `next/typescript`, `jsx-a11y/recommended`) runs as `npm run lint` with zero warnings allowed, and `next build` lints too. Vitest (`npm run test:unit`) covers the SSE client (resume, de-duplication, reset, giving up), `toSheetsCsvUrl`, `toPayload`, `detectFileFormat`, the snapshot sorter and sample detection. Playwright runs an axe scan (WCAG 2.1 A/AA, serious and critical) on Ask, Data, Dashboard, Usage and Settings. CI runs lint and unit tests. Lint fixes: menu focusability, a stale "evidence is kept in memory" message, hook dependencies and escaped quotes.
 - **Reason:** There are no unit tests and no ESLint, even though the code has `eslint-disable` comments.
 - **How to fix:** Add ESLint (`next/core-web-vitals` + `jsx-a11y`), Vitest + Testing Library for `sse.ts`, `connectors.ts` (`toPayload`, `toSheetsCsvUrl`) and the snapshot sorter, and an axe accessibility check in Playwright.
 

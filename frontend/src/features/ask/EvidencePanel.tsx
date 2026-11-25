@@ -80,7 +80,7 @@ export function EvidencePanel({
             {query.isLoading && <Skeleton className="h-32" />}
             {query.isError && (
               <Notice tone="err" title="This evidence isn't available">
-                Evidence is kept in the API's memory, so it is lost when the API restarts. Re-run the question to see it again.
+                It couldn&apos;t be loaded. The run may have been deleted or the API may be unreachable; try again, or re-run the question.
               </Notice>
             )}
             {ev && (

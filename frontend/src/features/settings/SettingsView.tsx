@@ -157,7 +157,7 @@ export function SettingsView() {
 
       {data && configuredCount === 0 && (
         <Notice tone="warn" title="No provider key yet">
-          Add at least one key below. Questions can't be answered until a provider is ready.
+          Add at least one key below. Questions can&apos;t be answered until a provider is ready.
         </Notice>
       )}
 
@@ -165,7 +165,7 @@ export function SettingsView() {
         <form onSubmit={handleSaveKey} className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
           <div>
             <h2 className="font-display text-lg font-semibold leading-snug tracking-[-0.01em] text-ink">Provider key</h2>
-            <p className="mt-1 text-xs text-secondary">Keys are encrypted at rest and can't be read back after saving.</p>
+            <p className="mt-1 text-xs text-secondary">Keys are encrypted at rest and can&apos;t be read back after saving.</p>
           </div>
           <RichSelect
             label="Provider"

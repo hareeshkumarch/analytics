@@ -100,6 +100,7 @@ export function ExportMenu({ workspaceId, runId, question }: { workspaceId: stri
       {open && (
         <div
           role="menu"
+          tabIndex={-1}
           aria-label="Export answer"
           onKeyDown={onMenuKey}
           className="absolute right-0 top-full z-30 mt-1 min-w-[200px] border border-border bg-surface py-1 shadow-pop"
