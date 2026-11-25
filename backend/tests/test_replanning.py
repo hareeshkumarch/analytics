@@ -47,7 +47,7 @@ class TestPlannerDrivenReplanning(unittest.TestCase):
         return gateway, answer, plans, started
 
     def test_planner_chooses_the_remediation_task(self) -> None:
-        reply = json.dumps({"action": "remediate", "kind": "reconciliation_specialist", "objective": "Match fees.amount_inr to payouts by order_id"})
+        reply = json.dumps({"action": "remediate", "kind": "reconciliation_specialist", "objective": "Match fees.amount_inr to payouts by order_id", "reason": None})
         gateway, _, plans, started = self._run(reply)
         self.assertEqual(len(plans), 2)
         self.assertFalse(plans[1]["fallback"])
@@ -56,7 +56,7 @@ class TestPlannerDrivenReplanning(unittest.TestCase):
         self.assertEqual(len(remediation), 1)
 
     def test_planner_can_stop_remediation(self) -> None:
-        reply = json.dumps({"action": "stop", "reason": "The dataset has no payout records"})
+        reply = json.dumps({"action": "stop", "kind": None, "objective": None, "reason": "The dataset has no payout records"})
         _, answer, plans, started = self._run(reply)
         self.assertEqual(len(plans), 1)
         self.assertFalse(any(t.endswith("_remediate") for t in started))

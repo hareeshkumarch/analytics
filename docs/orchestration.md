@@ -22,7 +22,7 @@ planner sees the gaps, contradictions and findings and decides the next step: on
 (a data or reconciliation specialist with its own objective) followed by an automatic re-review, or
 stopping with a reason that becomes an answer limitation. An unusable planner reply falls back to a
 data-specialist remediation, and any planner fallback is flagged in `plan.updated` (`fallback`) and in
-the answer's limitations. A deterministic evidence check still blocks uncited claims. The answer
+the answer's limitations. The replan decision uses the provider's native structured output (`REPLAN_SCHEMA`). The planner and reviewer keep their tool-using Deep Agents turn, because most models can't combine tools with structured output; when that reply isn't valid JSON, one structured repair call converts it with `PLAN_SCHEMA` or `REVIEW_SCHEMA` before the run falls back. The planner repair runs only when model calls remain for at least one task. A deterministic evidence check still blocks uncited claims. The answer
 composer receives only specialist findings and validated claims, and cannot access dataset tools.
 Set `AGENT_RUNTIME=legacy` to use the previous hand-written specialist loop with the bounded default
 plan and summary assembly.
