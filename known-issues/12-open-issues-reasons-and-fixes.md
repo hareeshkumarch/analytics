@@ -114,7 +114,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** `approve_semantics` reads, checks and writes without a lock, so two concurrent approvals can both succeed. It also edits the row in place, so a run's `semantic_version_id` doesn't show which definitions it used.
 - **How to fix:** Use `UPDATE … WHERE snapshot_id=:s AND version=:expected RETURNING *` and return 409 when no row comes back. Insert a new semantic-version row on approval.
 
-### #12 Clarification resume (implemented; runtime verification pending)
+### #12 Clarification resume (verified)
+- **Status (2026-11-25):** Checked live on PostgreSQL 16, Redis, a Celery worker and the API in Celery mode, with an OpenAI-compatible mock model whose planner asks a question: the run paused as `awaiting_input` with the prompt and revision 0, a wrong revision and a second answer to the same prompt both got 409, the answer resumed the run (revision 1) and it completed with a cited answer. The planner receives the answer as `clarification_answer`. The pre-pause planner call counts against the run's model-call budget, so quick runs (6 calls) have little room for repairs after a clarification.
 - **Previous reason:** Clarification revisions and answers weren't stored, so a run could not resume after a restart.
 - **Current source:** The prompt, revision, answer, and plan are stored in `runs.orchestration_json`; submission is revision-checked in a transaction and reschedules the same run. Verify inline and Celery resume, stale submissions, and cancellation while paused.
 
@@ -196,11 +197,12 @@ The **UX** tag marks items that users directly notice.
 
 ## P3: UX, polish and code health
 
-### #30 Clarification UI (implemented; runtime verification pending)
+### #30 Clarification UI (verified)
+- **Status (2026-11-25):** A Playwright test opens a paused run, checks the question is shown and Continue stays disabled until an answer is typed, and checks the request sends the answer with the run's current revision.
 - The Ask view now displays `clarification.required`, submits the answer with its revision, and follows the resumed run. Verify page reload, stale revisions, and both execution modes (see [08](08-frontend-gaps.md)).
 
 ### #31 No follow-up questions (UX) (fixed)
-- **Status (2026-11-25):** `POST /runs` takes `follow_up_of`; the new run joins that run's conversation and dataset, and a plain question now starts its own conversation instead of sharing one per workspace. Inline and worker runs pass the conversation's last 3 completed questions and answer summaries (answers trimmed to 1,500 characters) to the agents as `<previous_turns>`. A Follow up box appears under completed answers. Ask's history nests follow-ups under the question they continue, oldest first, and orders conversations by their latest question.
+- **Status (2026-11-25):** `POST /runs` takes `follow_up_of`; the new run joins that run's conversation and dataset, and a plain question now starts its own conversation instead of sharing one per workspace. Inline and worker runs pass the conversation's last 3 completed questions and answer summaries (answers trimmed to 1,500 characters) to the agents as `<previous_turns>`. A Follow up box appears under completed answers. Ask's history nests follow-ups under the question they continue, oldest first, and orders conversations by their latest question. The planner now also receives the earlier turns (`previous_turns`), so a short follow-up is planned in context; before, only the specialists saw them.
 - **Reason:** Every run shares one conversation id per workspace and gets no earlier context.
 - **How to fix:**
   1. Accept an optional `conversation_id` in `CreateRunRequest`.

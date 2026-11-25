@@ -45,6 +45,10 @@ class TestFollowUps(unittest.TestCase):
             self.assertIn("previous_turns", joined)
             self.assertIn("What were fees in October?", joined)
             self.assertIn("Fees were 320 INR in October.", joined)
+            planner = [p for p in gateway.prompts if "Create a minimal analytical task plan" in p]
+            self.assertTrue(planner)
+            self.assertIn("previous_turns", planner[0])
+            self.assertIn("What were fees in October?", planner[0])
             fresh = client.post(f"{B}/runs", json={"question": "Unrelated", "execute_inline": True}).json()["run_id"]
             self.assertNotEqual(client.get(f"{B}/runs").json()["runs"][0]["conversation_id"], runs[first]["conversation_id"])
             self.assertEqual(client.get(f"{B}/runs").json()["runs"][0]["run_id"], fresh)
