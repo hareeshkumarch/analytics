@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import os
 from datetime import datetime, timezone
 from decimal import Decimal
 import logging
@@ -21,6 +22,10 @@ from app.api.context import ApiContext
 logger = logging.getLogger(__name__)
 
 
+def _export_retention_seconds() -> float:
+    return float(os.environ.get("EXPORT_RETENTION_DAYS", "7")) * 86400
+
+
 def _export_prefix(workspace_id: str) -> str:
     return f"{EXPORT_ARTIFACT_PREFIX}{hashlib.sha256(workspace_id.encode()).hexdigest()[:8]}_"
 
@@ -39,7 +44,7 @@ def register(ctx: ApiContext) -> APIRouter:
             raise HTTPException(status_code=404, detail="Run not found in this workspace")
         ans = app.state.answers.get(run_id) if run_rec is not None else None
         if ans is None:
-            if run_rec and run_rec.get("answer"):
+            if run_rec and (run_rec.get("answer") or {}).get("summary_markdown"):
                 ans_data = run_rec["answer"]
                 from app.domain.models import Claim
                 ans = Answer(
@@ -60,8 +65,8 @@ def register(ctx: ApiContext) -> APIRouter:
                     ),
                     charts=tuple(chart_from_dict(ch) for ch in ans_data.get("charts") or ()),
                     limitations=tuple(ans_data.get("limitations", ())),
-                    snapshot_id=ans_data.get("snapshot_id"),
-                    semantic_version_id=ans_data.get("semantic_version_id"),
+                    snapshot_id=str(ans_data.get("snapshot_id") or ""),
+                    semantic_version_id=str(ans_data.get("semantic_version_id") or ""),
                     created_at=datetime.now(timezone.utc),
                 )
         if ans is None:
@@ -95,6 +100,7 @@ def register(ctx: ApiContext) -> APIRouter:
             raw = await asyncio.to_thread(c.export_service.export_html, ans)
             ctype = "text/html"
 
+        await asyncio.to_thread(c.artifacts.delete_older_than, EXPORT_ARTIFACT_PREFIX, _export_retention_seconds())
         art_id = f"{_export_prefix(workspace_id)}{uuid.uuid4().hex[:10]}"
         staged = c.artifacts.stage_bytes(art_id, f"export.{fmt}", raw, ctype)
         stored = c.artifacts.publish_staged(art_id, staged, art_id)

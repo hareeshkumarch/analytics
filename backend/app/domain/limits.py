@@ -142,5 +142,7 @@ INGEST_BUILD_RUNNER_PROFILE = RunnerResourceProfile(
     temp_budget_gib=2,
 )
 
+RUN_TOKEN_LIMIT = 500_000
+
 DEFAULT_DATA_LIMITS = DataLimits()
 DEFAULT_GLOBAL_LIMITS = GlobalLimits()

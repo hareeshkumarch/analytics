@@ -94,6 +94,15 @@ class LocalArtifactStore:
     def delete(self, artifact_id: str) -> None:
         (self._published_dir / self._safe_id(artifact_id)).unlink(missing_ok=True)
 
+    def delete_older_than(self, prefix: str, max_age_seconds: float) -> int:
+        cutoff = time.time() - max_age_seconds
+        removed = 0
+        for path in self._published_dir.glob(f"{self._safe_id(prefix)}*"):
+            if path.is_file() and path.stat().st_mtime < cutoff:
+                path.unlink(missing_ok=True)
+                removed += 1
+        return removed
+
     def cleanup_job_staging(self, job_id: str) -> None:
         safe_job = self._safe_id(job_id)
         job_dir = (self._staging_dir / safe_job).resolve()

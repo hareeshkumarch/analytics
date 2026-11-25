@@ -26,7 +26,7 @@ from app.adapters.persistence.orm_models import (
 from app.domain.errors import BudgetExhaustedError, LimitExceededError, NotFoundError, ValidationError, VersionConflictError
 from app.domain.events import EventType, RunEvent
 from app.domain.models import Answer, RunStatus
-from app.domain.limits import DEEP_BUDGET_LIMITS, DEFAULT_DATA_LIMITS, QUICK_BUDGET_LIMITS, DataLimits
+from app.domain.limits import DEEP_BUDGET_LIMITS, DEFAULT_DATA_LIMITS, QUICK_BUDGET_LIMITS, RUN_TOKEN_LIMIT, DataLimits
 from app.domain.providers import BudgetReservation
 from app.domain.usage import summarize_model_usage
 
@@ -1154,6 +1154,11 @@ class PgBudgetLedger:
                 add_cost = estimated_cost_usd or Decimal("0")
                 if hard_cost_ceiling_usd is not None and cur_cost + add_cost > hard_cost_ceiling_usd:
                     raise BudgetExhaustedError("Monetary ceiling exceeded")
+                cur_tokens = sum(
+                    (r.actual_tokens if r.settled and r.actual_tokens is not None else r.reserved_tokens) for r in existing
+                )
+                if cur_tokens + estimated_tokens > RUN_TOKEN_LIMIT:
+                    raise BudgetExhaustedError(f"Run {run_id} exceeded token budget ({RUN_TOKEN_LIMIT})")
 
                 res_id = f"res_{uuid.uuid4().hex[:12]}"
                 row = BudgetReservationRow(

@@ -4,12 +4,12 @@ import threading
 import uuid
 
 from app.domain.errors import BudgetExhaustedError
-from app.domain.limits import DEEP_BUDGET_LIMITS
+from app.domain.limits import DEEP_BUDGET_LIMITS, RUN_TOKEN_LIMIT
 from app.domain.providers import BudgetReservation
 from app.domain.usage import summarize_model_usage
 
 DEFAULT_MAX_ATTEMPTS = DEEP_BUDGET_LIMITS.total_model_attempts
-DEFAULT_MAX_TOKENS = 500_000
+DEFAULT_MAX_TOKENS = RUN_TOKEN_LIMIT
 
 class AtomicBudgetLedger:
     def __init__(
