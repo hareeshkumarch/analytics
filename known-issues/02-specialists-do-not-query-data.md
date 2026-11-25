@@ -12,6 +12,7 @@ provider integrations, so the behavior described below still needs the checks in
 |---|---|
 | `inspect_schema` | Tables, columns, types and row counts, plus proposed or approved metric definitions. |
 | `run_query_ir` | Runs a typed QueryIR (see the table below). |
+| `calculate` | Sum, difference, ratio or percent change of values in earlier query results (named by evidence id, row and column), computed with `Decimal` and stored as new evidence that links to its inputs. Refuses evidence whose rows were withheld from the model. |
 
 How `run_query_ir` handles a query:
 - `parse_query_ir` (`domain/query_ir.py`) checks it, `SqlGlotQueryCompiler` compiles it, and it runs

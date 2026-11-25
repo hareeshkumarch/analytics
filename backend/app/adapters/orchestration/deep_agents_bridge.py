@@ -33,19 +33,19 @@ DEFAULT_HARNESS_PROFILES: dict[AgentRole, HarnessProfileSpec] = {
         profile_id="data_specialist_v1",
         role=AgentRole.DATA_SPECIALIST,
         system_prompt_suffix="Use typed QueryIR via run_query_ir; never emit raw SQL or guess missing values.",
-        allowed_tools=("inspect_schema", "run_query_ir", "read_staged_artifact_slice", "record_evidence"),
+        allowed_tools=("inspect_schema", "run_query_ir", "calculate"),
     ),
     AgentRole.RECONCILIATION_SPECIALIST: HarnessProfileSpec(
         profile_id="reconciliation_specialist_v1",
         role=AgentRole.RECONCILIATION_SPECIALIST,
         system_prompt_suffix="Verify Decimal totals, duplicates, timing differences, and conflicting evidence.",
-        allowed_tools=("inspect_schema", "run_query_ir", "read_staged_artifact_slice", "record_evidence"),
+        allowed_tools=("inspect_schema", "run_query_ir", "calculate"),
     ),
     AgentRole.EVIDENCE_REVIEWER: HarnessProfileSpec(
         profile_id="evidence_reviewer_v1",
         role=AgentRole.EVIDENCE_REVIEWER,
         system_prompt_suffix="Audit every quantitative claim against evidence_ids, units, and time windows.",
-        allowed_tools=("inspect_schema", "run_query_ir", "read_staged_artifact_slice", "record_evidence"),
+        allowed_tools=("inspect_schema", "run_query_ir", "calculate"),
     ),
     AgentRole.ANSWER_COMPOSER: HarnessProfileSpec(
         profile_id="answer_composer_v1",

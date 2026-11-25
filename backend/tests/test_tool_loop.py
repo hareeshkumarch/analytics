@@ -500,6 +500,58 @@ class TestToolLoop(unittest.TestCase):
         self.assertEqual(len(one["tables"][0]["columns"]), 200)
         self.assertTrue(box.execute(ToolCallResult("c", "inspect_schema", {"table_id": "nope"})).is_error)
 
+    def _calc(self, box, operation, values):
+        return box.execute(ToolCallResult("c", "calculate", {"operation": operation, "purpose": "derive", "values": values}))
+
+    def test_calculate_derives_traceable_figures_from_evidence(self) -> None:
+        by_region = {"operation": "aggregate", "purpose": "totals", "table_id": "orders",
+                     "metrics": [{"alias": "total", "func": "sum", "field_id": "amount"}], "group_by": ["region"],
+                     "order_by": [{"field_id": "region", "direction": "asc"}]}
+        with tempfile.TemporaryDirectory() as td:
+            box = self._toolbox(build_container(artifact_root=td))
+            ev = box.execute(ToolCallResult("c", "run_query_ir", by_region)).evidence
+            rows = dict(ev["rows"])
+            self.assertEqual(rows, {"north": 12.5, "south": 5.0})
+
+            def ref(row: int) -> dict:
+                return {"evidence_id": ev["evidence_id"], "row": row, "column": "total"}
+
+            change = self._calc(box, "percent_change", [ref(0), ref(1)])
+            self.assertFalse(change.is_error, change.content)
+            self.assertEqual(json.loads(change.content)["result"], "150")
+            self.assertEqual(change.evidence["inputs"][0]["value"], "12.5")
+            self.assertIn(ev["evidence_id"], change.evidence["sql"])
+            self.assertEqual(json.loads(self._calc(box, "sum", [ref(0), ref(1)]).content)["result"], "17.5")
+            self.assertEqual(json.loads(self._calc(box, "difference", [ref(0), ref(1)]).content)["result"], "7.5")
+            chained = {"evidence_id": change.evidence["evidence_id"], "row": 0, "column": "result"}
+            self.assertEqual(json.loads(self._calc(box, "ratio", [chained, ref(1)]).content)["result"], "30")
+
+    def test_calculate_refuses_unsafe_or_invalid_inputs(self) -> None:
+        detail = {"operation": "detail", "purpose": "rows", "table_id": "orders", "select_fields": ["region", "amount"]}
+        with tempfile.TemporaryDirectory() as td:
+            box = self._toolbox(build_container(artifact_root=td))
+            withheld = box.execute(ToolCallResult("c", "run_query_ir", detail)).evidence["evidence_id"]
+            totals = box.execute(ToolCallResult("c", "run_query_ir", QUERY)).evidence
+            cols = totals["columns"]
+            text_col = next(c for c in cols if c == "region")
+            num_col = next(c for c in cols if c != "region")
+            cases = [
+                ("sum", [{"evidence_id": withheld, "row": 0, "column": "amount"}]),
+                ("sum", [{"evidence_id": "ev_000000000000", "row": 0, "column": num_col}]),
+                ("sum", [{"evidence_id": totals["evidence_id"], "row": 0, "column": text_col}]),
+                ("ratio", [{"evidence_id": totals["evidence_id"], "row": 0, "column": num_col}]),
+                ("sum", [{"evidence_id": totals["evidence_id"], "row": 99, "column": num_col}]),
+            ]
+            for operation, values in cases:
+                self.assertTrue(self._calc(box, operation, values).is_error, (operation, values))
+            zero = {"operation": "aggregate", "purpose": "zero", "table_id": "orders",
+                    "metrics": [{"alias": "z", "func": "sum", "field_id": "amount"}],
+                    "filters": [{"field_id": "region", "op": "eq", "value": "none"}]}
+            zero_ev = box.execute(ToolCallResult("c", "run_query_ir", zero)).evidence["evidence_id"]
+            ref = {"evidence_id": totals["evidence_id"], "row": 0, "column": num_col}
+            out = self._calc(box, "ratio", [ref, {"evidence_id": zero_ev, "row": 0, "column": "z"}])
+            self.assertTrue(out.is_error)
+
     def test_no_snapshot_offers_no_tools(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             c = build_container(artifact_root=td)

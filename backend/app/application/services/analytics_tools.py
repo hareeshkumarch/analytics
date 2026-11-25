@@ -2,6 +2,7 @@ import hashlib
 import json
 import threading
 from dataclasses import dataclass, field
+from decimal import Decimal, DivisionByZero, InvalidOperation
 from typing import Any
 
 from app.application.ports.providers import ToolCallResult, ToolDefinition
@@ -127,6 +128,71 @@ RUN_QUERY_TOOL = ToolDefinition(
 )
 
 
+CALCULATE_TOOL = ToolDefinition(
+    name="calculate",
+    description=(
+        "Compute a figure from values already returned by run_query_ir, so derived numbers are traceable. "
+        "operation is sum, difference (a - b), ratio (a / b) or percent_change ((a - b) / b * 100, a = current, "
+        "b = baseline). Each value names an evidence_id, a 0-based row in that result and a column. Returns a new "
+        "evidence_id to cite. Never do arithmetic in text instead."
+    ),
+    parameters_schema={
+        "type": "object",
+        "properties": {
+            "operation": {"type": "string", "enum": ["sum", "difference", "ratio", "percent_change"]},
+            "purpose": {"type": "string"},
+            "values": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 50,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "evidence_id": {"type": "string"},
+                        "row": {"type": "integer", "minimum": 0},
+                        "column": {"type": "string"},
+                    },
+                    "required": ["evidence_id", "row", "column"],
+                },
+            },
+        },
+        "required": ["operation", "values", "purpose"],
+    },
+    strict=False,
+)
+_PAIRWISE_OPERATIONS = ("difference", "ratio", "percent_change")
+
+
+def _number(value: Any) -> Decimal | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        number = Decimal(str(value))
+    except InvalidOperation:
+        return None
+    return number if number.is_finite() else None
+
+
+def _plain(number: Decimal) -> str:
+    try:
+        number = number.quantize(Decimal("1e-10"))
+    except InvalidOperation:
+        pass
+    text = format(number.normalize(), "f")
+    return "0" if text in ("-0", "") else text
+
+
+def _apply(operation: str, numbers: list[Decimal]) -> Decimal:
+    if operation == "sum":
+        return sum(numbers, Decimal(0))
+    current, baseline = numbers
+    if operation == "difference":
+        return current - baseline
+    if baseline == 0:
+        raise DivisionByZero
+    return current / baseline if operation == "ratio" else (current - baseline) / baseline * 100
+
+
 class ToolBudget:
     def __init__(
         self,
@@ -243,7 +309,8 @@ class AnalyticsToolbox:
     budget: ToolBudget
     max_rows_to_model: int = MAX_ROWS_TO_MODEL
     raw_record_egress: bool = False
-    definitions: tuple[ToolDefinition, ...] = field(default=(INSPECT_SCHEMA_TOOL, RUN_QUERY_TOOL))
+    definitions: tuple[ToolDefinition, ...] = field(default=(INSPECT_SCHEMA_TOOL, RUN_QUERY_TOOL, CALCULATE_TOOL))
+    _calculable: dict[str, dict[str, Any]] = field(default_factory=dict, init=False, repr=False)
 
     @property
     def available(self) -> bool:
@@ -270,6 +337,8 @@ class AnalyticsToolbox:
         arguments = call.arguments if isinstance(call.arguments, dict) else {}
         if name == INSPECT_SCHEMA_TOOL.name:
             return self._inspect_schema(arguments.get("table_id"))
+        if name == CALCULATE_TOOL.name:
+            return self._calculate(arguments)
         return self._run_query(arguments)
 
     def _inspect_schema(self, table_id: Any = None) -> ToolOutcome:
@@ -312,6 +381,60 @@ class AnalyticsToolbox:
             summary={"tool": INSPECT_SCHEMA_TOOL.name, "ok": True, "tables": len(tables)},
         )
 
+    def _calculate(self, arguments: dict[str, Any]) -> ToolOutcome:
+        assert self.snapshot is not None
+        operation = arguments.get("operation")
+        refs = arguments.get("values")
+        if operation not in ("sum", *_PAIRWISE_OPERATIONS) or not isinstance(refs, list) or not 1 <= len(refs) <= 50:
+            return self._error(CALCULATE_TOOL.name, "Give an operation (sum, difference, ratio, percent_change) and 1-50 values.")
+        if operation in _PAIRWISE_OPERATIONS and len(refs) != 2:
+            return self._error(CALCULATE_TOOL.name, f"{operation} takes exactly two values: current first, then baseline.")
+        inputs: list[dict[str, Any]] = []
+        for ref in refs:
+            source = self._calculable.get(str(ref.get("evidence_id"))) if isinstance(ref, dict) else None
+            if source is None:
+                return self._error(
+                    CALCULATE_TOOL.name,
+                    "Each value must reference an evidence_id returned by run_query_ir in this run whose rows you saw.",
+                )
+            row, column = ref.get("row"), ref.get("column")
+            if column not in source["columns"] or not isinstance(row, int) or not 0 <= row < len(source["rows"]):
+                return self._error(CALCULATE_TOOL.name, f"No row {row!r} / column {column!r} in {ref['evidence_id']}.")
+            number = _number(source["rows"][row][source["columns"].index(column)])
+            if number is None:
+                return self._error(CALCULATE_TOOL.name, f"{ref['evidence_id']} row {row} column {column!r} is not a number.")
+            inputs.append({"evidence_id": ref["evidence_id"], "row": row, "column": column, "value": str(number)})
+        try:
+            result = _apply(operation, [Decimal(item["value"]) for item in inputs])
+        except (DivisionByZero, InvalidOperation):
+            return self._error(CALCULATE_TOOL.name, "The baseline value is zero, so this can't be computed.")
+        formula = f"{operation}(" + ", ".join(f"{i['evidence_id']}[{i['row']}].{i['column']}" for i in inputs) + ")"
+        inputs_hash = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode("utf-8")).hexdigest()
+        result_text = _plain(result)
+        evidence_id = "ev_" + hashlib.sha256(f"{formula}:{result_text}".encode("utf-8")).hexdigest()[:12]
+        evidence = {
+            "evidence_id": evidence_id,
+            "operation": f"calculate_{operation}",
+            "purpose": str(arguments.get("purpose") or "")[:500],
+            "query_ir_hash": inputs_hash,
+            "result_hash": hashlib.sha256(result_text.encode("utf-8")).hexdigest(),
+            "sql": formula,
+            "row_count": 1,
+            "truncated": False,
+            "snapshot_id": self.snapshot.get("snapshot_id"),
+            "execution_ms": 0,
+            "columns": ["result"],
+            "rows": [[result_text]],
+            "inputs": inputs,
+        }
+        self._calculable[evidence_id] = {"columns": ["result"], "rows": [[result_text]]}
+        return ToolOutcome(
+            content=json.dumps({"evidence_id": evidence_id, "result": result_text, "formula": formula}),
+            is_error=False,
+            summary={"tool": CALCULATE_TOOL.name, "ok": True, "operation": operation, "evidence_id": evidence_id},
+            evidence=evidence,
+        )
+
     def _run_query(self, arguments: dict[str, Any]) -> ToolOutcome:
         assert self.snapshot is not None
         if "_invalid_arguments" in arguments:
@@ -349,6 +472,8 @@ class AnalyticsToolbox:
         evidence["columns"] = list(result.columns)
         evidence["rows"] = json.loads(json.dumps([list(r) for r in shown], default=str))
         withheld = ir.operation == "detail" and not self.raw_record_egress
+        if not withheld:
+            self._calculable[evidence_id] = {"columns": evidence["columns"], "rows": evidence["rows"]}
         payload = {
             "evidence_id": evidence_id,
             "columns": list(result.columns),

@@ -61,7 +61,8 @@ _TASK_TITLES = {
 
 _DATA_INSTRUCTIONS = (
     "You have read-only tools over dataset snapshot {snapshot_id}. Call inspect_schema first to learn the "
-    "table and column names, then use run_query_ir for every figure you report. Several independent queries "
+    "table and column names, then use run_query_ir for every figure you report and calculate for any "
+    "difference, ratio, sum or percent change of those figures. Several independent queries "
     "can be requested in one turn. Never invent, estimate or round figures you did not get from a tool. After "
     "each figure, cite the exact evidence_id returned by that tool result in square brackets, like [<evidence_id>]; "
     "never cite an id you did not receive. If a query fails, read the "

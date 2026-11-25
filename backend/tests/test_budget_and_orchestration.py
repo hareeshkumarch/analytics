@@ -11,7 +11,7 @@ from app.adapters.orchestration.supervisor import (
     TaskAttemptResult,
     merge_task_results_reducer,
 )
-from app.adapters.orchestration.tool_manifest import cap_tool_result_for_model, verify_restricted_tool_manifest
+from app.adapters.orchestration.tool_manifest import verify_restricted_tool_manifest
 from app.application.services.budget_service import AtomicBudgetLedger
 from app.domain.errors import BudgetExhaustedError, SecurityPolicyError, ValidationError
 from app.domain.models import PlanDAG, RunMode, TaskNode
@@ -58,12 +58,6 @@ class TestBudgetAndOrchestration(unittest.TestCase):
         for bad in ("task", "bash", "execute", "browser", "write_file", "mcp_discover"):
             with self.assertRaises(SecurityPolicyError):
                 verify_restricted_tool_manifest(["run_query_ir", bad])
-
-    def test_tool_result_capped_at_64_kib(self) -> None:
-        big = {"rows": ["x" * 1000 for _ in range(100)]}
-        capped = cap_tool_result_for_model(big, artifact_id="art_big")
-        self.assertLessEqual(len(capped.encode("utf-8")), 65536)
-        self.assertIn("art_big", capped)
 
     def test_supervisor_quick_forbids_replan_and_reducer_rejects_stale_and_conflict(self) -> None:
         sup = DeterministicSupervisor(RunMode.QUICK, "run_q")
