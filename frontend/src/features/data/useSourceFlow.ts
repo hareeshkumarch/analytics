@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, errorHint, errorMessage } from "@/lib/api/client";
-import { DiscoveredTable, ExtractResult, discoverSource, extractSource, probeSource } from "@/lib/api/connectors";
+import { DiscoveredTable, ExtractResult, ImportLineage, discoverSource, extractSource, probeSource } from "@/lib/api/connectors";
 import { semanticsKey } from "@/lib/api/semantics";
 import type { SourcePayload } from "@/lib/connectors";
 import { useWorkspace } from "@/lib/workspace";
@@ -54,7 +54,7 @@ export function useSourceFlow(onImported: (result: ExtractResult) => void) {
     if (requestRef.current === ctrl) requestRef.current = null;
   }
 
-  async function connect(build: () => Promise<SourcePayload>, probe: boolean) {
+  async function connect(build: () => Promise<SourcePayload>, probe: boolean, preferred: string[] = []) {
     const ctrl = start(probe ? "probing" : "discovering");
     if (!ctrl) return;
     try {
@@ -78,7 +78,8 @@ export function useSourceFlow(onImported: (result: ExtractResult) => void) {
       }
       payloadRef.current = payload;
       setTables(found);
-      setSelected(found.map((t) => t.name));
+      const kept = found.filter((t) => preferred.includes(t.name)).map((t) => t.name);
+      setSelected(kept.length ? kept : found.map((t) => t.name));
       setPhase("tables");
     } catch (err) {
       if (ctrl.signal.aborted) return;
@@ -89,7 +90,7 @@ export function useSourceFlow(onImported: (result: ExtractResult) => void) {
     }
   }
 
-  async function importTables(tableName?: string) {
+  async function importTables(tableName: string | undefined, lineage: ImportLineage) {
     const base = payloadRef.current;
     if (!base || !selected.length) return;
     const ctrl = start("importing");
@@ -97,7 +98,7 @@ export function useSourceFlow(onImported: (result: ExtractResult) => void) {
     const payload = tableName ? { ...base, config: { ...base.config, table_name: tableName } } : base;
     try {
       const selectedTables = tableName ? [tableName] : selected;
-      const res = await extractSource(ws.id, { ...payload, selected_tables: selectedTables }, ctrl.signal);
+      const res = await extractSource(ws.id, { ...payload, ...lineage, selected_tables: selectedTables }, ctrl.signal);
       payloadRef.current = null;
       qc.setQueryData(semanticsKey(ws.id, res.snapshot.snapshot_id), res.semantics);
       await qc.invalidateQueries({ queryKey: ["snapshots", ws.id] });

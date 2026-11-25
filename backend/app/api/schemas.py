@@ -1,6 +1,6 @@
 from typing import Any, Literal, Union
 from decimal import Decimal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.domain.models import ConnectorFamily, RunMode
 from app.domain.providers import ProviderId, RoutingPreset
@@ -212,6 +212,19 @@ class ConnectorProbeRequest(StrictApiModel):
     credentials: dict[str, str] = Field(default_factory=dict)
 
 
+class ImportForm(StrictApiModel):
+    connector_id: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-z0-9_-]+$")
+    values: dict[str, str | bool | int | float] = Field(default_factory=dict, max_length=60)
+
+    @field_validator("values")
+    @classmethod
+    def _bounded(cls, values: dict[str, str | bool | int | float]) -> dict[str, str | bool | int | float]:
+        for key, value in values.items():
+            if len(key) > 64 or (isinstance(value, str) and len(value) > 4000):
+                raise ValueError("Form values are too long.")
+        return values
+
+
 class ConnectorExtractRequest(StrictApiModel):
     family: ConnectorFamily
     source_id: str | None = Field(default=None, min_length=5, max_length=64, pattern=r"^src_[A-Za-z0-9_-]+$")
@@ -219,6 +232,7 @@ class ConnectorExtractRequest(StrictApiModel):
     credentials: dict[str, str] = Field(default_factory=dict)
     selected_tables: list[str] = Field(default_factory=list)
     selected_columns: dict[str, list[str]] = Field(default_factory=dict)
+    form: ImportForm | None = None
 
 
 class ApproveSemanticsRequest(StrictApiModel):

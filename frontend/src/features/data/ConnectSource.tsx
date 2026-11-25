@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useId, useRef, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import { ConnectorLogo } from "@/components/ConnectorLogo";
 import { Badge, Details, Notice, Spinner, btn, cardCls, cx, inputCls } from "@/components/ui";
 import {
@@ -83,13 +83,48 @@ function FlowErrorNotice({ error, fieldKeys }: { error: FlowError; fieldKeys: Se
   );
 }
 
-function SourceSetup({ def, onBack, onImported }: { def: ConnectorDef; onBack: () => void; onImported: (snapshotId: string) => void }) {
+export interface ReimportTarget {
+  connectorId: ConnectorId;
+  sourceId: string;
+  label: string;
+  values: Record<string, FieldValue>;
+  selectedTables: string[];
+  nonce: number;
+}
+
+function prefilledValues(def: ConnectorDef, saved: Record<string, FieldValue> | undefined): Values {
+  const values = initialValues(def);
+  if (!saved) return values;
+  for (const f of def.fields) {
+    const v = saved[f.key];
+    if (!f.secret && v !== undefined && typeof v === typeof values[f.key]) values[f.key] = v;
+  }
+  return values;
+}
+
+function formValues(def: ConnectorDef, values: Values): Record<string, FieldValue> {
+  return Object.fromEntries(
+    def.fields.filter((f) => !f.secret && isFieldVisible(f, values) && values[f.key] !== "").map((f) => [f.key, values[f.key]])
+  );
+}
+
+function SourceSetup({
+  def,
+  reimport,
+  onBack,
+  onImported,
+}: {
+  def: ConnectorDef;
+  reimport?: ReimportTarget;
+  onBack: () => void;
+  onImported: (snapshotId: string) => void;
+}) {
   const isFile = def.family === "uploaded_file";
   const probe = needsProbe(def);
   const nameId = useId();
   const maxBytes = useHealth().data?.limits?.max_uploaded_file_bytes;
   const file = useFileSource(maxBytes);
-  const [values, setValues] = useState<Values>(() => initialValues(def));
+  const [values, setValues] = useState<Values>(() => prefilledValues(def, reimport?.values));
   const [showErrors, setShowErrors] = useState(false);
   const [tableName, setTableName] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
@@ -139,14 +174,17 @@ function SourceSetup({ def, onBack, onImported }: { def: ConnectorDef; onBack: (
       requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
       return;
     }
-    if (isFile) setTableName(file.draft.name.trim());
-    void flow.connect(isFile ? () => file.build(def) : () => Promise.resolve(toPayload(def, values)), probe);
+    if (isFile) setTableName(reimport?.selectedTables.length === 1 ? reimport.selectedTables[0] : file.draft.name.trim());
+    void flow.connect(isFile ? () => file.build(def) : () => Promise.resolve(toPayload(def, values)), probe, reimport?.selectedTables);
   }
 
   function submitImport(e: React.FormEvent) {
     e.preventDefault();
     if (flow.busy || importCount === 0 || renameError) return;
-    void flow.importTables(single ? tableName.trim() : undefined);
+    void flow.importTables(single ? tableName.trim() : undefined, {
+      source_id: reimport?.sourceId,
+      form: { connector_id: def.id, values: isFile ? {} : formValues(def, values) },
+    });
   }
 
   return (
@@ -171,6 +209,16 @@ function SourceSetup({ def, onBack, onImported }: { def: ConnectorDef; onBack: (
         </div>
         {def.note && <p className="text-[13px] leading-relaxed text-body">{def.note}</p>}
       </div>
+
+      {reimport && flow.phase !== "done" && (
+        <Notice tone="info" title={`New version of ${reimport.label}`}>
+          {isFile
+            ? "Choose the updated file. It's saved as the next version of this dataset."
+            : def.fields.some((f) => f.secret)
+              ? "The saved settings are filled in. Enter the credentials again; they're never stored."
+              : "The saved settings are filled in. Check them, then read the tables again."}
+        </Notice>
+      )}
 
       <StepProgress steps={steps} current={current} busy={flow.busy} status={statusText(flow.phase, flow.error, probe, flow.tables.length)} />
 
@@ -264,13 +312,39 @@ function SourceSetup({ def, onBack, onImported }: { def: ConnectorDef; onBack: (
   );
 }
 
-export function ConnectSource({ onImported }: { onImported: (snapshotId: string) => void }) {
+export function ConnectSource({
+  reimport,
+  onImported,
+  onCancelReimport,
+}: {
+  reimport: ReimportTarget | null;
+  onImported: (snapshotId: string) => void;
+  onCancelReimport: () => void;
+}) {
   const [selectedId, setSelectedId] = useState<ConnectorId | null>(null);
-  const def = selectedId ? CONNECTOR_BY_ID.get(selectedId) : undefined;
+  const sectionRef = useRef<HTMLElement>(null);
+  const activeId = reimport?.connectorId ?? selectedId;
+  const def = activeId ? CONNECTOR_BY_ID.get(activeId) : undefined;
+
+  useEffect(() => {
+    if (!reimport) return;
+    sectionRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    sectionRef.current?.querySelector<HTMLElement>("input:not([type=hidden]), button")?.focus({ preventScroll: true });
+  }, [reimport]);
+
   return (
-    <section aria-label="Add data" className={cx(cardCls, "min-w-0 p-5 sm:p-6")}>
+    <section ref={sectionRef} aria-label="Add data" className={cx(cardCls, "min-w-0 scroll-mt-4 p-5 sm:p-6")}>
       {def ? (
-        <SourceSetup key={def.id} def={def} onBack={() => setSelectedId(null)} onImported={onImported} />
+        <SourceSetup
+          key={reimport ? `re-${reimport.nonce}` : def.id}
+          def={def}
+          reimport={reimport ?? undefined}
+          onBack={() => {
+            setSelectedId(null);
+            onCancelReimport();
+          }}
+          onImported={onImported}
+        />
       ) : (
         <div className="space-y-4">
           <div>

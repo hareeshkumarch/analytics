@@ -46,6 +46,31 @@ class TestServerAllocatesSnapshotVersions(unittest.TestCase):
         listed = self.client.get("/api/v1/workspaces/ws1/snapshots").json()["snapshots"]
         self.assertEqual(sorted(s["version"] for s in listed if s["source_id"] == first["source_id"]), [1, 2])
 
+    def test_import_remembers_non_secret_form_values_for_reimport(self) -> None:
+        form = {
+            "connector_id": "csv",
+            "values": {
+                "table_name": "orders",
+                "link": "https://user:pw@example.com/data.csv?sig=abc",
+                "api_key": "leak",
+                "header": True,
+                "account": "kept-unless-credential",
+            },
+        }
+        snap = _extract(self.client, form=form, credentials={"account": "x"}).json()["snapshot"]
+        self.assertEqual(
+            snap["reimport"],
+            {
+                "connector_id": "csv",
+                "values": {"table_name": "orders", "link": "https://example.com/data.csv", "header": True},
+                "selected_tables": ["orders"],
+            },
+        )
+        again = _extract(self.client, source_id=snap["source_id"], table_name="orders").json()["snapshot"]
+        self.assertEqual((again["source_id"], again["version"]), (snap["source_id"], 2))
+        listed = self.client.get("/api/v1/workspaces/ws1/snapshots").json()["snapshots"]
+        self.assertEqual(next(s for s in listed if s["snapshot_id"] == snap["snapshot_id"])["reimport"]["connector_id"], "csv")
+
     def test_client_cannot_choose_the_version(self) -> None:
         self.assertEqual(_extract(self.client, version=7).status_code, 422)
 

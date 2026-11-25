@@ -57,6 +57,7 @@ export interface SnapshotSummary {
   consistency_level?: string | null;
   sha256?: string;
   table_details?: { name: string; row_count: number; normalized_bytes?: number; columns: ColumnDetail[] }[];
+  reimport?: { connector_id: string | null; values: Record<string, string | boolean>; selected_tables: string[] } | null;
 }
 
 function createdTime(s: SnapshotSummary): number {

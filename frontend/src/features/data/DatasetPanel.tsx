@@ -42,6 +42,7 @@ export function DatasetPanel({
   reveal,
   onRevealed,
   onDeleted,
+  onReimport,
 }: {
   snapshot: SnapshotSummary;
   snapshots: SnapshotSummary[];
@@ -51,6 +52,7 @@ export function DatasetPanel({
   reveal: boolean;
   onRevealed: () => void;
   onDeleted: () => void;
+  onReimport?: () => void;
 }) {
   const base = useId();
   const ws = useWorkspace();
@@ -150,6 +152,11 @@ export function DatasetPanel({
             <Badge tone="warn" dot>
               Needs approval
             </Badge>
+          )}
+          {onReimport && (
+            <button type="button" onClick={onReimport} className={btn.secondary}>
+              Import new version
+            </button>
           )}
           <button type="button" onClick={() => void removeDataset()} disabled={deleting} className={btn.ghost}>
             {deleting ? "Deleting…" : "Delete"}

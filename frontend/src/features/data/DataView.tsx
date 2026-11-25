@@ -4,8 +4,9 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { Notice, cardCls, cx } from "@/components/ui";
 import { setUrlParam } from "@/lib/url";
-import { useSnapshots } from "@/lib/workspace";
-import { ConnectSource } from "@/features/data/ConnectSource";
+import { CONNECTOR_BY_ID, ConnectorId } from "@/lib/connectors";
+import { SnapshotSummary, datasetLabel, useSnapshots } from "@/lib/workspace";
+import { ConnectSource, ReimportTarget } from "@/features/data/ConnectSource";
 import { DatasetList } from "@/features/data/DatasetList";
 import { DatasetPanel, DatasetTab, isDatasetTab } from "@/features/data/DatasetPanel";
 
@@ -16,6 +17,7 @@ export function DataView() {
   const [tab, setTab] = useState<DatasetTab>("definitions");
   const [revealId, setRevealId] = useState<string | null>(null);
   const clearReveal = useCallback(() => setRevealId(null), []);
+  const [reimport, setReimport] = useState<ReimportTarget | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -39,6 +41,21 @@ export function DataView() {
     if (reveal) setRevealId(id);
   }
 
+  function reimportOf(snapshot: SnapshotSummary): (() => void) | undefined {
+    const saved = snapshot.reimport;
+    const connectorId = saved?.connector_id as ConnectorId | null | undefined;
+    if (!saved || !connectorId || !CONNECTOR_BY_ID.has(connectorId)) return undefined;
+    return () =>
+      setReimport((prev) => ({
+        connectorId,
+        sourceId: snapshot.source_id,
+        label: datasetLabel(snapshot),
+        values: saved.values,
+        selectedTables: saved.selected_tables,
+        nonce: (prev?.nonce ?? 0) + 1,
+      }));
+  }
+
   function changeTab(next: DatasetTab) {
     setTab(next);
     setUrlParam("tab", next);
@@ -52,7 +69,11 @@ export function DataView() {
       />
 
       <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        <ConnectSource onImported={(id) => select(id, "definitions", true)} />
+        <ConnectSource
+          reimport={reimport}
+          onCancelReimport={() => setReimport(null)}
+          onImported={(id) => select(id, "definitions", true)}
+        />
 
         <section aria-labelledby="datasets-title" className={cx(cardCls, "min-w-0 space-y-4 p-5 sm:p-6")}>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -88,6 +109,7 @@ export function DataView() {
               onOpenVersion={(id) => select(id, undefined, true)}
               reveal={revealId === selected.snapshot_id}
               onRevealed={clearReveal}
+              onReimport={reimportOf(selected)}
               onDeleted={() => {
                 setChosenId(null);
                 setUrlParam("dataset", null);

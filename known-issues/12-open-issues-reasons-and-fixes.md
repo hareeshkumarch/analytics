@@ -239,7 +239,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** `next/font/google` downloads fonts during `next build`, so offline builds fail.
 - **How to fix:** Vendor the font files into `frontend/src/fonts/` and use `next/font/local`.
 
-### #44 Unused chart recommender (new)
+### #44 Unused chart recommender (fixed)
+- **Status (2026-11-25):** Removed. Charts are now built from the evidence an answer cites (I1), not from the schema.
 - **Reason:** `recommend_chart_candidates` in `application/services/profiling.py` is never called, and every answer is built with `charts=()`.
 - **How to fix:** Use it for the "charts in answers" improvement (I1), or delete it.
 
@@ -252,15 +253,18 @@ The **UX** tag marks items that users directly notice.
 
 ## Improvements
 
-### I1 Charts in answers and pins (UX)
+### I1 Charts in answers and pins (UX) (done)
+- **Status (2026-11-25):** `services/charts.py` builds up to 3 charts (at most 50 points each) from evidence the answer cites: grouped aggregates and breakdowns (bar, or line when the label is a date), period comparisons, distributions (histogram) and reconciliations. Detail rows, single totals and calculator results are never charted. Charts are stored in the answer, returned in the run list, shown in Ask (with a data table and the evidence id) and on Dashboard pins, and exported as tables.
 - **Reason:** The Dashboard promised "validated charts", the domain has `Answer.charts`, and Recharts is already a dependency, but answers are text only.
 - **How to fix:** When a query returns a time series or category breakdown, build a chart spec from that evidence (using `recommend_chart_candidates`) and store it in `Answer.charts`. Render it in the Ask answer card and on Dashboard pins, linked to its evidence id.
 
-### I2 Export from the UI (UX)
+### I2 Export from the UI (UX) (done)
+- **Status (2026-11-25):** Ask has an Export menu (PDF, Word, HTML) on finished answers. The download route serves only export artifacts. Pin cards don't have it yet; open the answer to export.
 - **Reason:** `POST /exports` already renders CSV, HTML, PDF and DOCX with formula-injection protection, but no button calls it.
 - **How to fix:** Add an "Export" menu to the answer header and pin cards that posts to `/exports` and opens the returned `download_url`.
 
-### I3 Re-import a dataset (UX)
+### I3 Re-import a dataset (UX) (done)
+- **Status (2026-11-25):** Each import stores `reimport` on the snapshot: the connector id, its non-secret form values (keys that are credentials or look secret are dropped, links lose query strings and user info) and the selected tables. Data shows "Import new version" for such datasets; it fills the form, asks only for credentials (or a new file), preselects the same tables and imports into the same source, so it becomes the next version. Datasets imported before this change don't have the button.
 - **Reason:** Refreshing a source means re-entering every field.
 - **How to fix:** Keep the redacted config per source (already stored), and add "Import new version" in Data that pre-fills it and asks only for secrets. Do #8 first.
 

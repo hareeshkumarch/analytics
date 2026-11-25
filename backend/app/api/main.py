@@ -8,6 +8,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import shutil
 import tempfile
 import threading
@@ -141,6 +142,13 @@ _URL_CONFIG_KEYS = ("url",)
 _DROPPED_CONFIG_KEYS = ("raw_base64", "raw_bytes", "file_path", "upload_id")
 
 
+def _without_url_secrets(value: str) -> str:
+    from urllib.parse import urlsplit, urlunsplit
+
+    parts = urlsplit(value)
+    return urlunsplit((parts.scheme, parts.netloc.rsplit("@", 1)[-1], parts.path, "", ""))
+
+
 def _redacted_source_config(raw_config: dict[str, Any]) -> dict[str, Any]:
     """Connector config safe to persist: no uploaded file bytes, no URL query strings.
 
@@ -148,18 +156,33 @@ def _redacted_source_config(raw_config: dict[str, Any]) -> dict[str, Any]:
     token-bearing URLs carry credentials in the query string; neither belongs in the
     sources table.
     """
-    from urllib.parse import urlsplit, urlunsplit
-
     safe: dict[str, Any] = {}
     for key, value in raw_config.items():
         if key in _DROPPED_CONFIG_KEYS:
             continue
         if key in _URL_CONFIG_KEYS and isinstance(value, str):
-            parts = urlsplit(value)
-            safe[key] = urlunsplit((parts.scheme, parts.netloc.rsplit("@", 1)[-1], parts.path, "", ""))
+            safe[key] = _without_url_secrets(value)
             continue
         safe[key] = value
     return safe
+
+
+_SECRET_FORM_KEY = re.compile(r"pass|secret|token|api_?key|private|credential", re.IGNORECASE)
+
+
+def _reimport_state(payload: ConnectorExtractRequest) -> dict[str, Any]:
+    values = {}
+    if payload.form is not None:
+        values = {
+            key: _without_url_secrets(value) if isinstance(value, str) and "://" in value else value
+            for key, value in payload.form.values.items()
+            if key not in payload.credentials and not _SECRET_FORM_KEY.search(key)
+        }
+    return {
+        "connector_id": payload.form.connector_id if payload.form is not None else None,
+        "values": values,
+        "selected_tables": list(payload.selected_tables),
+    }
 
 
 async def _call_connector(fn: Any, *args: Any) -> Any:
@@ -640,6 +663,7 @@ def create_app(
                 }
                 for t in manifest.tables
             ],
+            "reimport": _reimport_state(payload),
             "diagnostics": {
                 "extraction_started_at": manifest.extraction_started_at.isoformat(),
                 "extraction_completed_at": manifest.extraction_completed_at.isoformat(),

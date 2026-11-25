@@ -21,7 +21,12 @@ export interface ExtractResult {
   semantics: SemanticVersion;
 }
 
-interface ExtractRequest extends SourcePayload {
+export interface ImportLineage {
+  source_id?: string;
+  form?: { connector_id: string; values: Record<string, string | boolean> };
+}
+
+interface ExtractRequest extends SourcePayload, ImportLineage {
   selected_tables: string[];
 }
 
