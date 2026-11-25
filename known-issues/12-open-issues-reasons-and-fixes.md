@@ -208,7 +208,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** The Data tab and the Usage and Dashboard filters reset on reload and can't be shared.
 - **How to fix:** Sync them to URL search params with `history.replaceState`, as `?run=` and `?dataset=` already do.
 
-### #33 One error page for the whole route (UX)
+### #33 One error page for the whole route (UX) (fixed)
+- **Status (2026-11-25):** `ErrorBoundary` wraps each Data tab panel, the Ask answer card and the evidence sheet with an inline notice and Try again, and `app/global-error.tsx` handles root-layout errors.
 - **Reason:** A rendering error in one tab replaces the whole page.
 - **How to fix:** Add a small `ErrorBoundary` around each Data tab panel, the Ask answer card and the evidence sheet, and add `app/global-error.tsx`.
 
@@ -238,7 +239,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** `recommend_chart_candidates` in `application/services/profiling.py` is never called, and every answer is built with `charts=()`.
 - **How to fix:** Use it for the "charts in answers" improvement (I1), or delete it.
 
-### #46 Older known-issue files are out of date (new)
+### #46 Older known-issue files are out of date (fixed)
+- **Status (2026-11-25):** 08 now points to this file, and 09 lists current coverage and what's still missing.
 - **Reason:** [08](08-frontend-gaps.md) describes the UI before the redesign, and [09](09-missing-tests.md) says Playwright covers only navigation; it now also covers the connector catalog and the 404 page.
 - **How to fix:** Update both, or reduce them to pointers to this file.
 

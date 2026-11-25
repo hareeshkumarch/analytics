@@ -7,6 +7,7 @@ import { API_BASE, apiFetch, cancelRun, clarifyRun, createRun, deleteRun, errorH
 import { subscribeRunEvents, SseEnvelope } from "@/lib/sse";
 import { useUiStore } from "@/lib/store";
 import { PRESET_OPTIONS, useRoutingPolicy } from "@/lib/routing";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { EvidenceContext, SafeMarkdown } from "@/components/SafeMarkdown";
 import { EvidencePanel } from "@/features/ask/EvidencePanel";
 import { RichSelect } from "@/components/RichSelect";
@@ -959,9 +960,11 @@ export function AskView() {
               {isWorking && <RunProgress events={active.events} />}
 
               {active.answer ? (
-                <EvidenceContext.Provider value={active.runId ? setOpenEvidence : null}>
-                  <SafeMarkdown content={active.answer} />
-                </EvidenceContext.Provider>
+                <ErrorBoundary key={active.id} title="This answer couldn't be shown">
+                  <EvidenceContext.Provider value={active.runId ? setOpenEvidence : null}>
+                    <SafeMarkdown content={active.answer} />
+                  </EvidenceContext.Provider>
+                </ErrorBoundary>
               ) : (
                 isWorking && (
                   <div className="space-y-2.5" aria-hidden="true">
@@ -1070,7 +1073,9 @@ export function AskView() {
       </aside>
 
       {openEvidence && active?.runId && (
-        <EvidencePanel workspaceId={activeWorkspaceId} runId={active.runId} evidenceId={openEvidence} onClose={closeEvidence} />
+        <ErrorBoundary key={openEvidence} title="This evidence couldn't be shown">
+          <EvidencePanel workspaceId={activeWorkspaceId} runId={active.runId} evidenceId={openEvidence} onClose={closeEvidence} />
+        </ErrorBoundary>
       )}
     </div>
   );

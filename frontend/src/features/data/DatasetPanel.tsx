@@ -4,6 +4,7 @@ import React, { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConnectorLogo, logoIdForFamily } from "@/components/ConnectorLogo";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { HScroll } from "@/components/HScroll";
 import { RichSelect } from "@/components/RichSelect";
 import { Badge, Notice, btn, cx } from "@/components/ui";
@@ -235,7 +236,9 @@ export function DatasetPanel({
                   />
                 </div>
               )}
-              {renderTab()}
+              <ErrorBoundary key={`${snapshot.snapshot_id}-${tab}-${table}`} title="This tab couldn't be shown">
+                {renderTab()}
+              </ErrorBoundary>
             </>
           )}
         </div>
