@@ -38,6 +38,7 @@ interface Session {
   status: string;
   answer: string;
   charts: AnswerChart[];
+  conversationId: string | null;
   /** The answer text came from the saved run; replayed answer.delta events must not be appended again. */
   answerFromServer: boolean;
   events: SseEnvelope[];
@@ -93,6 +94,7 @@ function fromStored(run: StoredRun): Session {
     status: run.status,
     answer,
     charts: run.answer?.charts ?? [],
+    conversationId: run.conversation_id ?? null,
     answerFromServer: Boolean(answer),
     events: [],
     error: run.error ?? null,
@@ -329,6 +331,7 @@ export function AskView() {
           r.status === s.status &&
           (!serverAnswer || serverAnswer === s.answer) &&
           sameCharts &&
+          (r.conversation_id ?? null) === s.conversationId &&
           nextError === s.error &&
           prompt === s.clarificationPrompt &&
           revision === s.clarificationRevision
@@ -338,6 +341,7 @@ export function AskView() {
           status: r.status,
           answer: serverAnswer || s.answer,
           charts: serverCharts,
+          conversationId: r.conversation_id ?? s.conversationId,
           answerFromServer: Boolean(serverAnswer) || s.answerFromServer,
           error: nextError,
           connectionLost: s.connectionLost && !isTerminal(r.status),
@@ -507,6 +511,9 @@ export function AskView() {
         status: "queued",
         answer: "",
         charts: [],
+        conversationId: target.followUpOf
+          ? (sessions.find((s) => s.runId === target.followUpOf)?.conversationId ?? null)
+          : null,
         answerFromServer: false,
         events: [],
         error: null,
@@ -696,6 +703,19 @@ export function AskView() {
     return true;
   });
 
+  const threads: Session[][] = [];
+  const threadByKey = new Map<string, Session[]>();
+  for (const s of visibleHistory) {
+    const key = s.conversationId ?? s.id;
+    let thread = threadByKey.get(key);
+    if (!thread) {
+      thread = [];
+      threadByKey.set(key, thread);
+      threads.push(thread);
+    }
+    thread.unshift(s);
+  }
+
   const presetLabel = PRESET_OPTIONS.find((o) => o.value === routing.data?.preset)?.label;
   const activeDataset = active?.snapshotId ? snapshotById.get(active.snapshotId) : undefined;
   const errorInfo = active?.error ? friendlyError(active.error) : null;
@@ -791,6 +811,31 @@ export function AskView() {
     </form>
   );
 
+  function historyItem(s: Session, followUp = false) {
+    const isActive = s.id === activeId;
+    return (
+      <button
+        type="button"
+        aria-current={isActive ? "true" : undefined}
+        onClick={() => selectSession(s)}
+        className={cx("block w-full px-2.5 py-2 text-left transition-colors", isActive ? "bg-bubble text-ink" : "text-body hover:bg-sidebar")}
+      >
+        {followUp && <span className="sr-only">Follow-up: </span>}
+        <span className="line-clamp-2 text-[13px] leading-snug">{s.question}</span>
+        <span className="mt-1 flex items-center gap-1.5 text-[11px] text-secondary">
+          <span
+            aria-hidden="true"
+            className={cx(
+              "h-1.5 w-1.5 rounded-full",
+              s.status === "completed" ? "bg-ok-dot" : s.status === "failed" ? "bg-err-dot" : isTerminal(s.status) ? "bg-secondary" : "animate-pulse bg-warn-dot"
+            )}
+          />
+          {statusLabel(s.status)} · {s.mode} · {relativeTime(s.createdAt)}
+        </span>
+      </button>
+    );
+  }
+
   const history = (
     <nav aria-label="Question history" className="space-y-2">
       <SearchInput label="Search history" placeholder="Search questions" value={historyQuery} onChange={setHistoryQuery} />
@@ -818,31 +863,21 @@ export function AskView() {
       ) : (
         // On desktop the sidebar is sticky, so the list must end above the viewport bottom.
         <ul className="max-h-[50vh] space-y-0.5 overflow-y-auto lg:max-h-[calc(100vh-17rem)]">
-          {visibleHistory.map((s) => {
-            const isActive = s.id === activeId;
-            return (
-              <li key={s.id}>
-                <button
-                  type="button"
-                  aria-current={isActive ? "true" : undefined}
-                  onClick={() => selectSession(s)}
-                  className={cx("block w-full px-2.5 py-2 text-left transition-colors", isActive ? "bg-bubble text-ink" : "text-body hover:bg-sidebar")}
-                >
-                  <span className="line-clamp-2 text-[13px] leading-snug">{s.question}</span>
-                  <span className="mt-1 flex items-center gap-1.5 text-[11px] text-secondary">
-                    <span
-                      aria-hidden="true"
-                      className={cx(
-                        "h-1.5 w-1.5 rounded-full",
-                        s.status === "completed" ? "bg-ok-dot" : s.status === "failed" ? "bg-err-dot" : isTerminal(s.status) ? "bg-secondary" : "animate-pulse bg-warn-dot"
-                      )}
-                    />
-                    {statusLabel(s.status)} · {s.mode} · {relativeTime(s.createdAt)}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
+          {threads.map((thread) => (
+            <li key={thread[0].id}>
+              {thread.length === 1 ? (
+                historyItem(thread[0])
+              ) : (
+                <ul aria-label={`Conversation: ${thread[0].question}`} className="space-y-0.5">
+                  {thread.map((s, i) => (
+                    <li key={s.id} className={i > 0 ? "ml-2.5 border-l border-border pl-1.5" : undefined}>
+                      {historyItem(s, i > 0)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
         </ul>
       )}
       {olderCursor && (
