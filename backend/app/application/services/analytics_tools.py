@@ -315,6 +315,7 @@ class AnalyticsToolbox:
     raw_record_egress: bool = False
     definitions: tuple[ToolDefinition, ...] = field(default=(INSPECT_SCHEMA_TOOL, RUN_QUERY_TOOL, CALCULATE_TOOL))
     _calculable: dict[str, dict[str, Any]] = field(default_factory=dict, init=False, repr=False)
+    _failed_calls: dict[str, str] = field(default_factory=dict, init=False, repr=False)
 
     @property
     def available(self) -> bool:
@@ -332,18 +333,30 @@ class AnalyticsToolbox:
 
     def execute(self, call: ToolCallResult) -> ToolOutcome:
         name = call.tool_name
-        if name not in {d.name for d in self.definitions}:
-            return self._error(name, f"Unknown tool {name!r}. Available: inspect_schema, run_query_ir.")
+        names = [d.name for d in self.definitions]
+        if name not in names:
+            return self._error(name, f"Unknown tool {name!r}. Available: {', '.join(names)}.")
         if not self.available:
             return self._error(name, "No dataset snapshot is bound to this run.")
+        arguments = call.arguments if isinstance(call.arguments, dict) else {}
+        fingerprint = name + json.dumps(arguments, sort_keys=True, default=str)
+        earlier = self._failed_calls.get(fingerprint)
+        if earlier is not None:
+            return self._error(
+                name,
+                f"This exact call already failed ({earlier[:200]}). It was not run again; change the arguments or answer with the evidence you have.",
+            )
         if not self.budget.take(analytical=name == RUN_QUERY_TOOL.name):
             return self._error(name, "Tool budget for this run is used up. Answer with the results you already have.")
-        arguments = call.arguments if isinstance(call.arguments, dict) else {}
         if name == INSPECT_SCHEMA_TOOL.name:
-            return self._inspect_schema(arguments.get("table_id"))
-        if name == CALCULATE_TOOL.name:
-            return self._calculate(arguments)
-        return self._run_query(arguments)
+            outcome = self._inspect_schema(arguments.get("table_id"))
+        elif name == CALCULATE_TOOL.name:
+            outcome = self._calculate(arguments)
+        else:
+            outcome = self._run_query(arguments)
+        if outcome.is_error:
+            self._failed_calls[fingerprint] = str(outcome.summary.get("error") or "")
+        return outcome
 
     def _inspect_schema(self, table_id: Any = None) -> ToolOutcome:
         assert self.snapshot is not None

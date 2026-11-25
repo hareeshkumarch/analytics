@@ -109,6 +109,7 @@ def register(ctx: ApiContext) -> APIRouter:
 
     @router.get("/api/v1/workspaces/{workspace_id}/semantics/{snapshot_id}")
     def get_semantics(workspace_id: str, snapshot_id: str) -> dict[str, Any]:
+        _get_workspace_snapshot(workspace_id, snapshot_id)
         if hasattr(app.state, "repo_snapshots"):
             sem = app.state.repo_snapshots.get_semantics(snapshot_id)
             if sem:
@@ -120,6 +121,7 @@ def register(ctx: ApiContext) -> APIRouter:
 
     @router.post("/api/v1/workspaces/{workspace_id}/semantics/{snapshot_id}/approve")
     async def approve_semantics(workspace_id: str, snapshot_id: str, payload: ApproveSemanticsRequest) -> dict[str, Any]:
+        await asyncio.to_thread(_get_workspace_snapshot, workspace_id, snapshot_id)
         res = await asyncio.to_thread(_approve_semantics, snapshot_id, payload.expected_version)
         return {**res, "refreshed_pin_ids": await ctx.auto_refresh_pins(workspace_id, snapshot_id)}
 

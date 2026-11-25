@@ -223,6 +223,26 @@ class TestToolLoop(unittest.TestCase):
             self.assertFalse(box.execute(ToolCallResult("c", "run_query_ir", QUERY)).is_error)
             self.assertTrue(box.execute(ToolCallResult("c", "run_query_ir", QUERY)).is_error)
 
+    def test_identical_failed_calls_are_not_run_again(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            c = build_container(artifact_root=td)
+            box = AnalyticsToolbox(
+                engine=SnapshotQueryEngine(c.artifacts, SqlGlotQueryCompiler()),
+                snapshot=_publish_orders(c),
+                semantics=None,
+                budget=ToolBudget(10, 10),
+            )
+            bad = {**QUERY, "table_id": "nope"}
+            first = box.execute(ToolCallResult("c1", "run_query_ir", bad))
+            used = box.budget.used
+            again = box.execute(ToolCallResult("c2", "run_query_ir", dict(bad)))
+            self.assertTrue(first.is_error and again.is_error)
+            self.assertIn("already failed", again.content)
+            self.assertEqual(box.budget.used, used)
+            self.assertFalse(box.execute(ToolCallResult("c3", "run_query_ir", QUERY)).is_error)
+            unknown = box.execute(ToolCallResult("c4", "drop_table", {}))
+            self.assertIn("calculate", unknown.content)
+
     def test_specialist_loop_executes_tools_and_cites_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             c = build_container(artifact_root=td)

@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 from datetime import datetime, timezone
 from decimal import Decimal
 import logging
@@ -20,6 +21,10 @@ from app.api.context import ApiContext
 logger = logging.getLogger(__name__)
 
 
+def _export_prefix(workspace_id: str) -> str:
+    return f"{EXPORT_ARTIFACT_PREFIX}{hashlib.sha256(workspace_id.encode()).hexdigest()[:8]}_"
+
+
 def register(ctx: ApiContext) -> APIRouter:
     router = APIRouter()
     app = ctx.app
@@ -29,9 +34,11 @@ def register(ctx: ApiContext) -> APIRouter:
         c: AppContainer = app.state.container
         fmt = payload.format.lower()
         run_id = payload.run_id
-        ans = app.state.answers.get(run_id)
-        if ans is None and hasattr(app.state, "repo_runs"):
-            run_rec = app.state.repo_runs.get_run(run_id)
+        run_rec = await asyncio.to_thread(app.state.repo_runs.get_run, run_id) if run_id else None
+        if run_rec is not None and run_rec.get("workspace_id") != workspace_id:
+            raise HTTPException(status_code=404, detail="Run not found in this workspace")
+        ans = app.state.answers.get(run_id) if run_rec is not None else None
+        if ans is None:
             if run_rec and run_rec.get("answer"):
                 ans_data = run_rec["answer"]
                 from app.domain.models import Claim
@@ -88,7 +95,7 @@ def register(ctx: ApiContext) -> APIRouter:
             raw = await asyncio.to_thread(c.export_service.export_html, ans)
             ctype = "text/html"
 
-        art_id = f"{EXPORT_ARTIFACT_PREFIX}{uuid.uuid4().hex[:10]}"
+        art_id = f"{_export_prefix(workspace_id)}{uuid.uuid4().hex[:10]}"
         staged = c.artifacts.stage_bytes(art_id, f"export.{fmt}", raw, ctype)
         stored = c.artifacts.publish_staged(art_id, staged, art_id)
         c.artifacts.cleanup_job_staging(art_id)
@@ -103,7 +110,7 @@ def register(ctx: ApiContext) -> APIRouter:
     @router.get("/api/v1/workspaces/{workspace_id}/exports/{artifact_id}")
     def download_export(workspace_id: str, artifact_id: str) -> Response:
         c: AppContainer = app.state.container
-        if not artifact_id.startswith(EXPORT_ARTIFACT_PREFIX):
+        if not artifact_id.startswith(_export_prefix(workspace_id)):
             raise HTTPException(status_code=404, detail="Export not found")
         data = c.artifacts.read_bytes(artifact_id)
         return Response(
