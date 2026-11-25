@@ -249,7 +249,7 @@ class TestRestartAndRefresh(unittest.TestCase):
                     output_tokens=8,
                 )
 
-        sf = create_session_factory(create_db_engine("sqlite:///:memory:"))
+        sf = create_session_factory(create_db_engine())
         with tempfile.TemporaryDirectory() as td:
             app1 = create_app(build_container(artifact_root=td), session_factory=sf)
             run = app1.state.repo_runs.create_run(
