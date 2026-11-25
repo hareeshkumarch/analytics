@@ -135,7 +135,7 @@ def build_container(
     config_dir: str | Path | None = None,
 ) -> AppContainer:
     clock = SystemClock()
-    root = Path(artifact_root or os.environ.get("ARTIFACT_ROOT", "/tmp/agentic_analytics_artifacts"))
+    root = Path(artifact_root) if artifact_root else Path(os.environ.get("ARTIFACT_ROOT", "/tmp/agentic_analytics_artifacts"))
     artifacts = LocalArtifactStore(root, limits=DEFAULT_DATA_LIMITS)
 
     parsers = ParserRegistry()

@@ -10,14 +10,16 @@ import re
 import threading
 import time
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from deepagents import (
     GeneralPurposeSubagentProfile,
     HarnessProfile,
+    SubAgent,
     create_deep_agent,
     register_harness_profile,
 )
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 
 from app.adapters.orchestration.deep_agents_bridge import (
@@ -337,7 +339,7 @@ class DeepAgentTaskRunner:
                 "Use approved=true only when the quantitative findings are supported, consistent, and correctly labeled. "
                 "If you cannot verify a finding, set approved=false and explain the missing check in gaps."
             )
-        subagents = []
+        subagents: list[SubAgent] = []
         if definitions:
             delegate_name = {
                 AgentRole.RECONCILIATION_SPECIALIST: "reconciliation_checker",
@@ -431,12 +433,12 @@ class DeepAgentTaskRunner:
                 name=f"analytics_{role.value}",
             )
             thread_id = f"{run_id}:{generation}:{task.task_id}"
-            agent_config = {
+            agent_config: RunnableConfig = {
                 "configurable": {"thread_id": thread_id},
                 "recursion_limit": MAX_TOOL_ROUNDS * 2 + 10,
-                "durability": "sync",
             }
             prior_state = agent.get_state(agent_config) if self._checkpointer is not None else None
+            durability: Literal["sync"] | None = "sync" if self._checkpointer is not None else None
             prior_values = getattr(prior_state, "values", {}) or {}
             prior_messages = prior_values.get("messages", []) if isinstance(prior_values, dict) else []
             if prior_messages:
@@ -449,14 +451,15 @@ class DeepAgentTaskRunner:
                     restored_trace, restored_evidence = task_history_loader(task.task_id)
                     trace.extend(restored_trace)
                     evidence.extend(restored_evidence)
-            if prior_state is not None and getattr(prior_state, "next", ()):
-                result = agent.invoke(None, config=agent_config)
+            if prior_state is not None and bool(getattr(prior_state, "next", None)):
+                result = agent.invoke(None, config=agent_config, durability=durability)
             elif prior_messages:
                 result = prior_values
             else:
                 result = agent.invoke(
                     {"messages": [{"role": "user", "content": "\n\n".join(user_parts)}]},
                     config=agent_config,
+                    durability=durability,
                 )
             messages = result.get("messages", [])
             final_message = next(

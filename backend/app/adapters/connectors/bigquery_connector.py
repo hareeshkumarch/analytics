@@ -220,7 +220,7 @@ class BigQueryConnector:
                         for field in selected_schema
                     ]
                 )
-                batches: list[pa.Table] = []
+                page_tables: list[pa.Table] = []
                 row_count = 0
                 table_bytes = 0
                 for page in rows.pages:
@@ -239,10 +239,10 @@ class BigQueryConnector:
                         raise LimitExceededError(
                             f"BigQuery table {full_name!r} exceeds the normalized snapshot size limit."
                         )
-                    batches.append(page_table)
+                    page_tables.append(page_table)
                 arrow_table = (
-                    pa.concat_tables(batches)
-                    if batches
+                    pa.concat_tables(page_tables)
+                    if page_tables
                     else pa.Table.from_batches([], schema=arrow_schema)
                 )
             except (ConnectorError, LimitExceededError, ValidationError):

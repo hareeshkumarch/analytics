@@ -55,7 +55,7 @@ class CsvFileParser:
         if delimiter is None:
             sample = text[:8192]
             try:
-                dialect = csv.Sniffer().sniff(sample, delimiters=[",", "\t", ";", "|"])
+                dialect = csv.Sniffer().sniff(sample, delimiters=",\t;|")
                 delimiter = dialect.delimiter
             except csv.Error:
                 delimiter = ","

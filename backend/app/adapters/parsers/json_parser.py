@@ -127,7 +127,7 @@ class JsonFileParser:
                 items = rec.get(arr_field) or []
                 for item_idx, item in enumerate(items):
                     if isinstance(item, dict):
-                        row = {"_parent_row_index": idx, "_item_index": item_idx}
+                        row: dict[str, Any] = {"_parent_row_index": idx, "_item_index": item_idx}
                         for ck, cv in item.items():
                             row[ck] = json.dumps(cv) if isinstance(cv, (dict, list)) else cv
                         child_rows.append(row)

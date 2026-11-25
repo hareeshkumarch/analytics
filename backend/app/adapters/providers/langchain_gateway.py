@@ -8,6 +8,7 @@ import threading
 import uuid
 from typing import Any
 
+from langchain_core.language_models.base import LangSmithParams
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
@@ -113,7 +114,7 @@ class GatewayChatModel(BaseChatModel):
     def _identifying_params(self) -> dict[str, Any]:
         return {"model_name": self.model_name, "role": self.role.value}
 
-    def _get_ls_params(self, stop: list[str] | None = None, **kwargs: Any) -> dict[str, Any]:
+    def _get_ls_params(self, stop: list[str] | None = None, **kwargs: Any) -> LangSmithParams:
         del stop, kwargs
         return {
             "ls_provider": "analytics_gateway",

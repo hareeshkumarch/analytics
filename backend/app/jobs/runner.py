@@ -133,7 +133,7 @@ def execute_persisted_run(run_id: str) -> dict[str, str]:
                     status = RunStatus(str(persisted.payload.get("status") or RunStatus.RUNNING.value))
                 except ValueError:
                     status = RunStatus.RUNNING
-                persisted = events.append(
+                stored = events.append(
                     persisted,
                     status=status,
                     only_if_not_cancelled=True,
@@ -141,7 +141,7 @@ def execute_persisted_run(run_id: str) -> dict[str, str]:
             elif persisted.type == EventType.RUN_FINISHED:
                 final_status = str(persisted.payload.get("status") or RunStatus.COMPLETED.value)
                 outcome = "answered" if final_status == RunStatus.COMPLETED.value else final_status
-                persisted = events.append(
+                stored = events.append(
                     persisted,
                     status=final_status,
                     outcome=outcome,
@@ -149,9 +149,12 @@ def execute_persisted_run(run_id: str) -> dict[str, str]:
                     only_if_not_cancelled=True,
                 )
             else:
-                persisted = events.append(persisted, only_if_not_cancelled=True)
-            if persisted is not None:
-                sequence = persisted.sequence
+                stored = events.append(persisted, only_if_not_cancelled=True)
+            if stored is not None:
+                sequence = stored.sequence
+
+    def save_plan(plan: dict[str, Any]) -> None:
+        runs.save_plan(run_id, plan)
 
     def is_cancelled() -> bool:
         current = runs.get_run(run_id)
@@ -202,7 +205,7 @@ def execute_persisted_run(run_id: str) -> dict[str, str]:
             task_history_loader=load_task_history,
             clarification_answer=orchestration_state.get("clarification_answer"),
             initial_plan=orchestration_state.get("plan"),
-            on_plan=lambda plan: runs.save_plan(run_id, plan),
+            on_plan=save_plan,
         )
     except ClarificationRequired as exc:
         runs.pause_for_clarification(run_id, exc.prompt)

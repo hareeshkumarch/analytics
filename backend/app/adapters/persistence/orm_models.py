@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import Any
 from sqlalchemy import (
     Boolean,
     DateTime,
@@ -48,7 +49,7 @@ class SourceRow(Base):
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.workspace_id"), nullable=False)
     family: Mapped[str] = mapped_column(String(32), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    config_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    config_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     credential_id: Mapped[str | None] = mapped_column(ForeignKey("credential_refs.credential_id"), nullable=True)
     current_snapshot_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     last_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
@@ -66,7 +67,7 @@ class SnapshotManifestRow(Base):
     source_id: Mapped[str] = mapped_column(ForeignKey("sources.source_id"), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     schema_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
-    manifest_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    manifest_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     artifact_id: Mapped[str] = mapped_column(String(64), nullable=False)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
@@ -80,7 +81,7 @@ class SemanticVersionRow(Base):
     snapshot_id: Mapped[str] = mapped_column(ForeignKey("snapshot_manifests.snapshot_id"), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     approved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    definitions_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    definitions_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 
@@ -107,8 +108,8 @@ class RunRow(Base):
     last_event_sequence: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     owner_generation: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    answer_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    orchestration_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    answer_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    orchestration_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 
@@ -136,7 +137,7 @@ class RunEventRow(Base):
     workspace_id: Mapped[str] = mapped_column(String(64), nullable=False)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     type: Mapped[str] = mapped_column(String(64), nullable=False)
-    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 
@@ -151,7 +152,7 @@ class RunEvidenceRow(Base):
     evidence_id: Mapped[str] = mapped_column(String(64), nullable=False)
     workspace_id: Mapped[str] = mapped_column(String(64), nullable=False)
     task_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    evidence_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    evidence_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 
@@ -159,7 +160,7 @@ class OutboxJobRow(Base):
     __tablename__ = "outbox_jobs"
     job_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     job_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
@@ -177,7 +178,7 @@ class PinRow(Base):
     question_text: Mapped[str] = mapped_column(Text, nullable=False)
     run_id: Mapped[str] = mapped_column(String(64), nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
-    artifact_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    artifact_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 
@@ -186,7 +187,7 @@ class RoutingPolicyRow(Base):
     # Versions are counted per workspace (see migration 0002).
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.workspace_id"), primary_key=True)
     policy_version: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
-    policy_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    policy_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 
@@ -194,6 +195,6 @@ class IdempotencyKeyRow(Base):
     __tablename__ = "idempotency_keys"
     key: Mapped[str] = mapped_column(String(128), primary_key=True)
     payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    response_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    response_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     status_code: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)

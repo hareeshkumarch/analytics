@@ -185,7 +185,7 @@ The **UX** tag marks items that users directly notice.
 - **How to fix:** Fail at startup unless `TESTING=1`, and set `TESTING=1` in tests and CI.
 
 ### #43 CI doesn't lint, type-check or run end-to-end tests (partly fixed)
-- **Status:** `ruff` and Playwright run in CI and `make test` uses `pytest`. `mypy` runs as advisory until its 92 existing errors are fixed.
+- **Status:** `ruff` and Playwright run in CI and `make test` uses `pytest`. `mypy app` (strict) passes and blocks CI; untyped third-party packages are listed in `ignore_missing_imports` overrides, and `app.api.main` sets `warn_return_any = false` because Starlette's `app.state` is untyped.
 - **Reason:** `.github/workflows/ci.yml` runs only `pytest` and the frontend typecheck and build. `ruff` and `mypy` are configured in `pyproject.toml` but never run, Playwright isn't run, and the Makefile `test` target uses `unittest` while CI uses `pytest`.
 - **How to fix:** Add `ruff check app tests` and `mypy app` to CI; start mypy non-blocking because `strict = true` will flag existing code. Add a Playwright job that starts the Compose stack. Switch `make test` to `pytest -v`.
 

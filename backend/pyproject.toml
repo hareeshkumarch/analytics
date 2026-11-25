@@ -65,3 +65,20 @@ target-version = "py311"
 [tool.mypy]
 python_version = "3.11"
 strict = true
+
+[[tool.mypy.overrides]]
+module = ["celery.*", "fpdf.*", "googleapiclient.*", "openpyxl.*", "pyarrow.*", "pymysql.*", "yaml.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["app.jobs.celery_app", "app.jobs.tasks"]
+disallow_untyped_decorators = false
+
+[[tool.mypy.overrides]]
+module = ["app.adapters.connectors.sheets_connector", "app.adapters.connectors.bigquery_connector"]
+disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
+module = ["app.api.main"]
+warn_return_any = false
+

@@ -1,7 +1,7 @@
 import re
 from datetime import datetime, time
 from decimal import Decimal
-from typing import Callable, NamedTuple, Sequence, TypeVar
+from typing import Any, Callable, NamedTuple, Sequence, TypeVar
 
 import pyarrow as pa
 
@@ -63,7 +63,7 @@ def _parse_each(parse: Callable[[str], T | None], texts: list[str | None]) -> li
     return parsed
 
 
-def _typed(name: str, values: list, arrow_type: pa.DataType) -> tuple[pa.Array, ColumnSchema]:
+def _typed(name: str, values: list[Any], arrow_type: pa.DataType) -> tuple[pa.Array, ColumnSchema]:
     return pa.array(values, type=arrow_type), ColumnSchema(name=name, arrow_type=str(arrow_type))
 
 

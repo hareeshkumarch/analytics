@@ -74,7 +74,7 @@ from app.domain.limits import (
     DEFAULT_GLOBAL_LIMITS,
     QUICK_BUDGET_LIMITS,
 )
-from app.domain.models import Answer, ConnectorFamily, RunMode, RunStatus
+from app.domain.models import Answer, ConnectorFamily, MetricDefinition, RunMode, RunStatus
 from app.domain.providers import AgentRole, ProviderId, RoutingPolicy
 
 ALLOWED_LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "testserver", "api", "edge"})
@@ -208,22 +208,20 @@ def create_app(
             remediation="Check that PostgreSQL is running and DATABASE_URL is correct, then try again.",
         )
 
-    app.state.runs: dict[str, dict[str, Any]] = {}
-    app.state.answers: dict[str, Answer] = {}
-    app.state.events: dict[str, list[dict[str, Any]]] = {}
-    app.state.evidence: dict[str, dict[str, dict[str, Any]]] = {}
-    app.state.event_queues: dict[
-        str, list[tuple[asyncio.AbstractEventLoop, asyncio.Queue[dict[str, Any]]]]
-    ] = {}
+    app.state.runs = {}
+    app.state.answers = {}
+    app.state.events = {}
+    app.state.evidence = {}
+    app.state.event_queues = {}
     app.state.event_lock = threading.RLock()
-    app.state.bg_tasks: dict[str, asyncio.Task[Any]] = {}
+    app.state.bg_tasks = {}
     app.state.active_run_semaphore = asyncio.Semaphore(DEFAULT_GLOBAL_LIMITS.max_active_root_runs)
-    app.state.idempotency: dict[str, tuple[str, int, dict[str, Any]]] = {}
-    app.state.snapshots: dict[str, dict[str, Any]] = {}
-    app.state.semantics: dict[str, dict[str, Any]] = {}
-    app.state.pins: dict[str, list[dict[str, Any]]] = {}
-    app.state.encrypted_keys: dict[str, str] = {}
-    app.state.routing_policies: dict[str, RoutingPolicy] = {}
+    app.state.idempotency = {}
+    app.state.snapshots = {}
+    app.state.semantics = {}
+    app.state.pins = {}
+    app.state.encrypted_keys = {}
+    app.state.routing_policies = {}
 
     def _load_saved_credentials() -> None:
         c: AppContainer = app.state.container
@@ -598,7 +596,7 @@ def create_app(
         finally:
             c.artifacts.cleanup_job_staging(job_id)
 
-        proposed_metrics = []
+        proposed_metrics: list[MetricDefinition] = []
         for tbl in manifest.tables:
             proposed_metrics.extend(propose_metrics_from_schema(tbl))
 

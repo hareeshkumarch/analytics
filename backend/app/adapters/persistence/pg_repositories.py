@@ -746,12 +746,12 @@ class PgSnapshotRepository:
                 .order_by(SnapshotManifestRow.created_at.desc())
             ).all()
             latest_semantics: dict[str, SemanticVersionRow] = {}
-            for sem in db.scalars(
+            for sem_row in db.scalars(
                 select(SemanticVersionRow)
                 .where(SemanticVersionRow.snapshot_id.in_([s.snapshot_id for s in snaps]))
                 .order_by(SemanticVersionRow.version.desc())
             ):
-                latest_semantics.setdefault(sem.snapshot_id, sem)
+                latest_semantics.setdefault(sem_row.snapshot_id, sem_row)
             res = []
             for s in snaps:
                 item = dict(s.manifest_json)

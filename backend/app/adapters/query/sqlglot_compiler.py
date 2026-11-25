@@ -189,6 +189,7 @@ def _period_bounds(start: str, end: str, period: str) -> tuple[date | datetime, 
     start_value = _parse_bound(start, f"{period}_start")
     end_value = _parse_bound(end, f"{period}_end")
     start_dt = start_value if isinstance(start_value, datetime) else datetime.combine(start_value, time.min)
+    end_bound: date | datetime
     if isinstance(end_value, datetime):
         end_op, end_bound, valid = "<=", end_value, start_dt <= end_value
     else:

@@ -35,9 +35,7 @@ jobs:
       - run: python -m pip check
       - run: cd backend && ruff check app tests
       - run: cd backend && pytest -v
-      - name: mypy (advisory until existing type errors are fixed)
-        continue-on-error: true
-        run: cd backend && mypy app
+      - run: cd backend && mypy app
 
   frontend:
     runs-on: ubuntu-latest

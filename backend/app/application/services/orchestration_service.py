@@ -10,6 +10,7 @@ import time
 import uuid
 from typing import Any, Callable, TypedDict
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
 from app.adapters.orchestration.deep_agents_bridge import (
@@ -529,6 +530,7 @@ class InvestigationOrchestrator:
                     if resp is None:
                         stopped_early = public_message(exc)
                         break
+                assert resp is not None
                 provider_str = resp.provider_id.value
                 model_str = resp.model_id
                 text = resp.text
@@ -1114,7 +1116,7 @@ class InvestigationOrchestrator:
             )
             return {"action": "prepare"}
 
-        workflow = StateGraph(_OrchestrationState)
+        workflow = StateGraph(_OrchestrationState, input_schema=_OrchestrationState)
         workflow.add_node("prepare", prepare_batch)
         workflow.add_node("dispatch", dispatch_batch)
         workflow.add_node("record", record_batch)
@@ -1135,13 +1137,13 @@ class InvestigationOrchestrator:
         with open_langgraph_checkpointer() as checkpointer:
             self._deep_agent_runner.set_checkpointer(checkpointer)
             try:
+                graph_config: RunnableConfig = {
+                    "recursion_limit": 200,
+                    "configurable": {"thread_id": f"run:{run_id}"},
+                }
+                initial_state: _OrchestrationState = {"action": "prepare"}
                 workflow.compile(checkpointer=checkpointer).invoke(
-                    {"action": "prepare"},
-                    config={
-                        "recursion_limit": 200,
-                        "configurable": {"thread_id": f"run:{run_id}"},
-                        "durability": "sync",
-                    },
+                    initial_state, config=graph_config, durability="sync" if checkpointer is not None else None
                 )
             finally:
                 self._deep_agent_runner.set_checkpointer(None)
