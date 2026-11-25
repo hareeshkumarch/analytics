@@ -178,7 +178,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** There is one Fernet key with no rotation, a decrypt failure still shows "Ready", and keys from all workspaces share one dictionary.
 - **How to fix:** `MultiFernet` plus a re-encrypt command, report decrypt failures as "Needs a key", and look up keys per workspace.
 
-### #27 Many live streams can starve the browser
+### #27 Many live streams can starve the browser (fixed in Ask)
+- **Status (2026-11-25):** Ask keeps at most 3 live run streams. Opening a fourth closes the oldest background one; that run keeps updating through run-list polling, and opening it again replays its stream from the start. A Playwright test queues five questions and checks only three streams stay open; without the cap the fifth question's request stalled behind the open streams. HTTP/2 in Caddy (TLS) or one multiplexed stream per workspace would remove the limit entirely and are still options.
 - **Reason:** Each running answer holds an `EventSource`, and HTTP/1.1 allows about 6 connections per host.
 - **How to fix:** Serve over HTTP/2 (TLS in Caddy), or multiplex a workspace's runs on one stream.
 

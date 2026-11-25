@@ -80,6 +80,8 @@ const FINISHED_MESSAGES: Record<string, string> = {
   cancelled: "The run was cancelled.",
 };
 const isTerminal = (status: string) => TERMINAL.has(status);
+// Browsers allow about six HTTP/1.1 connections per host; the rest stay free for API calls.
+const MAX_LIVE_STREAMS = 3;
 
 const OPERATION_LABELS: Record<string, string> = {
   aggregate: "Summary",
@@ -418,6 +420,12 @@ export function AskView() {
         },
       });
       closers.current.set(sessionId, close);
+      for (const [otherId] of closers.current) {
+        if (closers.current.size <= MAX_LIVE_STREAMS) break;
+        if (otherId === sessionId) continue;
+        closeStream(otherId);
+        patch(otherId, () => ({ streaming: false, traceLoaded: false, events: [], lastSeq: 0, answer: "", answerFromServer: false }));
+      }
     },
     [activeWorkspaceId, closeStream, patch, queryClient]
   );
