@@ -58,6 +58,7 @@ from app.application.services.orchestration_service import InvestigationOrchestr
 from app.application.services.ingestion import table_artifact_id, table_key
 from app.application.services.charts import chart_from_dict
 from app.application.services.profiling import profile_arrow_table, propose_metrics_from_schema
+from app.bootstrap.logging_setup import clean_request_id, configure_logging, request_id_var, run_id_var
 from app.bootstrap.container import AppContainer, build_container
 from app.application.services.routing_service import routing_policy_from_saved
 from app.domain.errors import (
@@ -94,6 +95,7 @@ EXPORT_ARTIFACT_PREFIX = "exp_"
 RUN_LIST_ANSWER_KEYS = ("answer_id", "summary_markdown", "charts")
 
 logger = logging.getLogger(__name__)
+access_logger = logging.getLogger("ledgerline.access")
 
 
 def validate_loopback_bind(host: str) -> None:
@@ -229,6 +231,7 @@ def create_app(
     container: AppContainer | None = None,
     session_factory: sessionmaker[Session] | None = None,
 ) -> FastAPI:
+    configure_logging()
     app = FastAPI(
         title="Agentic Analytics Workspace API",
         version="0.1.0",
@@ -314,7 +317,8 @@ def create_app(
         allow_origin_regex=os.environ.get("CORS_ALLOW_ORIGIN_REGEX", r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"),
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Content-Type", "Idempotency-Key", "Last-Event-ID"],
+        allow_headers=["Content-Type", "Idempotency-Key", "Last-Event-ID", "X-Request-ID"],
+        expose_headers=["X-Request-ID"],
     )
 
     @app.middleware("http")
@@ -327,14 +331,36 @@ def create_app(
             )
         return await call_next(request)
 
+    @app.middleware("http")
+    async def request_context(request: Request, call_next: Any) -> Any:
+        req_id = clean_request_id(request.headers.get("x-request-id")) or uuid.uuid4().hex[:12]
+        token = request_id_var.set(req_id)
+        started = time.monotonic()
+        try:
+            response = await call_next(request)
+        except Exception:
+            logger.exception("%s %s failed", request.method, request.url.path)
+            raise
+        else:
+            response.headers["X-Request-ID"] = req_id
+            access_logger.info(
+                "%s %s %s %dms", request.method, request.url.path, response.status_code, int((time.monotonic() - started) * 1000)
+            )
+            return response
+        finally:
+            request_id_var.reset(token)
+
+    def _request_id() -> str:
+        return request_id_var.get() or uuid.uuid4().hex[:12]
+
     @app.exception_handler(DomainError)
     async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
-        req_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
+        req_id = _request_id()
         return JSONResponse(status_code=exc.http_status, content=exc.to_envelope(req_id).to_dict())
 
     @app.exception_handler(RequestValidationError)
     async def pydantic_validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-        req_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
+        req_id = _request_id()
         field_errs = {
             ".".join(str(loc) for loc in err.get("loc", [])): str(err.get("msg", "Invalid field"))
             for err in exc.errors()
@@ -1126,6 +1152,7 @@ def create_app(
         def _is_cancelled() -> bool:
             return run_rec.get("status") == RunStatus.CANCELLED.value
 
+        run_token = run_id_var.set(run_id)
         try:
             async with app.state.active_run_semaphore:
                 if _is_cancelled():
@@ -1215,6 +1242,7 @@ def create_app(
                     run_id, "run.finished", {"status": RunStatus.FAILED.value, "error": run_rec["error"]}
                 )
         finally:
+            run_id_var.reset(run_token)
             if app.state.bg_tasks.get(run_id) is current_task:
                 app.state.bg_tasks.pop(run_id, None)
 

@@ -297,7 +297,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** There are no unit tests and no ESLint, even though the code has `eslint-disable` comments.
 - **How to fix:** Add ESLint (`next/core-web-vitals` + `jsx-a11y`), Vitest + Testing Library for `sse.ts`, `connectors.ts` (`toPayload`, `toSheetsCsvUrl`) and the snapshot sorter, and an axe accessibility check in Playwright.
 
-### I10 Observability
+### I10 Observability (logs done; tracing open)
+- **Status (2026-11-25):** Every API request gets a request id (a safe `X-Request-ID` from the client, otherwise generated), echoed in the response header and in error envelopes, and an access log line (method, path, status, duration). Run execution sets a run id that follows into the worker thread, parallel specialist threads and Celery tasks. `LOG_FORMAT=json` (the docker-compose default) writes one JSON object per line with `request_id`/`run_id` and exceptions; `LOG_FORMAT=text` (default elsewhere) includes both ids in the text. Tracing (OpenTelemetry) is not added.
 - **Reason:** There are no request ids in logs and no tracing (the unused OpenTelemetry packages were removed).
 - **How to fix:** Add structured JSON logs with the request id and run id. If tracing is needed, add OpenTelemetry back as a dependency and instrument FastAPI and the provider calls.
 

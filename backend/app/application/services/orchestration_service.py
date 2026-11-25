@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+import contextvars
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -954,6 +955,7 @@ class InvestigationOrchestrator:
             with ThreadPoolExecutor(max_workers=len(ready_batch)) as pool:
                 futures = [
                     pool.submit(
+                        contextvars.copy_context().run,
                         self._run_specialist_task,
                         task=task,
                         question=question_for_agents,

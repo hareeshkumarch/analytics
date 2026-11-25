@@ -1,6 +1,6 @@
 import os
 from celery import Celery
-from celery.signals import worker_process_shutdown
+from celery.signals import setup_logging, worker_process_shutdown
 
 from app.domain.limits import DEEP_BUDGET_LIMITS
 
@@ -27,6 +27,13 @@ celery_app.conf.update(
     result_serializer="json",
     accept_content=["json"],
 )
+
+
+@setup_logging.connect
+def _configure_worker_logging(**_: object) -> None:
+    from app.bootstrap.logging_setup import configure_logging
+
+    configure_logging()
 
 
 @worker_process_shutdown.connect

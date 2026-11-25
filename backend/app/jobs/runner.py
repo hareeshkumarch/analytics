@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.persistence.crypto import CredentialCipher
 from app.adapters.persistence.database import create_session_factory
+from app.bootstrap.logging_setup import run_context
 from app.adapters.persistence.pg_repositories import (
     PgBudgetLedger,
     PgCredentialRepository,
@@ -78,6 +79,11 @@ def _load_saved_credentials(container: Any, repo: PgCredentialRepository, worksp
 
 
 def execute_persisted_run(run_id: str) -> dict[str, str]:
+    with run_context(run_id):
+        return _execute_persisted_run(run_id)
+
+
+def _execute_persisted_run(run_id: str) -> dict[str, str]:
     container = build_container()
     session_factory = get_worker_session_factory()
     container.budget_ledger = PgBudgetLedger(session_factory)
