@@ -4,7 +4,7 @@ from typing import Any, Callable
 from app.adapters.connectors.registry import ConnectorRegistry
 from app.application.ports.connectors import ExtractionRequest
 from app.application.ports.repositories import SourceRepository
-from app.application.ports.storage import ArtifactStore
+from app.application.ports.storage import ArtifactStore, WorkspaceQuota
 from app.domain.limits import DataLimits, DEFAULT_DATA_LIMITS
 from app.domain.models import ConnectorFamily, SnapshotManifest
 
@@ -22,11 +22,13 @@ class IngestionService:
         self,
         connectors: ConnectorRegistry,
         artifacts: ArtifactStore,
+        quota: WorkspaceQuota,
         sources: SourceRepository,
         limits: DataLimits = DEFAULT_DATA_LIMITS,
     ) -> None:
         self._connectors = connectors
         self._artifacts = artifacts
+        self._quota = quota
         self._sources = sources
         self._limits = limits
 
@@ -57,7 +59,7 @@ class IngestionService:
         reserved = False
         try:
             batches, manifest = extractor.extract(config, credentials, req, is_cancelled)
-            self._artifacts.reserve_workspace_bytes(workspace_id, manifest.total_normalized_bytes)
+            self._quota.reserve_workspace_bytes(workspace_id, manifest.total_normalized_bytes)
             reserved = True
 
             for batch in batches:
@@ -77,7 +79,7 @@ class IngestionService:
             return manifest
         except Exception:
             if reserved:
-                self._artifacts.release_workspace_bytes(workspace_id, manifest.total_normalized_bytes)
+                self._quota.release_workspace_bytes(workspace_id, manifest.total_normalized_bytes)
             raise
         finally:
             self._artifacts.cleanup_job_staging(job_id)

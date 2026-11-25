@@ -136,7 +136,7 @@ def build_container(
 ) -> AppContainer:
     clock = SystemClock()
     root = Path(artifact_root) if artifact_root else Path(os.environ.get("ARTIFACT_ROOT", "/tmp/agentic_analytics_artifacts"))
-    artifacts = LocalArtifactStore(root, limits=DEFAULT_DATA_LIMITS)
+    artifacts = LocalArtifactStore(root)
 
     parsers = ParserRegistry()
     parsers.register("csv", CsvFileParser())

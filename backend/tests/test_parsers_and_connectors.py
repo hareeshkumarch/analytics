@@ -21,7 +21,7 @@ from app.adapters.parsers.xlsx_parser import XlsxFileParser
 from app.adapters.storage.local_fs import LocalArtifactStore
 from app.application.ports.clock import SystemClock
 from app.application.ports.connectors import ExtractionRequest
-from app.domain.errors import LimitExceededError, SecurityPolicyError, ValidationError
+from app.domain.errors import SecurityPolicyError, ValidationError
 from app.domain.limits import DEFAULT_DATA_LIMITS
 
 
@@ -107,8 +107,6 @@ class TestParsersAndConnectors(unittest.TestCase):
             self.assertEqual(pub.byte_size, 11)
             self.assertEqual(store.read_bytes("art_1"), b"hello-arrow")
             store.cleanup_job_staging("job1")
-            with self.assertRaises(LimitExceededError):
-                store.reserve_workspace_bytes("ws1", 200_000_001)
 
 
 if __name__ == "__main__":

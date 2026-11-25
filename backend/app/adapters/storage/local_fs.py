@@ -1,7 +1,6 @@
 import hashlib
 import os
 import shutil
-import threading
 import time
 import uuid
 from contextlib import contextmanager
@@ -9,42 +8,21 @@ from pathlib import Path
 from typing import BinaryIO, Iterator
 
 from app.application.ports.storage import StoredArtifact
-from app.domain.errors import LimitExceededError, NotFoundError, SecurityPolicyError, ValidationError
-from app.domain.limits import DataLimits, DEFAULT_DATA_LIMITS
+from app.domain.errors import NotFoundError, SecurityPolicyError, ValidationError
 
 
 class LocalArtifactStore:
-    def __init__(self, root_dir: str | Path, limits: DataLimits = DEFAULT_DATA_LIMITS) -> None:
+    def __init__(self, root_dir: str | Path) -> None:
         self._root = Path(root_dir).resolve()
         self._staging_dir = self._root / "staging"
         self._published_dir = self._root / "published"
         self._staging_dir.mkdir(parents=True, exist_ok=True)
         self._published_dir.mkdir(parents=True, exist_ok=True)
-        self._limits = limits
-        self._lock = threading.Lock()
-        self._workspace_bytes: dict[str, int] = {}
 
     def _safe_id(self, identifier: str) -> str:
         if not identifier or "/" in identifier or "\\" in identifier or ".." in identifier:
             raise SecurityPolicyError(f"Invalid opaque identifier: {identifier!r}")
         return identifier
-
-    def reserve_workspace_bytes(self, workspace_id: str, byte_count: int) -> None:
-        if byte_count < 0:
-            raise ValueError("byte_count must be non-negative")
-        with self._lock:
-            current = self._workspace_bytes.get(workspace_id, 0)
-            if current + byte_count > self._limits.max_workspace_retained_raw_bytes:
-                raise LimitExceededError(
-                    f"Workspace raw data retention limit exceeded ({self._limits.max_workspace_retained_raw_bytes} bytes)",
-                    remediation="Remove unused datasets or snapshots before uploading more data.",
-                )
-            self._workspace_bytes[workspace_id] = current + byte_count
-
-    def release_workspace_bytes(self, workspace_id: str, byte_count: int) -> None:
-        with self._lock:
-            current = self._workspace_bytes.get(workspace_id, 0)
-            self._workspace_bytes[workspace_id] = max(0, current - max(0, byte_count))
 
     def stage_bytes(self, job_id: str, name: str, data: bytes, content_type: str) -> str:
         safe_job = self._safe_id(job_id)

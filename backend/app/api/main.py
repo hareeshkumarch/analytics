@@ -32,6 +32,7 @@ from app.adapters.persistence.pg_repositories import (
     PgEventLog,
     PgEvidenceRepository,
     PgPinRepository,
+    PgWorkspaceQuota,
     PgRoutingRepository,
     PgRunRepository,
     PgSnapshotRepository,
@@ -252,6 +253,7 @@ def create_app(
     app.state.repo_routing = PgRoutingRepository(sf)
     app.state.repo_snapshots = PgSnapshotRepository(sf)
     app.state.repo_pins = PgPinRepository(sf)
+    app.state.repo_quota = PgWorkspaceQuota(sf)
 
     def _db_unavailable(action: str) -> PersistenceUnavailableError:
         return PersistenceUnavailableError(
@@ -638,100 +640,111 @@ def create_app(
         for batch in sorted(batches, key=lambda b: b.table_name):
             content_hash.update(batch.table_name.encode("utf-8"))
             content_hash.update(batch.arrow_ipc_bytes)
-        c.artifacts.reserve_workspace_bytes(workspace_id, manifest.total_normalized_bytes)
+        await asyncio.to_thread(app.state.repo_quota.reserve_workspace_bytes, workspace_id, manifest.total_normalized_bytes)
         try:
-            for batch in batches:
-                staged = c.artifacts.stage_bytes(
-                    job_id, f"{table_key(batch.table_name)}.arrow", batch.arrow_ipc_bytes, "application/vnd.apache.arrow.stream"
-                )
-                c.artifacts.publish_staged(job_id, staged, table_artifact_id(manifest.artifact_id, batch.table_name))
-        finally:
-            c.artifacts.cleanup_job_staging(job_id)
+            try:
+                for batch in batches:
+                    staged = c.artifacts.stage_bytes(
+                        job_id, f"{table_key(batch.table_name)}.arrow", batch.arrow_ipc_bytes, "application/vnd.apache.arrow.stream"
+                    )
+                    c.artifacts.publish_staged(job_id, staged, table_artifact_id(manifest.artifact_id, batch.table_name))
+            finally:
+                c.artifacts.cleanup_job_staging(job_id)
 
-        proposed_metrics: list[MetricDefinition] = []
-        for tbl in manifest.tables:
-            proposed_metrics.extend(propose_metrics_from_schema(tbl))
+            proposed_metrics: list[MetricDefinition] = []
+            for tbl in manifest.tables:
+                proposed_metrics.extend(propose_metrics_from_schema(tbl))
 
-        snap_dict = {
-            "snapshot_id": manifest.snapshot_id,
-            "workspace_id": workspace_id,
-            "source_id": source_id,
-            "version": manifest.version,
-            "total_rows": manifest.total_rows,
-            "total_normalized_bytes": manifest.total_normalized_bytes,
-            "is_sampled": manifest.is_sampled,
-            "consistency_level": manifest.consistency_level.value,
-            "sha256": content_hash.hexdigest(),
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "source_family": payload.family.value,
-            "schema_fingerprint": manifest.schema_fingerprint,
-            "artifact_id": manifest.artifact_id,
-            "table_artifacts": {
-                b.table_name: table_artifact_id(manifest.artifact_id, b.table_name) for b in batches
-            },
-            "tables": [t.table_name for t in manifest.tables],
-            "table_details": [
-                {
-                    "name": t.table_name,
-                    "row_count": t.row_count,
-                    "normalized_bytes": t.normalized_bytes,
-                    "columns": [
-                        {
-                            "name": col.name,
-                            "type": col.arrow_type,
-                            "nullable": col.nullable,
-                            "leading_zero_id": col.is_leading_zero_id,
-                            "currency": col.currency_code,
-                        }
-                        for col in t.columns
-                    ],
-                }
-                for t in manifest.tables
-            ],
-            "reimport": _reimport_state(payload),
-            "diagnostics": {
-                "extraction_started_at": manifest.extraction_started_at.isoformat(),
-                "extraction_completed_at": manifest.extraction_completed_at.isoformat(),
-                "is_complete": manifest.is_complete,
+            snap_dict = {
+                "snapshot_id": manifest.snapshot_id,
+                "workspace_id": workspace_id,
+                "source_id": source_id,
+                "version": manifest.version,
+                "total_rows": manifest.total_rows,
+                "total_normalized_bytes": manifest.total_normalized_bytes,
                 "is_sampled": manifest.is_sampled,
-                "warnings": [],
-                "source_summary": dict(manifest.source_config_summary),
-            },
-        }
-        sem_id = f"sem_{uuid.uuid4().hex[:10]}"
-        sem_dict = {
-            "semantic_version_id": sem_id,
-            "snapshot_id": manifest.snapshot_id,
-            "version": 1,
-            "approved": False,
-            "metrics": [
-                {
-                    "metric_id": m.metric_id,
-                    "display_name": m.display_name,
-                    "expression": m.expression,
-                    "grain": m.grain,
-                    "unit": m.unit,
-                    "currency": m.currency,
-                }
-                for m in proposed_metrics
-            ],
-        }
-        try:
-            app.state.repo_snapshots.save_snapshot(
-                workspace_id=workspace_id,
-                source_id=source_id,
-                snapshot_id=manifest.snapshot_id,
-                version=manifest.version,
-                schema_fingerprint=manifest.schema_fingerprint,
-                manifest_json=snap_dict,
-                artifact_id=manifest.artifact_id,
-                sha256=content_hash.hexdigest(),
-                source_config=source_config,
-                semantics_json=sem_dict,
-            )
-        except SQLAlchemyError as exc:
-            logger.exception("Failed to persist snapshot to DB")
-            raise _db_unavailable("save the imported dataset") from exc
+                "consistency_level": manifest.consistency_level.value,
+                "sha256": content_hash.hexdigest(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "source_family": payload.family.value,
+                "schema_fingerprint": manifest.schema_fingerprint,
+                "artifact_id": manifest.artifact_id,
+                "table_artifacts": {
+                    b.table_name: table_artifact_id(manifest.artifact_id, b.table_name) for b in batches
+                },
+                "tables": [t.table_name for t in manifest.tables],
+                "table_details": [
+                    {
+                        "name": t.table_name,
+                        "row_count": t.row_count,
+                        "normalized_bytes": t.normalized_bytes,
+                        "columns": [
+                            {
+                                "name": col.name,
+                                "type": col.arrow_type,
+                                "nullable": col.nullable,
+                                "leading_zero_id": col.is_leading_zero_id,
+                                "currency": col.currency_code,
+                            }
+                            for col in t.columns
+                        ],
+                    }
+                    for t in manifest.tables
+                ],
+                "reimport": _reimport_state(payload),
+                "diagnostics": {
+                    "extraction_started_at": manifest.extraction_started_at.isoformat(),
+                    "extraction_completed_at": manifest.extraction_completed_at.isoformat(),
+                    "is_complete": manifest.is_complete,
+                    "is_sampled": manifest.is_sampled,
+                    "warnings": [],
+                    "source_summary": dict(manifest.source_config_summary),
+                },
+            }
+            sem_id = f"sem_{uuid.uuid4().hex[:10]}"
+            sem_dict = {
+                "semantic_version_id": sem_id,
+                "snapshot_id": manifest.snapshot_id,
+                "version": 1,
+                "approved": False,
+                "metrics": [
+                    {
+                        "metric_id": m.metric_id,
+                        "display_name": m.display_name,
+                        "expression": m.expression,
+                        "grain": m.grain,
+                        "unit": m.unit,
+                        "currency": m.currency,
+                    }
+                    for m in proposed_metrics
+                ],
+            }
+            try:
+                app.state.repo_snapshots.save_snapshot(
+                    workspace_id=workspace_id,
+                    source_id=source_id,
+                    snapshot_id=manifest.snapshot_id,
+                    version=manifest.version,
+                    schema_fingerprint=manifest.schema_fingerprint,
+                    manifest_json=snap_dict,
+                    artifact_id=manifest.artifact_id,
+                    sha256=content_hash.hexdigest(),
+                    source_config=source_config,
+                    semantics_json=sem_dict,
+                )
+            except SQLAlchemyError as exc:
+                logger.exception("Failed to persist snapshot to DB")
+                raise _db_unavailable("save the imported dataset") from exc
+        except BaseException:
+            for batch in batches:
+                c.artifacts.delete(table_artifact_id(manifest.artifact_id, batch.table_name))
+            try:
+                await asyncio.to_thread(
+                    app.state.repo_quota.release_workspace_bytes, workspace_id, manifest.total_normalized_bytes
+                )
+            except SQLAlchemyError:
+                logger.exception("Could not release %s reserved bytes for %s", manifest.total_normalized_bytes, workspace_id)
+            raise
         app.state.snapshots[manifest.snapshot_id] = snap_dict
         app.state.semantics[manifest.snapshot_id] = sem_dict
         if upload is not None:
@@ -1633,7 +1646,7 @@ def create_app(
             raise HTTPException(status_code=404, detail="Dataset not found")
         for artifact_id in (removed.get("table_artifacts") or {}).values():
             c.artifacts.delete(str(artifact_id))
-        c.artifacts.release_workspace_bytes(workspace_id, int(removed.get("total_normalized_bytes") or 0))
+        app.state.repo_quota.release_workspace_bytes(workspace_id, int(removed.get("total_normalized_bytes") or 0))
         app.state.snapshots.pop(snapshot_id, None)
         app.state.semantics.pop(snapshot_id, None)
         return {"snapshot_id": snapshot_id, "deleted": True}

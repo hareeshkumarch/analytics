@@ -21,11 +21,12 @@ from app.adapters.persistence.orm_models import (
     SemanticVersionRow,
     SnapshotManifestRow,
     SourceRow,
+    WorkspaceRow,
 )
-from app.domain.errors import BudgetExhaustedError, NotFoundError, ValidationError, VersionConflictError
+from app.domain.errors import BudgetExhaustedError, LimitExceededError, NotFoundError, ValidationError, VersionConflictError
 from app.domain.events import EventType, RunEvent
 from app.domain.models import Answer, RunStatus
-from app.domain.limits import DEEP_BUDGET_LIMITS, QUICK_BUDGET_LIMITS
+from app.domain.limits import DEEP_BUDGET_LIMITS, DEFAULT_DATA_LIMITS, QUICK_BUDGET_LIMITS, DataLimits
 from app.domain.providers import BudgetReservation
 from app.domain.usage import summarize_model_usage
 
@@ -989,6 +990,58 @@ class PgPinRepository:
                 )
                 res = db.execute(stmt)
                 return res.rowcount > 0
+
+
+class PgWorkspaceQuota:
+    def __init__(self, session_factory: sessionmaker[Session], limits: DataLimits = DEFAULT_DATA_LIMITS) -> None:
+        self._sf = session_factory
+        self._limit = limits.max_workspace_retained_raw_bytes
+
+    def reserve_workspace_bytes(self, workspace_id: str, byte_count: int) -> None:
+        if byte_count < 0:
+            raise ValueError("byte_count must be non-negative")
+        for _ in range(2):
+            with self._sf() as db:
+                with db.begin():
+                    reserved = db.execute(
+                        update(WorkspaceRow)
+                        .where(
+                            WorkspaceRow.workspace_id == workspace_id,
+                            WorkspaceRow.retained_raw_bytes + byte_count <= self._limit,
+                        )
+                        .values(retained_raw_bytes=WorkspaceRow.retained_raw_bytes + byte_count)
+                        .returning(WorkspaceRow.retained_raw_bytes)
+                    ).scalar_one_or_none()
+                    exists = reserved is not None or db.get(WorkspaceRow, workspace_id) is not None
+            if reserved is not None:
+                return
+            if exists:
+                break
+            try:
+                with self._sf() as db:
+                    with db.begin():
+                        ensure_workspace(db, workspace_id)
+            except IntegrityError:
+                pass
+        raise LimitExceededError(
+            f"Workspace raw data retention limit exceeded ({self._limit} bytes)",
+            remediation="Remove unused datasets or snapshots before uploading more data.",
+        )
+
+    def release_workspace_bytes(self, workspace_id: str, byte_count: int) -> None:
+        amount = max(0, byte_count)
+        with self._sf() as db:
+            with db.begin():
+                db.execute(
+                    update(WorkspaceRow)
+                    .where(WorkspaceRow.workspace_id == workspace_id)
+                    .values(
+                        retained_raw_bytes=case(
+                            (WorkspaceRow.retained_raw_bytes > amount, WorkspaceRow.retained_raw_bytes - amount),
+                            else_=0,
+                        )
+                    )
+                )
 
 
 class PgBudgetLedger:

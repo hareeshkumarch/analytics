@@ -220,7 +220,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** The theme radiogroup has no arrow-key navigation, and Ask announces "Answer ready" when you merely open an old run.
 - **How to fix:** Roving tabindex for the radiogroup; announce only status changes while streaming.
 
-### #37 Datasets and runs can't be deleted (UX) (mostly fixed)
+### #37 Datasets and runs can't be deleted (UX) (fixed)
+- **Status (2026-11-25, storage total):** The workspace storage total now lives in `workspaces.retained_raw_bytes` (`PgWorkspaceQuota`), reserved with a single conditional `UPDATE … RETURNING` so concurrent imports can't pass the limit together, and released (never below 0) when a dataset is deleted. A failed publish or save now releases the reservation and removes the published table files. Migration `0008_backfill_retained_bytes` starts the column from existing snapshot sizes.
 - **Status (2026-11-25):** `DELETE /runs/{id}` (refused with 409 while the run is active) removes the run with its events, evidence, budget reservations, pin and LangGraph checkpoints. `DELETE /snapshots/{id}` removes the snapshot, its semantic versions and its table artifacts and releases the workspace byte reservation; it returns 409 when pinned answers use the dataset unless `force=true`. Runs that used a deleted dataset stay readable. Data and Ask have Delete buttons with confirmation. Still open: persisting the byte accounting in `workspaces.retained_raw_bytes` (it's in memory).
 - **Reason:** Old imports and failed runs pile up, and the storage quota lives in memory.
 - **How to fix:** `DELETE /snapshots/{id}` (warn if pins use it) and `DELETE /runs/{id}`, `ON DELETE CASCADE` on run children, persisted byte accounting in `workspaces.retained_raw_bytes`, and Delete actions with confirmation.
