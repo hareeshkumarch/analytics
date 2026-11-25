@@ -182,6 +182,27 @@ class TestRestPagination(unittest.TestCase):
         self.assertEqual(table["metadata"].to_pylist()[0], '{"order": "00101"}')
 
 
+class TestRemoteFileDownloadReuse(unittest.TestCase):
+    def test_extract_reuses_the_discover_download_once(self) -> None:
+        fetches: list[str | None] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            fetches.append(request.headers.get("authorization"))
+            return httpx.Response(200, content=b"id,amount\n1,10\n2,20\n", headers={"content-type": "text/csv"})
+
+        conn = RemoteFileConnector(_parsers(), SystemClock(), policy=LOCAL_POLICY, transport=httpx.MockTransport(handler))
+        config = {"url": "http://localhost:8080/files/orders.csv", "format": "auto"}
+        conn.discover(config, {"bearer_token": "a"})
+        _, manifest = conn.extract(config, {"bearer_token": "a"}, _request(("orders",)), lambda: False)
+        self.assertEqual(manifest.total_rows, 2)
+        self.assertEqual(len(fetches), 1)
+        conn.extract(config, {"bearer_token": "a"}, _request(("orders",)), lambda: False)
+        self.assertEqual(len(fetches), 2)
+        conn.discover(config, {"bearer_token": "a"})
+        conn.extract(config, {"bearer_token": "b"}, _request(("orders",)), lambda: False)
+        self.assertEqual(fetches[-1], "Bearer b")
+
+
 class TestDuckDbUpload(unittest.TestCase):
     def test_imports_base_tables_and_ignores_views(self) -> None:
         import duckdb

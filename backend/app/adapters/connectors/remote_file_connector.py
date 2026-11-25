@@ -7,8 +7,11 @@ validated IP, redirects are followed manually (max 5) and re-validated, an optio
 token is only ever sent to the original origin, and the download is capped while streaming.
 """
 
+from collections import OrderedDict
 import hashlib
 import re
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any, Callable, Iterable
@@ -71,6 +74,8 @@ _CONTENT_TYPE_FORMATS = {
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 MAX_REDIRECTS = 5
 _PROBE_BYTES = 64 * 1024
+RECENT_DOWNLOADS_MAX = 4
+RECENT_DOWNLOAD_TTL_SECONDS = 600
 
 
 def detect_remote_format(url: str, content_type: str | None, explicit: str | None) -> str:
@@ -128,6 +133,27 @@ class RemoteFileConnector:
         self._clock = clock
         self._policy = policy or DestinationPolicy(allow_private_local_for_tests=False, require_https=True)
         self._transport = transport
+        self._recent: OrderedDict[str, tuple[float, _Download]] = OrderedDict()
+        self._recent_lock = threading.Lock()
+
+    @staticmethod
+    def _cache_key(url: str, credentials: dict[str, str]) -> str:
+        token = credentials.get("bearer_token", "").strip()
+        return hashlib.sha256(f"{url}\n{token}".encode("utf-8")).hexdigest()
+
+    def _remember(self, key: str, download: _Download) -> None:
+        with self._recent_lock:
+            self._recent[key] = (time.monotonic(), download)
+            self._recent.move_to_end(key)
+            while len(self._recent) > RECENT_DOWNLOADS_MAX:
+                self._recent.popitem(last=False)
+
+    def _take_recent(self, key: str) -> _Download | None:
+        with self._recent_lock:
+            entry = self._recent.pop(key, None)
+        if entry is None or time.monotonic() - entry[0] > RECENT_DOWNLOAD_TTL_SECONDS:
+            return None
+        return entry[1]
 
     def capabilities(self) -> ExtractionCapabilities:
         return ExtractionCapabilities(
@@ -271,6 +297,7 @@ class RemoteFileConnector:
     ) -> tuple[DiscoveredTable, ...]:
         url = self._url(config)
         download = self._download(url, credentials, DEFAULT_DATA_LIMITS)
+        self._remember(self._cache_key(url, credentials), download)
         fmt, parsed_tables = self._parse(download, config, DEFAULT_DATA_LIMITS)
         return tuple(
             DiscoveredTable(
@@ -293,7 +320,9 @@ class RemoteFileConnector:
             raise ConnectorError("Extraction cancelled before start")
         started_at = self._clock.now()
         url = self._url(config)
-        download = self._download(url, credentials, request.limits, is_cancelled=is_cancelled)
+        download = self._take_recent(self._cache_key(url, credentials)) or self._download(
+            url, credentials, request.limits, is_cancelled=is_cancelled
+        )
         fmt, parsed_tables = self._parse(download, config, request.limits)
 
         selected = set(request.selected_tables) if request.selected_tables else None
