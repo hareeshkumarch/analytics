@@ -107,6 +107,10 @@ class BudgetReservation:
     settled: bool = False
     actual_tokens: int | None = None
     actual_cost_usd: Decimal | None = None
+    provider_id: str = ""
+    model_id: str = ""
+    role: str = ""
+    latency_ms: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

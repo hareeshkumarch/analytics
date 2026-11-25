@@ -1,6 +1,7 @@
 from decimal import Decimal
 import re
 import threading
+import time
 from typing import Any, Callable, Generator, cast
 import uuid
 
@@ -324,6 +325,9 @@ class RoutingService:
                         estimated_cost_usd=est_cost,
                         cost_is_unknown=cost_unknown,
                         hard_cost_ceiling_usd=policy.hard_cost_ceiling_usd,
+                        provider_id=model.provider_id.value,
+                        model_id=model.model_id,
+                        role=request.role.value,
                     )
                 except BaseException:
                     self._semaphores.release(sem_key)
@@ -336,6 +340,7 @@ class RoutingService:
                 if partial[0] and on_reset is not None:
                     on_reset()
                 partial[0] = False
+                started = time.monotonic()
                 stream_fn = getattr(gateway, "stream", None)
                 streams = (
                     on_delta is not None
@@ -403,7 +408,12 @@ class RoutingService:
                                 Decimal(resp.input_tokens) * model.input_price_per_1m
                                 + Decimal(resp.output_tokens + resp.reasoning_tokens) * model.output_price_per_1m
                             ) / Decimal("1000000")
-                        self._ledger.settle(reservation.reservation_id, actual_tokens, actual_cost)
+                        self._ledger.settle(
+                            reservation.reservation_id,
+                            actual_tokens,
+                            actual_cost,
+                            latency_ms=int((time.monotonic() - started) * 1000),
+                        )
                     finally:
                         self._semaphores.release(sem_key)
                     return resp

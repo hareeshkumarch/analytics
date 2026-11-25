@@ -1,3 +1,4 @@
+from dataclasses import replace
 from decimal import Decimal
 import threading
 import uuid
@@ -5,10 +6,10 @@ import uuid
 from app.domain.errors import BudgetExhaustedError
 from app.domain.limits import DEEP_BUDGET_LIMITS
 from app.domain.providers import BudgetReservation
+from app.domain.usage import summarize_model_usage
 
 DEFAULT_MAX_ATTEMPTS = DEEP_BUDGET_LIMITS.total_model_attempts
 DEFAULT_MAX_TOKENS = 500_000
-
 
 class AtomicBudgetLedger:
     def __init__(
@@ -51,6 +52,10 @@ class AtomicBudgetLedger:
         estimated_cost_usd: Decimal | None,
         cost_is_unknown: bool,
         hard_cost_ceiling_usd: Decimal | None,
+        *,
+        provider_id: str = "",
+        model_id: str = "",
+        role: str = "",
     ) -> BudgetReservation:
         with self._lock:
             ceiling = hard_cost_ceiling_usd if hard_cost_ceiling_usd is not None else self._max_cost.get(run_id)
@@ -91,6 +96,9 @@ class AtomicBudgetLedger:
                 reserved_cost_usd=estimated_cost_usd,
                 cost_is_unknown=cost_is_unknown,
                 settled=False,
+                provider_id=provider_id,
+                model_id=model_id,
+                role=role,
             )
             self._reservations[res_id] = res
             return res
@@ -100,6 +108,8 @@ class AtomicBudgetLedger:
         reservation_id: str,
         actual_tokens: int,
         actual_cost_usd: Decimal | None,
+        *,
+        latency_ms: int | None = None,
     ) -> BudgetReservation:
         with self._lock:
             res = self._reservations.get(reservation_id)
@@ -117,17 +127,8 @@ class AtomicBudgetLedger:
                     Decimal("0"), self._reserved_cost.get(res.run_id, Decimal("0")) + cost_delta
                 )
 
-            settled = BudgetReservation(
-                reservation_id=res.reservation_id,
-                run_id=res.run_id,
-                operation_id=res.operation_id,
-                attempt_id=res.attempt_id,
-                reserved_tokens=res.reserved_tokens,
-                reserved_cost_usd=res.reserved_cost_usd,
-                cost_is_unknown=res.cost_is_unknown,
-                settled=True,
-                actual_tokens=actual_tokens,
-                actual_cost_usd=actual_cost_usd,
+            settled = replace(
+                res, settled=True, actual_tokens=actual_tokens, actual_cost_usd=actual_cost_usd, latency_ms=latency_ms
             )
             self._reservations[reservation_id] = settled
             return settled
@@ -140,6 +141,23 @@ class AtomicBudgetLedger:
 
     def get_runs_totals(self, run_ids: list[str]) -> dict[str, dict[str, object]]:
         return {run_id: self.get_run_totals(run_id) for run_id in run_ids}
+
+    def get_model_usage(self, run_ids: list[str]) -> list[dict[str, object]]:
+        wanted = set(run_ids)
+        with self._lock:
+            rows = [r for r in self._reservations.values() if r.run_id in wanted]
+        return summarize_model_usage(
+            (
+                r.provider_id,
+                r.model_id,
+                r.actual_tokens if r.settled and r.actual_tokens is not None else r.reserved_tokens,
+                r.actual_cost_usd if r.settled and r.actual_cost_usd is not None else r.reserved_cost_usd,
+                r.cost_is_unknown,
+                r.settled,
+                r.latency_ms,
+            )
+            for r in rows
+        )
 
     def get_run_totals(self, run_id: str) -> dict[str, object]:
         with self._lock:

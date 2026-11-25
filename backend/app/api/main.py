@@ -1816,7 +1816,9 @@ def create_app(
         c: AppContainer = app.state.container
         try:
             ws_runs = app.state.repo_runs.list_runs(workspace_id, limit=RUN_PAGE_MAX, since=since)
-            run_totals = c.budget_ledger.get_runs_totals([r["run_id"] for r in ws_runs])
+            run_ids = [r["run_id"] for r in ws_runs]
+            run_totals = c.budget_ledger.get_runs_totals(run_ids)
+            models = c.budget_ledger.get_model_usage(run_ids)
         except SQLAlchemyError as exc:
             logger.exception("Failed to query runs for usage from DB")
             raise _db_unavailable("load usage") from exc
@@ -1831,7 +1833,7 @@ def create_app(
             }
             for r in ws_runs
         ]
-        return {"workspace_id": workspace_id, "run_count": len(ws_runs), "runs": totals}
+        return {"workspace_id": workspace_id, "run_count": len(ws_runs), "runs": totals, "models": models}
 
     @app.put("/api/v1/workspaces/{workspace_id}/settings/provider-key")
     def save_provider_key(workspace_id: str, payload: SaveProviderKeyRequest) -> dict[str, str]:

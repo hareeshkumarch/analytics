@@ -27,6 +27,7 @@ from app.domain.events import EventType, RunEvent
 from app.domain.models import Answer, RunStatus
 from app.domain.limits import DEEP_BUDGET_LIMITS, QUICK_BUDGET_LIMITS
 from app.domain.providers import BudgetReservation
+from app.domain.usage import summarize_model_usage
 
 
 def _append_run_event(
@@ -1003,6 +1004,10 @@ class PgBudgetLedger:
         estimated_cost_usd: Decimal | None,
         cost_is_unknown: bool,
         hard_cost_ceiling_usd: Decimal | None,
+        *,
+        provider_id: str = "",
+        model_id: str = "",
+        role: str = "",
     ) -> BudgetReservation:
         if hard_cost_ceiling_usd is not None and cost_is_unknown:
             raise BudgetExhaustedError("Hard monetary ceiling excludes models with unknown pricing")
@@ -1042,6 +1047,9 @@ class PgBudgetLedger:
                     reserved_cost_usd=estimated_cost_usd,
                     cost_is_unknown=cost_is_unknown,
                     settled=False,
+                    provider_id=provider_id or None,
+                    model_id=model_id or None,
+                    role=role or None,
                 )
                 db.add(row)
                 return BudgetReservation(
@@ -1053,6 +1061,9 @@ class PgBudgetLedger:
                     reserved_cost_usd=estimated_cost_usd,
                     cost_is_unknown=cost_is_unknown,
                     settled=False,
+                    provider_id=provider_id,
+                    model_id=model_id,
+                    role=role,
                 )
 
     def settle(
@@ -1060,6 +1071,8 @@ class PgBudgetLedger:
         reservation_id: str,
         actual_tokens: int,
         actual_cost_usd: Decimal | None,
+        *,
+        latency_ms: int | None = None,
     ) -> BudgetReservation:
         with self._sf() as db:
             with db.begin():
@@ -1070,6 +1083,7 @@ class PgBudgetLedger:
                     row.settled = True
                     row.actual_tokens = actual_tokens
                     row.actual_cost_usd = actual_cost_usd
+                    row.latency_ms = latency_ms
                 return BudgetReservation(
                     reservation_id=row.reservation_id,
                     run_id=row.run_id,
@@ -1081,6 +1095,10 @@ class PgBudgetLedger:
                     settled=True,
                     actual_tokens=row.actual_tokens,
                     actual_cost_usd=row.actual_cost_usd,
+                    provider_id=row.provider_id or "",
+                    model_id=row.model_id or "",
+                    role=row.role or "",
+                    latency_ms=row.latency_ms,
                 )
 
     def release_unresolved(self, reservation_id: str, reason: str) -> None:
@@ -1118,6 +1136,23 @@ class PgBudgetLedger:
             or {"run_id": run_id, "used_attempts": 0, "total_tokens": 0, "total_cost_usd": "0", "incomplete": False}
             for run_id in run_ids
         }
+
+    def get_model_usage(self, run_ids: list[str]) -> list[dict[str, object]]:
+        with self._sf() as db:
+            rows = db.execute(
+                select(
+                    BudgetReservationRow.provider_id,
+                    BudgetReservationRow.model_id,
+                    func.coalesce(BudgetReservationRow.actual_tokens, BudgetReservationRow.reserved_tokens),
+                    func.coalesce(BudgetReservationRow.actual_cost_usd, BudgetReservationRow.reserved_cost_usd),
+                    BudgetReservationRow.cost_is_unknown,
+                    BudgetReservationRow.settled,
+                    BudgetReservationRow.latency_ms,
+                ).where(BudgetReservationRow.run_id.in_(run_ids))
+            ).all()
+        return summarize_model_usage(
+            (p or "", m or "", int(t or 0), c, bool(u), bool(s), lat) for p, m, t, c, u, s, lat in rows
+        )
 
     def get_run_totals(self, run_id: str) -> dict[str, object]:
         with self._sf() as db:

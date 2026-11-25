@@ -85,6 +85,8 @@ class BudgetLedger(Protocol):
 
     def get_runs_totals(self, run_ids: list[str]) -> dict[str, dict[str, object]]: ...
 
+    def get_model_usage(self, run_ids: list[str]) -> list[dict[str, object]]: ...
+
     def reserve(
         self,
         run_id: str,
@@ -94,6 +96,10 @@ class BudgetLedger(Protocol):
         estimated_cost_usd: Decimal | None,
         cost_is_unknown: bool,
         hard_cost_ceiling_usd: Decimal | None,
+        *,
+        provider_id: str = "",
+        model_id: str = "",
+        role: str = "",
     ) -> BudgetReservation: ...
 
     def settle(
@@ -101,6 +107,8 @@ class BudgetLedger(Protocol):
         reservation_id: str,
         actual_tokens: int,
         actual_cost_usd: Decimal | None,
+        *,
+        latency_ms: int | None = None,
     ) -> BudgetReservation: ...
 
     def release_unresolved(self, reservation_id: str, reason: str) -> None: ...

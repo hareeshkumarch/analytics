@@ -272,7 +272,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** Dashboard shows "Newer data", but the user has to click Re-run.
 - **How to fix:** An optional per-pin setting that re-runs automatically when a newer approved snapshot of the same source appears, with the latest result shown on the card.
 
-### I5 Usage by model and provider (UX)
+### I5 Usage by model and provider (UX) (done)
+- **Status (2026-11-25):** Each budget attempt now records its provider, model, role and latency (migration `0007_budget_attempt_models`; older rows show as "unknown"). `/usage` returns a `models` breakdown (calls, unfinished calls, tokens, cost, unknown-price flag, average latency) for the runs in the time window, and Usage shows it as a "By model" table with bars and a provider filter kept in the URL.
 - **Reason:** Usage shows totals per run only.
 - **How to fix:** Use the persistent budget ledger ([07](07-in-memory-state.md)), expose attempt rows (model, role, tokens, cost, latency), and add model and provider filters and charts.
 

@@ -26,10 +26,22 @@ interface RunUsageItem {
   error?: string | null;
 }
 
+interface ModelUsageItem {
+  provider_id: string;
+  model_id: string;
+  calls: number;
+  unsettled_calls: number;
+  total_tokens: number;
+  total_cost_usd: string;
+  cost_unknown: boolean;
+  avg_latency_ms: number | null;
+}
+
 interface UsageResponse {
   workspace_id: string;
   run_count: number;
   runs: RunUsageItem[];
+  models?: ModelUsageItem[];
 }
 
 type WindowKey = "24h" | "7d" | "30d" | "90d" | "all";
@@ -96,6 +108,115 @@ function Stat({ label, value, hint, loading }: { label: string; value: string; h
   );
 }
 
+function ModelUsage({
+  models,
+  metric,
+  provider,
+  onProvider,
+  windowLabel,
+  loading,
+}: {
+  models: ModelUsageItem[];
+  metric: Metric;
+  provider: string;
+  onProvider: (value: string) => void;
+  windowLabel: string;
+  loading: boolean;
+}) {
+  const providers = Array.from(new Set(models.map((m) => m.provider_id))).sort();
+  const active = providers.includes(provider) ? provider : "all";
+  const shown = active === "all" ? models : models.filter((m) => m.provider_id === active);
+  const value = (m: ModelUsageItem) => (metric === "cost" ? Number(m.total_cost_usd) || 0 : metric === "runs" ? m.calls : m.total_tokens);
+  const max = Math.max(1, ...shown.map(value));
+  const barLabel = metric === "cost" ? "cost" : metric === "runs" ? "model calls" : "tokens";
+  return (
+    <section aria-labelledby="usage-models" className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <div>
+          <h2 id="usage-models" className="font-display text-lg font-semibold tracking-[-0.01em]">
+            By model
+          </h2>
+          <p className="mt-0.5 text-xs text-secondary">Every model call in the last {windowLabel.toLowerCase()}, across all modes and statuses. Bars show {barLabel}.</p>
+        </div>
+        {providers.length > 1 && (
+          <div role="group" aria-label="Provider" className="flex flex-wrap gap-1.5">
+            {["all", ...providers].map((p) => (
+              <button
+                key={p}
+                type="button"
+                aria-pressed={active === p}
+                onClick={() => onProvider(p)}
+                className={cx(
+                  "min-h-[32px] border px-3 text-[12.5px] transition-colors",
+                  active === p ? "border-ink bg-ink text-canvas" : "border-border bg-surface text-body hover:border-ink"
+                )}
+              >
+                {p === "all" ? "All providers" : p}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {shown.length === 0 ? (
+        <EmptyState title={loading ? "Loading…" : "No model calls in this window"} />
+      ) : (
+        <HScroll className="border border-border" label="Usage by model">
+          <table className="w-full min-w-[720px] border-collapse text-left text-[13px]">
+            <thead>
+              <tr className="bg-panel text-[11px] uppercase tracking-[0.05em] text-secondary">
+                <th className="px-3.5 py-2.5 font-medium">Model</th>
+                <th className="w-[28%] px-3.5 py-2.5 font-medium">
+                  <span className="sr-only">Share of {barLabel}</span>
+                </th>
+                <th className="px-3.5 py-2.5 text-right font-medium">Calls</th>
+                <th className="px-3.5 py-2.5 text-right font-medium">Tokens</th>
+                <th className="px-3.5 py-2.5 text-right font-medium">Cost</th>
+                <th className="px-3.5 py-2.5 text-right font-medium">Avg latency</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((m) => (
+                <tr key={`${m.provider_id}:${m.model_id}`} className="border-t border-border">
+                  <td className="px-3.5 py-3">
+                    <span className="block font-medium text-ink">{m.model_id}</span>
+                    <span className="block text-xs text-secondary">{m.provider_id}</span>
+                  </td>
+                  <td className="px-3.5 py-3">
+                    <div className="h-2 overflow-hidden bg-panel" aria-hidden="true">
+                      <div className="h-full bg-plum" style={{ width: `${(value(m) / max) * 100}%` }} />
+                    </div>
+                  </td>
+                  <td className="px-3.5 py-3 text-right tabular-nums">
+                    {m.calls.toLocaleString()}
+                    {m.unsettled_calls > 0 && (
+                      <span className="block text-xs text-secondary" title="Calls that failed or are still running">
+                        {m.unsettled_calls} unfinished
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3.5 py-3 text-right tabular-nums">{m.total_tokens.toLocaleString()}</td>
+                  <td className="px-3.5 py-3 text-right tabular-nums">
+                    {m.cost_unknown ? (
+                      <span className="text-secondary" title="This model has no declared price">
+                        Unknown
+                      </span>
+                    ) : (
+                      formatCost(Number(m.total_cost_usd) || 0)
+                    )}
+                  </td>
+                  <td className="px-3.5 py-3 text-right tabular-nums text-body">
+                    {m.avg_latency_ms === null ? "—" : `${(m.avg_latency_ms / 1000).toFixed(1)} s`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </HScroll>
+      )}
+    </section>
+  );
+}
+
 /** Bucket runs by hour (24 h view) or by day (longer views) so the chart stays readable at any volume. */
 function bucketRuns(runs: RunUsageItem[], windowKey: WindowKey) {
   const hourly = windowKey === "24h";
@@ -126,6 +247,7 @@ export function UsageView() {
   const [modeFilter, setModeFilter] = useUrlState("mode", "all", isModeFilter);
   const [search, setSearch] = useUrlState("q", "", anyText);
   const [metric, setMetric] = useUrlState<Metric>("metric", "tokens", isMetric);
+  const [providerFilter, setProviderFilter] = useUrlState("provider", "all", anyText);
 
   const gridColor = useThemeColor("border", "#E4E4E7");
   const axisColor = useThemeColor("muted", "#696972");
@@ -318,6 +440,15 @@ export function UsageView() {
           </ul>
         </section>
       </div>
+
+      <ModelUsage
+        models={data?.models ?? []}
+        metric={metric}
+        provider={providerFilter}
+        onProvider={setProviderFilter}
+        windowLabel={WINDOW_OPTIONS.find((o) => o.value === windowFilter)?.label ?? ""}
+        loading={isLoading}
+      />
 
       <section aria-labelledby="usage-runs" className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
         <div className="flex items-baseline justify-between gap-3">

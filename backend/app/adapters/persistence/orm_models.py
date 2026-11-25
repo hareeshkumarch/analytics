@@ -127,6 +127,10 @@ class BudgetReservationRow(Base):
     actual_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     actual_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
     unresolved_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    model_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    role: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class RunEventRow(Base):

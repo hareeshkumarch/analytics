@@ -250,6 +250,9 @@ class TestToolLoop(unittest.TestCase):
             chart = ans.charts[0]
             self.assertEqual((chart.chart_type, chart.evidence_id, chart.x_field), ("bar", ev, "region"))
             self.assertEqual(chart.rows, (("north", 12.5), ("south", 5.0)))
+            (usage,) = c.budget_ledger.get_model_usage(["run_tools"])
+            self.assertEqual((usage["provider_id"], usage["calls"], usage["unsettled_calls"]), ("openai", 2, 0))
+            self.assertIsNotNone(usage["avg_latency_ms"])
             second = gw.requests[1]
             assistant = [m for m in second.messages if m.get("role") == "assistant"][0]
             self.assertEqual(assistant["provider_state"]["continuation"], {"note": "x"})
