@@ -54,7 +54,7 @@ class TestUploads(unittest.TestCase):
         self.assertEqual(self._post("discover", upload_id, workspace="ws2").status_code, 404)
 
     def test_oversized_empty_and_malformed_uploads_are_rejected(self) -> None:
-        with patch("app.api.main.DEFAULT_DATA_LIMITS", dataclasses.replace(DEFAULT_DATA_LIMITS, max_uploaded_file_bytes=10)):
+        with patch("app.api.routes.connectors.DEFAULT_DATA_LIMITS", dataclasses.replace(DEFAULT_DATA_LIMITS, max_uploaded_file_bytes=10)):
             self.assertEqual(self._upload().status_code, 413)
         self.assertEqual(self._upload(data=b"").status_code, 422)
         self.assertEqual(self._post("discover", "upl_../../etc").status_code, 422)

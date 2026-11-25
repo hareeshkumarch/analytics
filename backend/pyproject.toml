@@ -79,6 +79,6 @@ module = ["app.adapters.connectors.sheets_connector", "app.adapters.connectors.b
 disallow_untyped_calls = false
 
 [[tool.mypy.overrides]]
-module = ["app.api.main"]
+module = ["app.api.main", "app.api.context", "app.api.routes.*", "app.api.run_service"]
 warn_return_any = false
 

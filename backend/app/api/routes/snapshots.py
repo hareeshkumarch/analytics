@@ -1,0 +1,165 @@
+import asyncio
+import logging
+from typing import Any
+
+from fastapi import APIRouter, HTTPException, Query
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.api.schemas import (
+    ApproveSemanticsRequest,
+)
+from app.application.services.profiling import profile_arrow_table
+from app.bootstrap.container import AppContainer
+from app.domain.errors import (
+    NotFoundError,
+    VersionConflictError,
+)
+from app.domain.limits import (
+    DEFAULT_DATA_LIMITS,
+)
+
+from app.api.context import ApiContext
+
+logger = logging.getLogger(__name__)
+
+
+def register(ctx: ApiContext) -> APIRouter:
+    router = APIRouter()
+    app = ctx.app
+    _db_unavailable = ctx.db_unavailable
+    _get_query_engine = ctx.get_query_engine
+    _get_workspace_snapshot = ctx.get_workspace_snapshot
+
+    @router.get("/api/v1/workspaces/{workspace_id}/snapshots")
+    def list_snapshots(workspace_id: str) -> dict[str, Any]:
+        if hasattr(app.state, "repo_snapshots"):
+            db_snaps = app.state.repo_snapshots.list_snapshots(workspace_id)
+            if db_snaps:
+                return {"snapshots": db_snaps}
+        items = []
+        for snap in app.state.snapshots.values():
+            if snap["workspace_id"] != workspace_id:
+                continue
+            sem = app.state.semantics.get(snap["snapshot_id"]) or {}
+            items.append(
+                {
+                    **snap,
+                    "semantic_version_id": sem.get("semantic_version_id"),
+                    "approved": bool(sem.get("approved")),
+                }
+            )
+        # Same contract as the database path: newest first.
+        items.sort(key=lambda s: str(s.get("created_at") or ""), reverse=True)
+        return {"snapshots": items}
+
+    @router.get("/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}/profile")
+    def profile_snapshot(workspace_id: str, snapshot_id: str, table: str) -> dict[str, Any]:
+        snap = _get_workspace_snapshot(workspace_id, snapshot_id)
+        arrow_table = _get_query_engine().load_table(snap, table)
+        profiles = profile_arrow_table(arrow_table, is_sampled=bool(snap.get("is_sampled", False)))
+        return {
+            "snapshot_id": snapshot_id,
+            "table": table,
+            "columns": [
+                {
+                    "column_name": profile.column_name,
+                    "null_count": profile.null_count,
+                    "distinct_count": profile.distinct_count,
+                    "duplicate_count": profile.duplicate_count,
+                    "min_value": profile.min_value,
+                    "max_value": profile.max_value,
+                    "is_sampled": profile.is_sampled,
+                }
+                for profile in profiles
+            ],
+        }
+
+    @router.get("/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}/preview")
+    def preview_snapshot(
+        workspace_id: str,
+        snapshot_id: str,
+        table: str,
+        limit: int = Query(default=100, ge=1, le=DEFAULT_DATA_LIMITS.max_preview_rows),
+    ) -> dict[str, Any]:
+        snap = _get_workspace_snapshot(workspace_id, snapshot_id)
+        preview = _get_query_engine().preview(snap, table, limit)
+        return {"snapshot_id": snapshot_id, "table": table, "limit": limit, **preview}
+
+    @router.get("/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}/diagnostics")
+    def snapshot_diagnostics(workspace_id: str, snapshot_id: str) -> dict[str, Any]:
+        snap = _get_workspace_snapshot(workspace_id, snapshot_id)
+        diagnostics = snap.get("diagnostics")
+        return {
+            "snapshot_id": snapshot_id,
+            "available": bool(diagnostics),
+            "diagnostics": diagnostics,
+            "consistency_level": snap.get("consistency_level"),
+            "total_rows": snap.get("total_rows", 0),
+            "total_normalized_bytes": snap.get("total_normalized_bytes", 0),
+            "tables": [
+                {
+                    "name": table.get("name"),
+                    "row_count": table.get("row_count", 0),
+                    "normalized_bytes": table.get("normalized_bytes", 0),
+                }
+                for table in (snap.get("table_details") or [])
+            ],
+        }
+
+    @router.get("/api/v1/workspaces/{workspace_id}/semantics/{snapshot_id}")
+    def get_semantics(workspace_id: str, snapshot_id: str) -> dict[str, Any]:
+        if hasattr(app.state, "repo_snapshots"):
+            sem = app.state.repo_snapshots.get_semantics(snapshot_id)
+            if sem:
+                return sem
+        sem = app.state.semantics.get(snapshot_id)
+        if not sem:
+            raise HTTPException(status_code=404, detail="Semantic version not found")
+        return sem
+
+    @router.post("/api/v1/workspaces/{workspace_id}/semantics/{snapshot_id}/approve")
+    async def approve_semantics(workspace_id: str, snapshot_id: str, payload: ApproveSemanticsRequest) -> dict[str, Any]:
+        res = await asyncio.to_thread(_approve_semantics, snapshot_id, payload.expected_version)
+        return {**res, "refreshed_pin_ids": await ctx.auto_refresh_pins(workspace_id, snapshot_id)}
+
+    def _approve_semantics(snapshot_id: str, expected_version: int) -> dict[str, Any]:
+        try:
+            res: dict[str, Any] = app.state.repo_snapshots.approve_semantics(snapshot_id, expected_version)
+        except NotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Semantic version not found") from exc
+        except VersionConflictError as exc:
+            raise HTTPException(status_code=409, detail="Semantic version conflict") from exc
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to approve semantics")
+            raise _db_unavailable("approve the definitions") from exc
+        app.state.semantics[snapshot_id] = res
+        return res
+
+    @router.delete("/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}")
+    def delete_snapshot(workspace_id: str, snapshot_id: str, force: bool = False) -> dict[str, Any]:
+        c: AppContainer = app.state.container
+        try:
+            existing = app.state.repo_snapshots.get_snapshot(snapshot_id)
+            if not existing or existing["workspace_id"] != workspace_id:
+                raise HTTPException(status_code=404, detail="Dataset not found")
+            pinned = app.state.repo_snapshots.pinned_runs_for_snapshot(workspace_id, snapshot_id)
+            if pinned and not force:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"{len(pinned)} pinned answer(s) use this dataset; delete with force=true to remove it anyway.",
+                )
+            removed = app.state.repo_snapshots.delete_snapshot(workspace_id, snapshot_id)
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to delete snapshot %s", snapshot_id)
+            raise _db_unavailable("delete the dataset") from exc
+        if removed is None:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+        for artifact_id in (removed.get("table_artifacts") or {}).values():
+            c.artifacts.delete(str(artifact_id))
+        app.state.repo_quota.release_workspace_bytes(workspace_id, int(removed.get("total_normalized_bytes") or 0))
+        app.state.snapshots.pop(snapshot_id, None)
+        app.state.semantics.pop(snapshot_id, None)
+        return {"snapshot_id": snapshot_id, "deleted": True}
+
+    ctx.approve_semantics = approve_semantics
+    return router

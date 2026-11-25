@@ -21,7 +21,7 @@ from app.adapters.connectors.rest_connector import RestJsonConnector, _next_link
 from app.adapters.parsers.arrow_parser import ArrowIpcFileParser
 from app.adapters.parsers.csv_parser import CsvFileParser, TsvFileParser
 from app.adapters.parsers.registry import ParserRegistry
-from app.api.main import _redacted_source_config
+from app.api.support import _redacted_source_config
 from app.application.ports.clock import SystemClock
 from app.application.ports.connectors import ExtractionRequest
 from app.application.services.orchestration_service import _strip_unknown_citations

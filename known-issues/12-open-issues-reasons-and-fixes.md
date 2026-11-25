@@ -289,7 +289,8 @@ The **UX** tag marks items that users directly notice.
 - **Reason:** Frontend types are hand-written per screen and can drift from the API.
 - **How to fix:** Generate types from `/api/openapi.json` with `openapi-typescript`, and use them in `lib/api`.
 
-### I8 Split `backend/app/api/main.py`
+### I8 Split `backend/app/api/main.py` (done)
+- **Status (2026-11-25):** `main.py` (about 1,950 lines) is now about 200: app setup, middleware, error handlers and router registration. Shared helpers (event publishing, per-run locks, snapshot binding, routing policy, evidence storage) live in `api/context.py` (`ApiContext`), run execution and resume in `api/run_service.py`, module-level helpers in `api/support.py`, and endpoints in one `APIRouter` per area under `api/routes/` (connectors, snapshots, settings, runs, pins, exports, usage, system). Cross-area calls (sample import approves definitions, approval re-runs pins, pin refresh creates a run) go through hooks on the context. Endpoint bodies moved unchanged; the generated OpenAPI document is identical before and after, and middleware order is unchanged.
 - **Reason:** One file of about 70 KB holds every route, state and run execution, which makes changes risky.
 - **How to fix:** FastAPI routers per area (connectors, snapshots, runs, pins, settings, usage) plus a run service. See [10](10-solid-refactors.md) §1.
 
