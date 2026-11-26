@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+from typing import Any
 
 
 class ConnectorFamily(str, Enum):
@@ -154,6 +155,33 @@ class TaskNode:
     result_schema: str
     priority: int = 1
     attempt_limit: int = 3
+    acceptance_criteria: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class TaskBudget:
+    tokens: int
+    tool_calls: int
+
+
+@dataclass(frozen=True, slots=True)
+class TaskRecord:
+    run_id: str
+    task_id: str
+    plan_revision: int
+    kind: str
+    objective: str
+    acceptance_criteria: tuple[str, ...]
+    dependencies: tuple[str, ...]
+    status: str
+    attempt: int
+    input_fingerprint: str
+    version: int
+    evidence_ids: tuple[str, ...] = ()
+    result: dict[str, Any] | None = None
+    error: str | None = None
+    budget: TaskBudget | None = None
+    updated_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)

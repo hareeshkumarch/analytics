@@ -5,7 +5,9 @@ from pathlib import Path
 
 import yaml
 
+from app.application.ports.tasks import TaskStore
 from app.application.ports.tools import ToolExecutionLedger
+from app.application.services.task_store import InMemoryTaskStore
 from app.application.services.tool_ledger import InMemoryToolExecutionLedger
 from app.adapters.connectors.file_connector import UploadedFileConnector
 from app.adapters.connectors.airtable_connector import AirtableConnector
@@ -67,6 +69,7 @@ class AppContainer:
     routing_service: RoutingService
     export_service: ExportService
     tool_executions: ToolExecutionLedger
+    task_store: TaskStore
 
 
 def load_yaml_configs(config_dir: Path) -> tuple[dict[ProviderId, ProviderProfile], dict[str, ModelProfile], RoutingPolicy]:
@@ -224,4 +227,5 @@ def build_container(
         routing_service=routing,
         export_service=export_service,
         tool_executions=InMemoryToolExecutionLedger(),
+        task_store=InMemoryTaskStore(),
     )

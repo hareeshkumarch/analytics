@@ -18,7 +18,7 @@ Tests marked (PG) run against real PostgreSQL. They run in CI, where the backend
 | Tool result schema drift | N/A | Results are built in-process by the toolbox, not read from a remote schema |
 | Streamed JSON arguments incomplete | Covered | `test_tool_loop::parse_arguments_tolerates_bad_json` (invalid args are never dispatched), `test_streaming::failed_stream_resets_before_the_retry` |
 | Duplicate tool-call ID / delivery | N/A | Tools are read-only, so a repeat has no effect; every call is recorded once (`test_tool_executions::every_call_is_recorded_once_with_status_and_fingerprint`) |
-| Duplicate equivalent read in parallel | Open | Single-flight: #23 |
+| Duplicate equivalent read in parallel | Covered | `test_query_result_cache::parallel_identical_queries_execute_once` |
 | Dependent calls launched together | Covered | `test_domain_limits_and_inr::plan_dag_cycle_and_missing_dep_rejection`, `test_agentic_harness::deep_mode_parallel_fanout_and_bounded_replan` |
 | Batch partially succeeds | Covered | Per-call outcomes: `test_tool_executions::every_call_is_recorded_once_with_status_and_fingerprint`; run outcome `partial_success`: `test_verification::rules` |
 | HTTP 200 contains domain error | Covered | `test_provider_bad_bodies::every_adapter_rejects_error_bodies_and_malformed_json`, `::test_truncated_replies_are_incomplete` |
@@ -65,7 +65,7 @@ Tests marked (PG) run against real PostgreSQL. They run in CI, where the backend
 | Cross-tenant join / cache / FK | Partial | `test_workspace_scoping`, `test_uploads::uploads_are_scoped_to_their_workspace`; full sweep: #21 |
 | Lagging read replica | N/A | Single primary |
 | Two queries see different snapshots | Covered | A run reads one snapshot: `test_snapshot_binding` |
-| N+1 / repeated schema query | Partial | Schema comes from snapshot metadata, not the database; query cache: #23 |
+| N+1 / repeated schema query | Covered | Schema comes from snapshot metadata, not the database; `test_query_result_cache::a_repeated_question_is_served_from_cache_and_counted` |
 | Many-to-many joins inflate metric | Covered | Reconciliation aggregates each side before joining: `test_domain_limits_and_inr::inr_acceptance_fixture_exact_reconciliation`, `test_tool_loop::reconciliation_applies_filters` |
 | Null denominator / division by zero | Covered | `test_failure_matrix_extras::ratio_against_a_zero_baseline_is_refused` |
 | Date boundary / DST / fiscal period | Partial | Half-open ranges and business time zone: `test_query_guardrails`, `test_business_timezone`; ambiguous DST times and fiscal calendars not tested |
@@ -92,7 +92,7 @@ Tests marked (PG) run against real PostgreSQL. They run in CI, where the backend
 | Fallback lacks needed feature | Covered | `test_strict_invariants::manual_override_cannot_bypass_hard_capability_filter` |
 | Subagent inherits too many tools | Covered | `test_budget_and_orchestration::restricted_tool_manifest_rejects_unsafe_defaults`, `test_agent_tool_isolation` |
 | Subagent missing parent's middleware | Partial | Specialists share the toolbox, budget and tool ledger; not asserted per subagent |
-| Agents repeat the same research | Partial | Identical failed calls are rejected; result sharing: #23 |
+| Agents repeat the same research | Covered | Identical failed calls are rejected; `test_query_result_cache::parallel_identical_queries_execute_once`; finished tasks are not re-run on resume: `test_task_records::a_resumed_deep_run_reexecutes_only_unfinished_tasks` |
 | Recursive delegation | Covered | `test_budget_guardrails` (specialist and replan caps) |
 | Agents disagree confidently | Partial | Reviewer contradictions make the outcome `needs_review` (`test_verification::rules`); disagreement is not shown side by side |
 | Agent marks fabricated result verified | Covered | `test_verification::answer_citing_a_number_not_in_evidence_needs_review`, `test_new_connectors::unknown_citations_are_removed` |
@@ -103,14 +103,14 @@ Tests marked (PG) run against real PostgreSQL. They run in CI, where the backend
 | Unnecessary reflection | Covered | Bounded rounds and replans: `test_budget_guardrails` |
 | Token usage delayed or missing | Covered | Unsettled reservations keep the run incomplete: `test_usage_totals` |
 | Parallel agents overdraw budget | Covered | `test_budget_and_orchestration::parallel_last_slot_budget_admission` |
-| Prompt/tool update regresses quality | Open | Evaluation gate: #27 |
+| Prompt/tool update regresses quality | Partial | `make eval` fails on a pass-rate or cost regression against the baseline (`test_evaluation::report_scores_questions_and_flags_regressions_against_the_baseline`); it runs nightly and on demand, not on every PR |
 
 ## 34.4 Orchestration, UI and operations
 
 | Failure | Status | Test / reason |
 |---|---|---|
 | Worker dies before task starts | Covered | `test_outbox::a_stalled_claim_is_published_again` |
-| Worker dies after successful task | Covered (PG) | `test_worker_crash_resume::redelivery_reuses_the_finished_step` |
+| Worker dies after successful task | Covered (PG) | `test_worker_crash_resume::redelivery_reuses_the_finished_step`, `test_task_records::a_resumed_deep_run_reexecutes_only_unfinished_tasks` |
 | Queue delivers task twice | Covered | `test_run_fencing::a_redelivered_run_is_finished_only_by_the_newest_worker` |
 | User changes goal during run | N/A | A run's question is fixed; changes come as follow-ups (`test_follow_ups`) or clarifications (`test_end_to_end_slice::planner_clarification_pauses_and_resumes_the_same_run`) |
 | One parallel branch fails | Covered | Outcome `partial_success`: `test_verification::rules` |
@@ -126,12 +126,12 @@ Tests marked (PG) run against real PostgreSQL. They run in CI, where the backend
 | Provider-wide outage | Covered | `test_providers_and_routing::circuit_breaker_opens_after_five_transient_failures`, fallback tests |
 | Redis outage | Covered | `test_outbox::job_is_written_with_the_run_and_survives_a_failed_publish` |
 | DB outage | Covered | `test_persistence_guardrails` (503, no in-memory fallback) |
-| Logging/metrics outage | Partial | A failed tool-ledger write is logged and the run continues; mandatory audit fail-closed: #30 |
+| Logging/metrics outage | Partial | A failed tool-ledger write is logged and the run continues; metrics are computed from the database, so they survive a process restart (`test_ops::counts_queue_stuck_runs_and_model_call_errors`); no fail-closed audit mode |
 | Missing secret / misconfiguration | Covered | `test_persistence_guardrails::missing_database_url_fails_outside_tests`, `::invalid_master_key_fails_startup` |
 | Logs contain PII or API key | Covered | `test_secret_redaction` |
-| Backup restores stale state | Open | `make backup-dev`/`restore-dev` exist; no restore reconciliation test: #30 |
-| Cost/latency spike after deploy | Open | #27, #30 |
+| Backup restores stale state | Open | `make backup-dev`/`restore-dev` and runbook steps exist; no restore reconciliation test |
+| Cost/latency spike after deploy | Partial | The eval cost margin (`test_evaluation`) and the p95 latency and provider error alerts in `infra/monitoring/alerts.yml`; the alert rules have no automated test |
 
 ## Summary
 
-106 rows: Covered 69, Partial 18, Open 5 (tracked in #21, #23, #27, #30), N/A 14.
+106 rows: Covered 72, Partial 18, Open 2 (RLS with #21; backup reconciliation), N/A 14.

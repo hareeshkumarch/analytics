@@ -103,7 +103,9 @@ class GatewayChatModel(BaseChatModel):
     should_cancel: Callable[[], bool] | None = Field(default=None, exclude=True)
     timeout_provider: Callable[[], int] | None = Field(default=None, exclude=True)
     response_observer: Callable[[ModelResponse], None] | None = Field(default=None, exclude=True)
+    token_budget: int | None = None
     _tool_rounds: int = PrivateAttr(default=0)
+    _tokens_used: int = PrivateAttr(default=0)
     _tool_round_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
     @property
@@ -157,7 +159,9 @@ class GatewayChatModel(BaseChatModel):
         tool_rounds_exhausted = False
         if tools:
             with self._tool_round_lock:
-                tool_rounds_exhausted = self._tool_rounds >= self.max_tool_rounds
+                tool_rounds_exhausted = self._tool_rounds >= self.max_tool_rounds or (
+                    self.token_budget is not None and self._tokens_used >= self.token_budget
+                )
             tool_rounds_exhausted = tool_rounds_exhausted or (
                 self.routing_service.tokens_left(self.run_id)
                 < LOW_TOKEN_FACTOR * (estimated_input_tokens + max_output_tokens)
@@ -194,6 +198,8 @@ class GatewayChatModel(BaseChatModel):
                     response = replace(response, tool_calls=())
                 else:
                     self._tool_rounds += 1
+        with self._tool_round_lock:
+            self._tokens_used += response.input_tokens + response.output_tokens
         if self.response_observer is not None:
             self.response_observer(response)
 

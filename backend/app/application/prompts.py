@@ -28,7 +28,8 @@ PLANNER = PromptTemplate(
     "planner",
     "Create a minimal analytical task plan for this investigation. Return only JSON with keys "
     "needs_clarification, clarification_question, goal, completion_criteria, and tasks. Each task "
-    "must have task_id, kind, objective, dependencies, and required_inputs. Allowed kinds are "
+    "must have task_id, kind, objective, dependencies, required_inputs, and acceptance_criteria (one to three short checks "
+    "the step's result must pass). Allowed kinds are "
     "data_specialist, reconciliation_specialist, and evidence_reviewer. Deep mode must include "
     "an evidence_reviewer depending on all analytical tasks. Quick mode should use the fewest tasks "
     "needed. Use inspect_schema when available. Request one concise clarification only when a missing fact blocks a useful analysis. "

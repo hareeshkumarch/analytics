@@ -23,6 +23,7 @@ PLAN_SCHEMA = _strict(
                     "objective": {"type": "string"},
                     "dependencies": _STRINGS,
                     "required_inputs": _STRINGS,
+                    "acceptance_criteria": _STRINGS,
                 }
             ),
         },

@@ -46,6 +46,33 @@ class WorkspaceSettingsOut(ApiResponse):
     business_timezone: str
 
 
+class TaskBudgetOut(ApiResponse):
+    tokens: int
+    tool_calls: int
+
+
+class TaskRecordOut(ApiResponse):
+    task_id: str
+    plan_revision: int
+    kind: str
+    objective: str
+    acceptance_criteria: list[str]
+    dependencies: list[str]
+    status: str
+    attempt: int
+    input_fingerprint: str
+    version: int
+    evidence_ids: list[str]
+    error: str | None
+    budget: TaskBudgetOut | None
+    updated_at: str | None
+
+
+class TaskRecordListOut(ApiResponse):
+    run_id: str
+    tasks: list[TaskRecordOut]
+
+
 class OpsSwitchOut(ApiResponse):
     switch_id: str
     paused: bool

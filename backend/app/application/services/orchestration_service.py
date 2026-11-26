@@ -24,6 +24,15 @@ from app.adapters.orchestration.deep_agents_bridge import (
 from app.adapters.orchestration.deep_agent_runtime import DeepAgentTaskRunner
 from app.adapters.persistence.langgraph_checkpointer import open_langgraph_checkpointer
 from app.adapters.orchestration.structured_schemas import PLAN_SCHEMA, REPLAN_SCHEMA
+from app.application.services.task_records import (
+    TaskLedger,
+    budget_slice,
+    outcome_result,
+    restored_attempt,
+    restored_claim,
+    restored_verdict,
+    task_fingerprints,
+)
 from app.adapters.orchestration.supervisor import (
     DeterministicSupervisor,
     ReviewVerdict,
@@ -51,7 +60,7 @@ from app.domain.errors import BudgetExhaustedError, ClarificationRequired, publi
 from app.domain.events import EventType, RunEvent
 from app.domain.timezone import DEFAULT_BUSINESS_TIMEZONE
 from app.domain.limits import DEFAULT_GLOBAL_LIMITS, REPLAN_TASKS
-from app.domain.models import Answer, Claim, PlanDAG, RunMode, RunStatus, TaskNode, TaskStatus
+from app.domain.models import Answer, Claim, PlanDAG, RunMode, RunStatus, TaskBudget, TaskNode, TaskStatus
 from app.domain.providers import AgentRole, RoutingPolicy
 
 logger = logging.getLogger(__name__)
@@ -141,6 +150,7 @@ def _default_plan(
             required_inputs=(),
             result_schema="analytical_result_v1",
             priority=2,
+            acceptance_criteria=_DEFAULT_ACCEPTANCE["data_specialist"],
         )
     ]
     if mode == RunMode.DEEP:
@@ -156,6 +166,7 @@ def _default_plan(
                     required_inputs=(),
                     result_schema="reconciliation_result_v1",
                     priority=2,
+                    acceptance_criteria=_DEFAULT_ACCEPTANCE["reconciliation_specialist"],
                 ),
                 TaskNode(
                     task_id="t2_review",
@@ -167,6 +178,7 @@ def _default_plan(
                     required_inputs=("t1_analyze", "t1_reconcile"),
                     result_schema="review_result_v1",
                     priority=1,
+                    acceptance_criteria=_DEFAULT_ACCEPTANCE["evidence_reviewer"],
                 ),
             ]
         )
@@ -195,6 +207,7 @@ def _serialize_plan(plan: PlanDAG) -> dict[str, Any]:
                 "result_schema": task.result_schema,
                 "priority": task.priority,
                 "attempt_limit": task.attempt_limit,
+                "acceptance_criteria": list(task.acceptance_criteria),
             }
             for task in plan.tasks
         ],
@@ -221,6 +234,7 @@ def _deserialize_plan(value: Any) -> PlanDAG | None:
                     result_schema=str(task["result_schema"]),
                     priority=int(task.get("priority", 1)),
                     attempt_limit=int(task.get("attempt_limit", 3)),
+                    acceptance_criteria=tuple(str(item) for item in task.get("acceptance_criteria", [])),
                 )
                 for task in value["tasks"]
                 if isinstance(task, dict)
@@ -242,6 +256,12 @@ _RESULT_SCHEMAS = {
     "evidence_reviewer": "review_result_v1",
 }
 _REMEDIATION_KINDS = ("data_specialist", "reconciliation_specialist")
+_DEFAULT_ACCEPTANCE = {
+    "data_specialist": ("Every figure comes from a query result and cites its evidence id",),
+    "reconciliation_specialist": ("Each variance names both totals and the evidence ids behind them",),
+    "evidence_reviewer": ("Returns a verdict that lists every unsupported or conflicting figure",),
+}
+MAX_TASK_CRITERIA = 3
 
 
 def _plan_from_agent(
@@ -278,6 +298,10 @@ def _plan_from_agent(
             clean_objective = _clean_objective(item.get("objective"))
             dependencies = item.get("dependencies", [])
             required_inputs = item.get("required_inputs", dependencies)
+            raw_criteria = item.get("acceptance_criteria")
+            task_criteria = tuple(
+                clean for clean in (_clean_objective(c)[:200] for c in raw_criteria[:MAX_TASK_CRITERIA] if isinstance(c, str)) if clean
+            ) if isinstance(raw_criteria, list) else ()
             if (
                 not _TASK_ID_RE.fullmatch(task_id)
                 or kind not in _RESULT_SCHEMAS
@@ -299,6 +323,7 @@ def _plan_from_agent(
                     required_inputs=tuple(str(value) for value in required_inputs),
                     result_schema=_RESULT_SCHEMAS[kind],
                     priority=1 if kind == "evidence_reviewer" else 2,
+                    acceptance_criteria=task_criteria or _DEFAULT_ACCEPTANCE[kind],
                 )
             )
         if not any(task.kind == "data_specialist" for task in tasks):
@@ -377,6 +402,7 @@ class InvestigationOrchestrator:
         deadline: float | None = None,
         on_tool: Callable[[dict[str, Any], dict[str, Any] | None], None] | None = None,
         should_cancel: Callable[[], bool] | None = None,
+        token_budget: int | None = None,
     ) -> SpecialistOutcome:
         role = _role_for(task)
         tools = toolbox.definitions if toolbox.available else ()
@@ -400,7 +426,7 @@ class InvestigationOrchestrator:
                 unresolved_contradictions=(),
                 hard_constraints=("No raw SQL", "Use Decimal for money"),
                 remaining_tool_calls=remaining_tools,
-                acceptance_criteria="All numbers backed by evidence_ids",
+                acceptance_criteria="; ".join(task.acceptance_criteria) or "All numbers backed by evidence_ids",
                 bounded_summary=clean_task_obj,
             ),
             gateway_bridge=None,
@@ -409,6 +435,7 @@ class InvestigationOrchestrator:
         clean_q = _clean_text(question, 4000)
         user_parts = [
             f"Assigned Step Task: {child_ctx.bounded_summary}",
+            f"Acceptance criteria for this step: {child_ctx.acceptance_criteria}",
             f"User Query:\n<user_query>\n{clean_q}\n</user_query>",
         ]
         for dep in task.required_inputs:
@@ -430,6 +457,7 @@ class InvestigationOrchestrator:
         model_str = "setup_required"
         used_tools = False
         stopped_early: str | None = None
+        tokens_used = 0
         try:
             for round_idx in range(MAX_TOOL_ROUNDS + 1):
                 if round_idx > 0 and should_cancel is not None and should_cancel():
@@ -440,6 +468,8 @@ class InvestigationOrchestrator:
                     and (
                         toolbox.budget.exhausted
                         or toolbox.budget.analytical_exhausted
+                        or len(trace) >= remaining_tools
+                        or (token_budget is not None and tokens_used >= token_budget)
                         or self._attempts_left(run_id, max_model_attempts) <= 1
                         or self._container.routing_service.tokens_left(run_id)
                         < 2 * (estimate_input_tokens(tuple(messages), tools) + TOOL_ROUND_MAX_OUTPUT_TOKENS)
@@ -479,6 +509,7 @@ class InvestigationOrchestrator:
                         stopped_early = public_message(exc)
                         break
                 assert resp is not None
+                tokens_used += resp.input_tokens + resp.output_tokens
                 provider_str = resp.provider_id.value
                 model_str = resp.model_id
                 text = resp.text
@@ -503,6 +534,12 @@ class InvestigationOrchestrator:
                     if should_cancel is not None and should_cancel():
                         stopped_early = "cancelled"
                         outcome = toolbox.failure(raw.tool_name, "The run was cancelled before this query ran.", ToolErrorCode.CANCELLED)
+                    elif len(trace) >= remaining_tools:
+                        outcome = toolbox.failure(
+                            raw.tool_name,
+                            f"This step used its share of {remaining_tools} tool calls; answer with the results you have.",
+                            ToolErrorCode.LIMIT_EXCEEDED,
+                        )
                     elif n >= cap:
                         outcome = toolbox.failure(
                             raw.tool_name, f"Too many tool calls in one turn; only the first {cap} were run.", ToolErrorCode.LIMIT_EXCEEDED
@@ -602,6 +639,7 @@ class InvestigationOrchestrator:
         should_cancel: Callable[[], bool] | None = None,
         evidence_lookup: Callable[[str], dict[str, Any] | None] | None = None,
         task_history_loader: Callable[[str], tuple[list[dict[str, Any]], list[dict[str, Any]]]] | None = None,
+        token_budget: int | None = None,
     ) -> SpecialistOutcome:
         runtime = os.environ.get("AGENT_RUNTIME", "deepagents").strip().lower()
         if runtime == "legacy":
@@ -618,6 +656,7 @@ class InvestigationOrchestrator:
                 deadline=deadline,
                 on_tool=on_tool,
                 should_cancel=should_cancel,
+                token_budget=token_budget,
             )
         return self._deep_agent_runner.run(
             task=task,
@@ -633,6 +672,7 @@ class InvestigationOrchestrator:
             should_cancel=should_cancel,
             evidence_lookup=evidence_lookup,
             task_history_loader=task_history_loader,
+            token_budget=token_budget,
         )
 
     def _record_tool_execution(
@@ -858,6 +898,11 @@ class InvestigationOrchestrator:
         if on_plan is not None:
             on_plan({**_serialize_plan(plan), "route": route.route.value, "route_reason": route.reason})
         supervisor.accept_plan(plan)
+        if plan.revision > 1:
+            supervisor.resume_revision(plan.revision)
+        fingerprints = task_fingerprints(plan, question_for_agents)
+        ledger = TaskLedger(self._container.task_store, run_id)
+        ledger.add_plan(plan, fingerprints)
         planned_criteria = plan.completion_criteria
         _emit(
             EventType.PLAN_UPDATED,
@@ -884,6 +929,33 @@ class InvestigationOrchestrator:
         batch_outcomes: list[tuple[TaskNode, SpecialistOutcome]] = []
 
         budget_warned: set[str] = set()
+        task_budgets: dict[str, TaskBudget] = {}
+
+        for task in plan.tasks:
+            record = ledger.records[task.task_id]
+            if record.status == TaskStatus.COMPLETED.value and record.input_fingerprint == fingerprints[task.task_id]:
+                supervisor.record_task_result(restored_attempt(record, supervisor.state.generation))
+                text = str((record.result or {}).get("text") or "")
+                findings[task.task_id] = text
+                summary_parts.append(text)
+                restored = restored_claim(record)
+                if restored is not None and "review" not in task.kind:
+                    collected_claims.append(restored)
+                verdict = restored_verdict(record)
+                if verdict is not None and "review" in task.kind:
+                    latest_review_verdict = verdict
+                for evidence_id in record.evidence_ids if evidence_lookup is not None else ():
+                    item = evidence_lookup(evidence_id) if evidence_lookup is not None else None
+                    if item is not None and all(e.get("evidence_id") != evidence_id for e in run_evidence):
+                        run_evidence.append(item)
+                _emit(
+                    EventType.TASK_STATUS,
+                    {"task_id": task.task_id, "status": "completed", "restored": True, "evidence_ids": list(record.evidence_ids)},
+                )
+            elif record.status in (TaskStatus.FAILED.value, TaskStatus.CANCELLED.value, TaskStatus.SUPERSEDED.value):
+                supervisor.restore_status(task.task_id, TaskStatus(record.status))
+                if record.status == TaskStatus.FAILED.value:
+                    task_errors.append(f"{task.task_id}: {record.error or 'failed'}")
 
         def _check_budget() -> None:
             totals = self._container.budget_ledger.get_run_totals(run_id)
@@ -899,6 +971,7 @@ class InvestigationOrchestrator:
         def _stop_scheduling(reason: str) -> None:
             for task_id in supervisor.abandon_pending():
                 _emit(EventType.TASK_STATUS, {"task_id": task_id, "status": "cancelled", "error": reason})
+            ledger.sync_statuses(supervisor.state.task_statuses)
             budget_limitations.append(reason)
 
         def prepare_batch(state: _OrchestrationState) -> _OrchestrationState:
@@ -932,8 +1005,31 @@ class InvestigationOrchestrator:
             if not ready_batch:
                 task_errors.append("The plan has pending work but no dependency-ready tasks.")
                 return {"action": "finish"}
+            unfinished = sum(1 for st in supervisor.state.task_statuses.values() if st in (TaskStatus.PENDING, TaskStatus.RUNNING))
+            tokens_left = self._container.routing_service.tokens_left(run_id)
             for task in ready_batch:
-                _emit(EventType.TASK_STATUS, {"task_id": task.task_id, "status": "running"})
+                task_budgets[task.task_id] = budget_slice(
+                    tokens_left=tokens_left,
+                    reserve_tokens=limits.finalization_reserve_tokens if attempt_reserve else 0,
+                    tools_left=limits.max_tool_invocations - toolbox.budget.used,
+                    unfinished=unfinished,
+                    min_tokens=MIN_TOKENS_PER_STEP,
+                )
+                ledger.move(
+                    task.task_id,
+                    TaskStatus.RUNNING,
+                    attempt=ledger.records[task.task_id].attempt + 1,
+                    budget=task_budgets[task.task_id],
+                    input_fingerprint=fingerprints[task.task_id],
+                )
+                _emit(
+                    EventType.TASK_STATUS,
+                    {
+                        "task_id": task.task_id,
+                        "status": "running",
+                        "budget": {"tokens": task_budgets[task.task_id].tokens, "tool_calls": task_budgets[task.task_id].tool_calls},
+                    },
+                )
             return {"action": "dispatch"}
 
         def dispatch_batch(state: _OrchestrationState) -> _OrchestrationState:
@@ -948,7 +1044,8 @@ class InvestigationOrchestrator:
                         run_id=run_id,
                         policy=policy,
                         generation=supervisor.state.generation,
-                        remaining_tools=limits.max_tool_invocations - toolbox.budget.used,
+                        remaining_tools=task_budgets[task.task_id].tool_calls,
+                        token_budget=task_budgets[task.task_id].tokens,
                         toolbox=toolbox,
                         prior_findings=dict(findings),
                         max_model_attempts=limits.total_model_attempts,
@@ -969,6 +1066,13 @@ class InvestigationOrchestrator:
             nonlocal latest_review_verdict
             for task, outcome in batch_outcomes:
                 supervisor.record_task_result(outcome.attempt, failed=bool(outcome.error))
+                ledger.move(
+                    task.task_id,
+                    TaskStatus.FAILED if outcome.error else TaskStatus.COMPLETED,
+                    evidence_ids=outcome.attempt.evidence_ids,
+                    result=outcome_result(outcome),
+                    error=outcome.error,
+                )
                 if outcome.error:
                     task_errors.append(f"{task.task_id}: {outcome.error}")
                     if "review" in task.kind:
@@ -1105,6 +1209,7 @@ class InvestigationOrchestrator:
                 required_inputs=(),
                 result_schema=_RESULT_SCHEMAS[remediation_kind],
                 priority=2,
+                acceptance_criteria=_DEFAULT_ACCEPTANCE[remediation_kind],
             )
             review_index = remediation_index + 1
             review_task_id = f"t{review_index}_review"
@@ -1127,6 +1232,7 @@ class InvestigationOrchestrator:
                 required_inputs=review_dependencies,
                 result_schema="review_result_v1",
                 priority=1,
+                acceptance_criteria=_DEFAULT_ACCEPTANCE["evidence_reviewer"],
             )
             new_plan = PlanDAG(
                 revision=replan_idx,
@@ -1139,6 +1245,11 @@ class InvestigationOrchestrator:
             except BudgetExhaustedError as exc:
                 task_errors.append(str(exc))
                 return {"action": "finish"}
+            fingerprints.update(task_fingerprints(new_plan, question_for_agents))
+            ledger.add_plan(new_plan, fingerprints)
+            ledger.sync_statuses(supervisor.state.task_statuses)
+            if on_plan is not None:
+                on_plan({**_serialize_plan(new_plan), "route": route.route.value, "route_reason": route.reason})
             _emit(
                 EventType.PLAN_UPDATED,
                 {"revision": replan_idx, "tasks": [task.task_id for task in new_plan.tasks], "fallback": replan_fell_back},
@@ -1176,6 +1287,7 @@ class InvestigationOrchestrator:
                 )
             finally:
                 self._deep_agent_runner.set_checkpointer(None)
+        ledger.sync_statuses(supervisor.state.task_statuses)
 
         answer_markdown = "\n\n".join(summary_parts) if summary_parts else "No output generated."
         answer_limitations: list[str] = []

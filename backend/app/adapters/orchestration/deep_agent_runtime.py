@@ -34,7 +34,7 @@ from app.adapters.orchestration.supervisor import ReviewVerdict, SpecialistOutco
 from app.adapters.providers.http_utils import parse_strict_json
 from app.adapters.providers.langchain_gateway import GatewayChatModel
 from app.application.ports.providers import ModelRequest, ModelResponse, ToolCallResult, ToolDefinition
-from app.application.services.analytics_tools import AnalyticsToolbox, ToolOutcome
+from app.application.services.analytics_tools import AnalyticsToolbox, ToolErrorCode, ToolOutcome
 from app.application.services.routing_service import RoutingService
 from app.application.services.text_utils import (
     EVIDENCE_ID_RE as _EVIDENCE_ID_RE,
@@ -116,6 +116,7 @@ def _langchain_tool(
     should_cancel: Callable[[], bool] | None,
     trace: list[dict[str, Any]],
     evidence: list[dict[str, Any]],
+    max_calls: int | None = None,
 ) -> StructuredTool:
     def execute(**arguments: Any) -> str:
         if should_cancel is not None and should_cancel():
@@ -125,7 +126,14 @@ def _langchain_tool(
             tool_name=definition.name,
             arguments=arguments,
         )
-        outcome: ToolOutcome = toolbox.execute(call)
+        if max_calls is not None and len(trace) >= max_calls:
+            outcome: ToolOutcome = toolbox.failure(
+                definition.name,
+                f"This step used its share of {max_calls} tool calls; answer with the results you have.",
+                ToolErrorCode.LIMIT_EXCEEDED,
+            )
+        else:
+            outcome = toolbox.execute(call)
         entry = {**outcome.summary, "call_index": len(trace) + 1}
         trace.append(entry)
         if outcome.evidence is not None:
@@ -345,6 +353,7 @@ class DeepAgentTaskRunner:
         should_cancel: Callable[[], bool] | None = None,
         evidence_lookup: Callable[[str], dict[str, Any] | None] | None = None,
         task_history_loader: Callable[[str], tuple[list[dict[str, Any]], list[dict[str, Any]]]] | None = None,
+        token_budget: int | None = None,
     ) -> SpecialistOutcome:
         role = _role_for(task)
         profile = DEFAULT_HARNESS_PROFILES.get(role)
@@ -378,7 +387,7 @@ class DeepAgentTaskRunner:
                 unresolved_contradictions=(),
                 hard_constraints=("No raw SQL", "Use Decimal for money"),
                 remaining_tool_calls=remaining_tools,
-                acceptance_criteria="All numbers backed by evidence_ids",
+                acceptance_criteria="; ".join(task.acceptance_criteria) or "All numbers backed by evidence_ids",
                 bounded_summary=clean_task_obj,
             ),
             gateway_bridge=None,
@@ -386,8 +395,9 @@ class DeepAgentTaskRunner:
         clean_q = clean_text(question, limit=4000)
         user_parts = [
             f"Assigned Step Task: {child_ctx.bounded_summary}",
+            f"Acceptance criteria for this step: {child_ctx.acceptance_criteria}",
             f"User Query:\n<user_query>\n{clean_q}\n</user_query>",
-            f"Remaining run tool calls: {remaining_tools}",
+            f"Tool calls for this step: {remaining_tools}",
         ]
         for dep in task.required_inputs:
             finding = prior_findings.get(dep)
@@ -453,6 +463,7 @@ class DeepAgentTaskRunner:
             should_cancel=should_cancel,
             timeout_provider=timeout_provider,
             response_observer=observe,
+            token_budget=token_budget,
         )
 
         try:
@@ -465,6 +476,7 @@ class DeepAgentTaskRunner:
                     should_cancel=should_cancel,
                     trace=trace,
                     evidence=evidence,
+                    max_calls=remaining_tools,
                 )
                 for definition in definitions
             ]

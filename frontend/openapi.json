@@ -1659,6 +1659,155 @@
         "title": "TableDetailOut",
         "type": "object"
       },
+      "TaskBudgetOut": {
+        "additionalProperties": true,
+        "properties": {
+          "tokens": {
+            "title": "Tokens",
+            "type": "integer"
+          },
+          "tool_calls": {
+            "title": "Tool Calls",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tokens",
+          "tool_calls"
+        ],
+        "title": "TaskBudgetOut",
+        "type": "object"
+      },
+      "TaskRecordListOut": {
+        "additionalProperties": true,
+        "properties": {
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskRecordOut"
+            },
+            "title": "Tasks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "run_id",
+          "tasks"
+        ],
+        "title": "TaskRecordListOut",
+        "type": "object"
+      },
+      "TaskRecordOut": {
+        "additionalProperties": true,
+        "properties": {
+          "acceptance_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Acceptance Criteria",
+            "type": "array"
+          },
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "budget": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskBudgetOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "input_fingerprint": {
+            "title": "Input Fingerprint",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "objective": {
+            "title": "Objective",
+            "type": "string"
+          },
+          "plan_revision": {
+            "title": "Plan Revision",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "task_id",
+          "plan_revision",
+          "kind",
+          "objective",
+          "acceptance_criteria",
+          "dependencies",
+          "status",
+          "attempt",
+          "input_fingerprint",
+          "version",
+          "evidence_ids",
+          "error",
+          "budget",
+          "updated_at"
+        ],
+        "title": "TaskRecordOut",
+        "type": "object"
+      },
       "ToolExecutionListOut": {
         "additionalProperties": true,
         "properties": {
@@ -3396,6 +3545,54 @@
           }
         },
         "summary": "List Model Calls"
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/runs/{run_id}/tasks": {
+      "get": {
+        "operationId": "list_run_tasks_api_v1_workspaces__workspace_id__runs__run_id__tasks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskRecordListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Run Tasks"
       }
     },
     "/api/v1/workspaces/{workspace_id}/runs/{run_id}/tool-executions": {

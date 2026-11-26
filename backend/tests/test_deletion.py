@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.api.main import create_app
 from app.bootstrap.container import build_container
-from app.domain.models import RunStatus
+from app.domain.models import RunStatus, TaskRecord
 
 CSV = b"order_id,amount_inr\n001,100.00\n002,250.00\n"
 B = "/api/v1/workspaces/ws1"
@@ -39,7 +39,13 @@ class TestDeletion(unittest.TestCase):
         run_id = self._run(RunStatus.COMPLETED)
         self.assertEqual(self.client.post(f"{B}/pins", json={"title": "t", "question_text": "q", "run_id": run_id}).status_code, 201)
         self.assertTrue(self.app.state.repo_events.list_after(run_id, 0))
+        self.container.task_store.add_tasks([
+            TaskRecord(run_id=run_id, task_id="t1", plan_revision=1, kind="data_specialist", objective="o", acceptance_criteria=(),
+                       dependencies=(), status="pending", attempt=0, input_fingerprint="f", version=1)
+        ])
+        self.assertEqual([t["task_id"] for t in self.client.get(f"{B}/runs/{run_id}/tasks").json()["tasks"]], ["t1"])
         self.assertEqual(self.client.delete(f"{B}/runs/{run_id}").status_code, 200)
+        self.assertEqual(self.container.task_store.list_for_run(run_id), [])
         self.assertEqual(self.client.get(f"{B}/runs/{run_id}").status_code, 404)
         self.assertEqual(self.app.state.repo_events.list_after(run_id, 0), ())
         self.assertEqual(self.client.get(f"{B}/pins").json()["pins"], [])

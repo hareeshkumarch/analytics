@@ -22,6 +22,7 @@ from app.adapters.persistence.orm_models import (
     RunEventRow,
     RunEvidenceRow,
     RunRow,
+    RunTaskRow,
     SemanticVersionRow,
     SnapshotManifestRow,
     SourceRow,
@@ -31,7 +32,8 @@ from app.adapters.persistence.orm_models import (
 from app.application.ports.tools import ToolExecution
 from app.domain.errors import BudgetExhaustedError, LimitExceededError, NotFoundError, ValidationError, VersionConflictError
 from app.domain.events import EventType, RunEvent
-from app.domain.models import Answer, RunStatus
+from app.application.services.task_store import apply_transition
+from app.domain.models import Answer, RunStatus, TaskBudget, TaskRecord
 from app.domain.limits import DEEP_BUDGET_LIMITS, DEFAULT_DATA_LIMITS, QUICK_BUDGET_LIMITS, DataLimits
 from app.domain.providers import AgentRole, BudgetReservation
 from app.domain.timezone import DEFAULT_BUSINESS_TIMEZONE, normalize_timezone
@@ -363,7 +365,7 @@ class PgRunRepository:
                 run = db.get(RunRow, run_id, with_for_update=True)
                 if run is None or run.workspace_id != workspace_id:
                     return False
-                for model in (BudgetReservationRow, RunEventRow, RunEvidenceRow):
+                for model in (BudgetReservationRow, RunEventRow, RunEvidenceRow, RunTaskRow):
                     db.execute(delete(model).where(model.run_id == run_id))
                 db.execute(delete(PinRow).where(PinRow.workspace_id == workspace_id, PinRow.run_id == run_id))
                 checkpoint_tables = {"checkpoint_writes", "checkpoint_blobs", "checkpoints"} & set(
@@ -1518,3 +1520,93 @@ class PgOpsMetrics:
             "model_calls": [{"provider": p or "unknown", "result": r, "count": int(n)} for p, r, n in calls],
             "outbox_pending": int(outbox or 0),
         }
+
+
+def _task_from_row(row: RunTaskRow) -> TaskRecord:
+    return TaskRecord(
+        run_id=row.run_id,
+        task_id=row.task_id,
+        plan_revision=row.plan_revision,
+        kind=row.kind,
+        objective=row.objective,
+        acceptance_criteria=tuple(row.acceptance_criteria or ()),
+        dependencies=tuple(row.dependencies or ()),
+        status=row.status,
+        attempt=row.attempt,
+        input_fingerprint=row.input_fingerprint,
+        version=row.version,
+        evidence_ids=tuple(row.evidence_ids or ()),
+        result=dict(row.result_json) if row.result_json else None,
+        error=row.error,
+        budget=TaskBudget(row.budget_tokens, row.budget_tool_calls)
+        if row.budget_tokens is not None and row.budget_tool_calls is not None
+        else None,
+        updated_at=row.updated_at,
+    )
+
+
+class PgTaskRepository:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._sf = session_factory
+
+    def list_for_run(self, run_id: str) -> list[TaskRecord]:
+        with self._sf() as db:
+            rows = db.scalars(
+                select(RunTaskRow).where(RunTaskRow.run_id == run_id).order_by(RunTaskRow.plan_revision, RunTaskRow.task_id)
+            ).all()
+            return [_task_from_row(row) for row in rows]
+
+    def add_tasks(self, records: list[TaskRecord]) -> None:
+        if not records:
+            return
+        with self._sf() as db:
+            with db.begin():
+                existing = set(
+                    db.scalars(
+                        select(RunTaskRow.task_id).where(
+                            RunTaskRow.run_id == records[0].run_id, RunTaskRow.task_id.in_([r.task_id for r in records])
+                        )
+                    ).all()
+                )
+                for r in records:
+                    if r.task_id in existing:
+                        continue
+                    db.add(
+                        RunTaskRow(
+                            run_id=r.run_id,
+                            task_id=r.task_id,
+                            plan_revision=r.plan_revision,
+                            kind=r.kind,
+                            objective=r.objective,
+                            acceptance_criteria=list(r.acceptance_criteria),
+                            dependencies=list(r.dependencies),
+                            status=r.status,
+                            attempt=r.attempt,
+                            input_fingerprint=r.input_fingerprint,
+                            version=r.version,
+                            evidence_ids=list(r.evidence_ids),
+                            result_json=r.result,
+                            error=r.error,
+                            updated_at=datetime.now(timezone.utc),
+                        )
+                    )
+
+    def transition(self, run_id: str, task_id: str, *, expected_version: int, status: str, **fields: Any) -> TaskRecord:
+        with self._sf() as db:
+            with db.begin():
+                row = db.get(RunTaskRow, (run_id, task_id), with_for_update=True)
+                if row is None:
+                    raise NotFoundError(f"Task {task_id} is not recorded for run {run_id}")
+                updated = apply_transition(_task_from_row(row), expected_version=expected_version, status=status, **fields)
+                row.status = updated.status
+                row.version = updated.version
+                row.attempt = updated.attempt
+                row.input_fingerprint = updated.input_fingerprint
+                row.evidence_ids = list(updated.evidence_ids)
+                row.result_json = updated.result
+                row.error = updated.error[:2000] if updated.error else None
+                if updated.budget is not None:
+                    row.budget_tokens = updated.budget.tokens
+                    row.budget_tool_calls = updated.budget.tool_calls
+                row.updated_at = updated.updated_at or datetime.now(timezone.utc)
+                return updated

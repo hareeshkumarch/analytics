@@ -198,6 +198,27 @@ class ExportArtifactRow(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class RunTaskRow(Base):
+    __tablename__ = "run_tasks"
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.run_id"), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    plan_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    objective: Mapped[str] = mapped_column(Text, nullable=False)
+    acceptance_criteria: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    dependencies: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False)
+    input_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    evidence_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    budget_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    budget_tool_calls: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
 class OpsSwitchRow(Base):
     __tablename__ = "ops_switches"
     switch_id: Mapped[str] = mapped_column(String(64), primary_key=True)

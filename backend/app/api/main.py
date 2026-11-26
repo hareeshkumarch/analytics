@@ -29,6 +29,7 @@ from app.adapters.persistence.pg_repositories import (
     PgRoutingRepository,
     PgRunRepository,
     PgSnapshotRepository,
+    PgTaskRepository,
 )
 from app.application.services.ops_controls import OpsSwitches
 from app.bootstrap.tracing import instrument_app
@@ -82,6 +83,7 @@ def create_app(
         app.state.container.budget_ledger = durable_budget_ledger
         app.state.container.routing_service.set_budget_ledger(durable_budget_ledger)
     app.state.container.tool_executions = PgToolExecutionLedger(sf)
+    app.state.container.task_store = PgTaskRepository(sf)
     app.state.repo_runs = PgRunRepository(sf)
     app.state.repo_events = PgEventLog(sf)
     app.state.repo_evidence = PgEvidenceRepository(sf)

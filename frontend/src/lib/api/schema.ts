@@ -434,6 +434,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/runs/{run_id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Run Tasks */
+        get: operations["list_run_tasks_api_v1_workspaces__workspace_id__runs__run_id__tasks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/runs/{run_id}/tool-executions": {
         parameters: {
             query?: never;
@@ -1219,6 +1236,56 @@ export interface components {
             normalized_bytes?: number | null;
             /** Row Count */
             row_count: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** TaskBudgetOut */
+        TaskBudgetOut: {
+            /** Tokens */
+            tokens: number;
+            /** Tool Calls */
+            tool_calls: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** TaskRecordListOut */
+        TaskRecordListOut: {
+            /** Run Id */
+            run_id: string;
+            /** Tasks */
+            tasks: components["schemas"]["TaskRecordOut"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** TaskRecordOut */
+        TaskRecordOut: {
+            /** Acceptance Criteria */
+            acceptance_criteria: string[];
+            /** Attempt */
+            attempt: number;
+            budget: components["schemas"]["TaskBudgetOut"] | null;
+            /** Dependencies */
+            dependencies: string[];
+            /** Error */
+            error: string | null;
+            /** Evidence Ids */
+            evidence_ids: string[];
+            /** Input Fingerprint */
+            input_fingerprint: string;
+            /** Kind */
+            kind: string;
+            /** Objective */
+            objective: string;
+            /** Plan Revision */
+            plan_revision: number;
+            /** Status */
+            status: string;
+            /** Task Id */
+            task_id: string;
+            /** Updated At */
+            updated_at: string | null;
+            /** Version */
+            version: number;
         } & {
             [key: string]: unknown;
         };
@@ -2313,6 +2380,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelCallListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_run_tasks_api_v1_workspaces__workspace_id__runs__run_id__tasks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskRecordListOut"];
                 };
             };
             /** @description Validation Error */

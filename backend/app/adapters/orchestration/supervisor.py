@@ -108,6 +108,14 @@ class DeterministicSupervisor:
         for task in new_tasks:
             self.state.task_statuses[task.task_id] = TaskStatus.PENDING
 
+    def resume_revision(self, revision: int) -> None:
+        self.state.replan_count = max(0, revision - 1)
+        self.state.generation = max(1, revision)
+
+    def restore_status(self, task_id: str, status: TaskStatus) -> None:
+        if task_id in self.state.task_statuses:
+            self.state.task_statuses[task_id] = status
+
     def next_ready_tasks(self, max_tasks: int | None = None) -> tuple[TaskNode, ...]:
         if self.state.cancelled or self.state.awaiting_clarification or self.state.plan is None:
             return ()

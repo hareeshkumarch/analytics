@@ -12,7 +12,7 @@ from app.bootstrap.container import AppContainer
 
 from app.api.support import RUN_PAGE_MAX
 from app.api.context import ApiContext
-from app.api.responses import ModelCallListOut, PromptTemplateListOut, ToolExecutionListOut, UsageOut
+from app.api.responses import ModelCallListOut, PromptTemplateListOut, TaskRecordListOut, ToolExecutionListOut, UsageOut
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +65,44 @@ def register(ctx: ApiContext) -> APIRouter:
         return {
             "run_id": run_id,
             "executions": [{**asdict(e), "created_at": e.created_at.isoformat()} for e in executions],
+        }
+
+    @router.get(
+        "/api/v1/workspaces/{workspace_id}/runs/{run_id}/tasks",
+        response_model=TaskRecordListOut,
+        response_model_exclude_unset=True,
+    )
+    def list_run_tasks(workspace_id: str, run_id: str) -> dict[str, Any]:
+        c: AppContainer = app.state.container
+        try:
+            run = app.state.repo_runs.get_run(run_id)
+            if not run or run.get("workspace_id") != workspace_id:
+                raise HTTPException(status_code=404, detail="Run not found in this workspace")
+            records = c.task_store.list_for_run(run_id)
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to load tasks for run %s", run_id)
+            raise _db_unavailable("load the run's tasks") from exc
+        return {
+            "run_id": run_id,
+            "tasks": [
+                {
+                    "task_id": r.task_id,
+                    "plan_revision": r.plan_revision,
+                    "kind": r.kind,
+                    "objective": r.objective,
+                    "acceptance_criteria": list(r.acceptance_criteria),
+                    "dependencies": list(r.dependencies),
+                    "status": r.status,
+                    "attempt": r.attempt,
+                    "input_fingerprint": r.input_fingerprint,
+                    "version": r.version,
+                    "evidence_ids": list(r.evidence_ids),
+                    "error": r.error,
+                    "budget": {"tokens": r.budget.tokens, "tool_calls": r.budget.tool_calls} if r.budget else None,
+                    "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+                }
+                for r in records
+            ],
         }
 
     @router.get(
