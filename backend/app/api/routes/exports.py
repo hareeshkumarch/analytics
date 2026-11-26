@@ -2,13 +2,14 @@ import asyncio
 from functools import partial
 import hashlib
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import logging
 import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Response
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.schemas import (
     CreateExportRequest,
@@ -118,16 +119,34 @@ def register(ctx: ApiContext) -> APIRouter:
             raw = await asyncio.to_thread(partial(c.export_service.export_html, ans, evidence=sources))
             ctype = "text/html"
 
-        await asyncio.to_thread(c.artifacts.delete_older_than, EXPORT_ARTIFACT_PREFIX, _export_retention_seconds())
         art_id = f"{_export_prefix(workspace_id)}{uuid.uuid4().hex[:10]}"
         staged = c.artifacts.stage_bytes(art_id, f"export.{fmt}", raw, ctype)
         stored = c.artifacts.publish_staged(art_id, staged, art_id)
         c.artifacts.cleanup_job_staging(art_id)
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=_export_retention_seconds())
+        try:
+            await asyncio.to_thread(
+                partial(
+                    app.state.repo_artifacts.record_export,
+                    artifact_id=stored.artifact_id,
+                    workspace_id=workspace_id,
+                    run_id=run_rec["run_id"] if run_rec else None,
+                    fmt=fmt,
+                    byte_size=stored.byte_size,
+                    sha256=stored.sha256,
+                    expires_at=expires_at,
+                )
+            )
+        except SQLAlchemyError as exc:
+            c.artifacts.delete(stored.artifact_id)
+            logger.exception("Could not record export %s", stored.artifact_id)
+            raise ctx.db_unavailable("save the export") from exc
         return {
             "artifact_id": stored.artifact_id,
             "sha256": stored.sha256,
             "byte_size": stored.byte_size,
             "format": fmt,
+            "expires_at": expires_at.isoformat(),
             "download_url": f"/api/v1/workspaces/{workspace_id}/exports/{stored.artifact_id}",
         }
 
@@ -136,6 +155,18 @@ def register(ctx: ApiContext) -> APIRouter:
         c: AppContainer = app.state.container
         if not artifact_id.startswith(_export_prefix(workspace_id)):
             raise HTTPException(status_code=404, detail="Export not found")
+        try:
+            record = app.state.repo_artifacts.get_export(artifact_id)
+        except SQLAlchemyError as exc:
+            logger.exception("Could not load export %s", artifact_id)
+            raise ctx.db_unavailable("load the export") from exc
+        if record is None or record["workspace_id"] != workspace_id:
+            raise HTTPException(status_code=404, detail="Export not found or expired")
+        expires: datetime = record["expires_at"]
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        if expires <= datetime.now(timezone.utc):
+            raise HTTPException(status_code=404, detail="Export not found or expired")
         data = c.artifacts.read_bytes(artifact_id)
         return Response(
             content=data,

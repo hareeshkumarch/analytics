@@ -16,6 +16,7 @@ from app.adapters.persistence.crypto import CredentialCipher
 from app.adapters.persistence.database import create_session_factory
 from app.adapters.persistence.pg_repositories import (
     PgCredentialRepository,
+    PgArtifactRepository,
     PgBudgetLedger,
     PgToolExecutionLedger,
     PgEventLog,
@@ -87,6 +88,7 @@ def create_app(
     app.state.repo_pins = PgPinRepository(sf)
     app.state.repo_quota = PgWorkspaceQuota(sf)
     app.state.repo_workspace_settings = PgWorkspaceSettings(sf)
+    app.state.repo_artifacts = PgArtifactRepository(sf)
 
     app.state.runs = {}
     app.state.answers = {}

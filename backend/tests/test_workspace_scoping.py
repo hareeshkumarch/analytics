@@ -44,20 +44,6 @@ class TestObjectsStayInTheirWorkspace(unittest.TestCase):
         self.assertEqual(self.client.get(made["download_url"]).status_code, 200)
         self.assertEqual(self.client.get(f"/api/v1/workspaces/ws_b/exports/{made['artifact_id']}").status_code, 404)
 
-    def test_old_exports_are_removed_when_a_new_one_is_made(self) -> None:
-        import os
-        import time
-
-        run_id = self.client.post("/api/v1/workspaces/ws_a/runs", json={"question": "q", "mode": "quick"}).json()["run_id"]
-        first = self.client.post(
-            "/api/v1/workspaces/ws_a/exports", json={"run_id": run_id, "format": "html", "summary_markdown": "x"}
-        ).json()
-        path = os.path.join(self._td.name, "published", first["artifact_id"])
-        old = time.time() - 8 * 86400
-        os.utime(path, (old, old))
-        self.client.post("/api/v1/workspaces/ws_a/exports", json={"run_id": run_id, "format": "html", "summary_markdown": "y"})
-        self.assertEqual(self.client.get(first["download_url"]).status_code, 404)
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -182,6 +182,19 @@ class ToolExecutionRow(Base):
     cache_hit: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_false(), nullable=False)
 
 
+class ExportArtifactRow(Base):
+    __tablename__ = "export_artifacts"
+    __table_args__ = (Index("ix_export_artifacts_expires", "expires_at"),)
+    artifact_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    format: Mapped[str] = mapped_column(String(16), nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class OutboxJobRow(Base):
     __tablename__ = "outbox_jobs"
     job_id: Mapped[str] = mapped_column(String(64), primary_key=True)

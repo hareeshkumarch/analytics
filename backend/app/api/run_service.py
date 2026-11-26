@@ -1,10 +1,12 @@
 import asyncio
+from datetime import datetime, timezone
 import logging
 import os
 from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.application.services.artifact_lifecycle import SWEEP_INTERVAL_SECONDS, sweep_artifacts
 from app.application.services.orchestration_service import InvestigationOrchestrator
 from app.bootstrap.logging_setup import run_id_var
 from app.domain.errors import (
@@ -158,14 +160,28 @@ def register(ctx: ApiContext) -> None:
                 logger.exception("Outbox dispatch failed")
             await asyncio.sleep(OUTBOX_POLL_SECONDS)
 
+    async def _sweep_artifacts_forever() -> None:
+        while True:
+            try:
+                result = await asyncio.to_thread(
+                    sweep_artifacts, app.state.container.artifacts, app.state.repo_artifacts, datetime.now(timezone.utc)
+                )
+                if result.expired_exports or result.orphans:
+                    logger.info("Artifact sweep removed %s expired exports and %s orphans", result.expired_exports, result.orphans)
+            except Exception:
+                logger.exception("Artifact sweep failed")
+            await asyncio.sleep(SWEEP_INTERVAL_SECONDS)
+
     @app.on_event("shutdown")
     async def _stop_outbox_dispatcher() -> None:
-        task = getattr(app.state, "outbox_task", None)
-        if task is not None:
-            task.cancel()
+        for name in ("outbox_task", "artifact_sweep_task"):
+            task = getattr(app.state, name, None)
+            if task is not None:
+                task.cancel()
 
     @app.on_event("startup")
     async def _resume_active_runs() -> None:
+        app.state.artifact_sweep_task = asyncio.create_task(_sweep_artifacts_forever())
         if os.environ.get("RUN_EXECUTION_MODE", "inline").strip().lower() == "celery":
             app.state.outbox_task = asyncio.create_task(_dispatch_outbox_forever())
             return

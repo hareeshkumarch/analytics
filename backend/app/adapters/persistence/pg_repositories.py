@@ -12,6 +12,7 @@ from app.adapters.persistence.database import ensure_conversation, ensure_worksp
 from app.adapters.persistence.orm_models import (
     BudgetReservationRow,
     CredentialRefRow,
+    ExportArtifactRow,
     IdempotencyKeyRow,
     OutboxJobRow,
     PinRow,
@@ -1381,3 +1382,59 @@ class PgWorkspaceSettings:
             with db.begin():
                 ensure_workspace(db, workspace_id).business_timezone = name
         return name
+
+
+class PgArtifactRepository:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._sf = session_factory
+
+    def record_export(
+        self, *, artifact_id: str, workspace_id: str, run_id: str | None, fmt: str, byte_size: int, sha256: str, expires_at: datetime
+    ) -> None:
+        with self._sf() as db:
+            with db.begin():
+                db.add(
+                    ExportArtifactRow(
+                        artifact_id=artifact_id,
+                        workspace_id=workspace_id,
+                        run_id=run_id,
+                        format=fmt,
+                        byte_size=byte_size,
+                        sha256=sha256,
+                        expires_at=expires_at,
+                    )
+                )
+
+    def get_export(self, artifact_id: str) -> dict[str, Any] | None:
+        with self._sf() as db:
+            row = db.get(ExportArtifactRow, artifact_id)
+            if row is None:
+                return None
+            return {
+                "artifact_id": row.artifact_id,
+                "workspace_id": row.workspace_id,
+                "run_id": row.run_id,
+                "format": row.format,
+                "byte_size": row.byte_size,
+                "sha256": row.sha256,
+                "created_at": row.created_at,
+                "expires_at": row.expires_at,
+            }
+
+    def expired_exports(self, now: datetime) -> list[str]:
+        with self._sf() as db:
+            return list(db.scalars(select(ExportArtifactRow.artifact_id).where(ExportArtifactRow.expires_at <= now)).all())
+
+    def delete_exports(self, artifact_ids: list[str]) -> None:
+        if not artifact_ids:
+            return
+        with self._sf() as db:
+            with db.begin():
+                db.execute(delete(ExportArtifactRow).where(ExportArtifactRow.artifact_id.in_(artifact_ids)))
+
+    def referenced_artifact_ids(self) -> set[str]:
+        with self._sf() as db:
+            exports = set(db.scalars(select(ExportArtifactRow.artifact_id)).all())
+            manifests = db.scalars(select(SnapshotManifestRow.manifest_json)).all()
+        tables = {str(a) for m in manifests for a in ((m or {}).get("table_artifacts") or {}).values()}
+        return exports | tables
