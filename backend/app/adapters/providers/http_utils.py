@@ -47,6 +47,39 @@ def classify_http_error(status_code: int, body_text: str, provider_name: str) ->
     )
 
 
+_FAILED_STATUSES = frozenset({"failed", "cancelled", "canceled", "expired"})
+_TRUNCATED_REASONS = frozenset({"length", "max_tokens", "max_output_tokens", "MAX_TOKENS"})
+
+
+def read_json_body(response: httpx.Response, provider_name: str) -> dict[str, Any]:
+    try:
+        data = response.json()
+    except ValueError as exc:
+        logger.warning("%s returned a non-JSON body: %s", provider_name, response.text[:300])
+        raise ProviderError(
+            f"{provider_name} returned a response that is not JSON", code="provider_malformed_response", retryable=True
+        ) from exc
+    if not isinstance(data, dict):
+        raise ProviderError(f"{provider_name} returned an unexpected response shape", code="provider_malformed_response", retryable=True)
+    if data.get("error") or data.get("type") == "error":
+        logger.warning("%s returned an error inside a successful response: %s", provider_name, json.dumps(data)[:300])
+        raise ProviderError(f"{provider_name} reported an error", code="provider_error_body", retryable=True)
+    status = str(data.get("status") or "").lower()
+    if status in _FAILED_STATUSES:
+        raise ProviderError(f"{provider_name} reported the request as {status}", code="provider_failed_response", retryable=True)
+    if status == "incomplete":
+        reason = (data.get("incomplete_details") or {}).get("reason") or "unknown reason"
+        raise_if_truncated(str(reason), provider_name, always=True)
+    return data
+
+
+def raise_if_truncated(reason: str | None, provider_name: str, *, always: bool = False) -> None:
+    if always or (reason or "") in _TRUNCATED_REASONS:
+        raise ProviderError(
+            f"{provider_name} stopped before finishing the reply ({reason})", code="provider_incomplete", retryable=False
+        )
+
+
 def parse_strict_json(text: str, schema: dict[str, Any] | None) -> dict[str, Any]:
     try:
         obj = json.loads(text)

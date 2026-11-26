@@ -2,7 +2,7 @@ from typing import Any, Generator
 
 import httpx
 
-from app.adapters.providers.http_utils import classify_http_error, parse_strict_json, read_chat_completions_event, stream_sse_text
+from app.adapters.providers.http_utils import classify_http_error, parse_strict_json, read_chat_completions_event, stream_sse_text, raise_if_truncated, read_json_body
 from app.adapters.providers.message_format import parse_arguments, to_chat_completions
 from app.application.ports.providers import ModelRequest, ModelResponse, ToolCallResult
 from app.domain.errors import ProviderError, ValidationError
@@ -100,8 +100,9 @@ class GroqChatAdapter:
         if resp.status_code >= 400:
             raise classify_http_error(resp.status_code, resp.text, "Groq")
 
-        data = resp.json()
+        data = read_json_body(resp, "Groq")
         choice = (data.get("choices") or [{}])[0]
+        raise_if_truncated(choice.get("finish_reason"), "Groq")
         msg = choice.get("message", {})
         text = msg.get("content") or ""
         tool_calls = tuple(

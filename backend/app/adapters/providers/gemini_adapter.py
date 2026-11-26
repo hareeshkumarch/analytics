@@ -4,7 +4,7 @@ from typing import Any
 
 import httpx
 
-from app.adapters.providers.http_utils import classify_http_error, parse_strict_json
+from app.adapters.providers.http_utils import classify_http_error, parse_strict_json, read_json_body
 from app.adapters.providers.message_format import parse_arguments, to_gemini_input
 from app.application.ports.providers import ModelRequest, ModelResponse, ToolCallResult
 from app.domain.errors import ProviderError, ValidationError
@@ -81,7 +81,7 @@ class GeminiInteractionsAdapter:
         if resp.status_code >= 400:
             raise classify_http_error(resp.status_code, resp.text, "Gemini")
 
-        data = resp.json()
+        data = read_json_body(resp, "Gemini")
         text_parts: list[str] = []
         tool_calls: list[ToolCallResult] = []
         steps = copy.deepcopy(data.get("steps") or data.get("outputs") or [])

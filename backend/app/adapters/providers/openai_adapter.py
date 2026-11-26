@@ -2,7 +2,7 @@ from typing import Any, Generator
 
 import httpx
 
-from app.adapters.providers.http_utils import classify_http_error, parse_strict_json, read_responses_event, stream_sse_text
+from app.adapters.providers.http_utils import classify_http_error, parse_strict_json, read_responses_event, stream_sse_text, read_json_body
 from app.adapters.providers.message_format import parse_arguments, to_responses_input
 from app.application.ports.providers import ModelRequest, ModelResponse, ToolCallResult
 from app.domain.errors import ProviderError, ValidationError
@@ -98,7 +98,7 @@ class OpenAiResponsesAdapter:
         if resp.status_code >= 400:
             raise classify_http_error(resp.status_code, resp.text, "OpenAI")
 
-        data = resp.json()
+        data = read_json_body(resp, "OpenAI")
         text_parts: list[str] = []
         tool_calls: list[ToolCallResult] = []
         refusal: str | None = None

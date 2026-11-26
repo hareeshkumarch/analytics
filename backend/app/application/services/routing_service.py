@@ -385,6 +385,10 @@ class RoutingService:
                                 emit(resp.text)
                         else:
                             resp = gateway.invoke(current_request, prov_profile, model, api_key)
+                        if not resp.text.strip() and not resp.tool_calls and resp.structured_output is None and not resp.refusal_reason:
+                            raise ProviderError(
+                                f"{model.provider_id.value} returned an empty reply", code="provider_empty_response", retryable=True
+                            )
                         span.set_attribute("llm.input_tokens", resp.input_tokens)
                         span.set_attribute("llm.output_tokens", resp.output_tokens + resp.reasoning_tokens)
                 except ProviderError as exc:

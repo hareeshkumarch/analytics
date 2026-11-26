@@ -2,7 +2,7 @@ from typing import Any, Generator
 
 import httpx
 
-from app.adapters.providers.http_utils import classify_http_error, parse_strict_json, read_anthropic_event, stream_sse_text
+from app.adapters.providers.http_utils import classify_http_error, parse_strict_json, read_anthropic_event, stream_sse_text, raise_if_truncated, read_json_body
 from app.adapters.providers.message_format import to_anthropic
 from app.application.ports.providers import ModelRequest, ModelResponse, ToolCallResult
 from app.domain.errors import ProviderError, ValidationError
@@ -102,8 +102,9 @@ class AnthropicMessagesAdapter:
         if resp.status_code >= 400:
             raise classify_http_error(resp.status_code, resp.text, "Anthropic")
 
-        data = resp.json()
+        data = read_json_body(resp, "Anthropic")
         stop_reason = data.get("stop_reason", "end_turn")
+        raise_if_truncated(stop_reason, "Anthropic")
         refusal = "Model refused request" if stop_reason == "refusal" else None
 
         text_parts: list[str] = []
