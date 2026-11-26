@@ -4,12 +4,13 @@ import threading
 import uuid
 
 from app.domain.errors import BudgetExhaustedError
-from app.domain.limits import DEEP_BUDGET_LIMITS, RUN_TOKEN_LIMIT
-from app.domain.providers import BudgetReservation
+from app.domain.limits import DEEP_BUDGET_LIMITS
+from app.domain.providers import AgentRole, BudgetReservation
 from app.domain.usage import summarize_model_usage
 
 DEFAULT_MAX_ATTEMPTS = DEEP_BUDGET_LIMITS.total_model_attempts
-DEFAULT_MAX_TOKENS = RUN_TOKEN_LIMIT
+DEFAULT_MAX_TOKENS = DEEP_BUDGET_LIMITS.total_tokens
+FINALIZATION_ROLE = AgentRole.ANSWER_COMPOSER.value
 
 class AtomicBudgetLedger:
     def __init__(
@@ -28,6 +29,7 @@ class AtomicBudgetLedger:
         self._reserved_cost: dict[str, Decimal] = {}
         self._reservations: dict[str, BudgetReservation] = {}
         self._has_unresolved: dict[str, bool] = {}
+        self._finalization_reserve: dict[str, int] = {}
 
     def configure_run(
         self,
@@ -36,10 +38,12 @@ class AtomicBudgetLedger:
         max_attempts: int,
         max_tokens: int = DEFAULT_MAX_TOKENS,
         max_cost_usd: Decimal | None = None,
+        finalization_reserve_tokens: int = 0,
     ) -> None:
         with self._lock:
             self._max_attempts[run_id] = max_attempts
             self._max_tokens[run_id] = max_tokens
+            self._finalization_reserve[run_id] = finalization_reserve_tokens
             if max_cost_usd is not None:
                 self._max_cost[run_id] = max_cost_usd
 
@@ -74,6 +78,8 @@ class AtomicBudgetLedger:
 
             cur_tok = self._reserved_tokens.get(run_id, 0)
             max_tok = self._max_tokens.get(run_id, DEFAULT_MAX_TOKENS)
+            if role != FINALIZATION_ROLE:
+                max_tok -= self._finalization_reserve.get(run_id, 0)
             if cur_tok + estimated_tokens > max_tok:
                 raise BudgetExhaustedError(f"Run {run_id} exceeded token budget ({max_tok})")
 
@@ -188,3 +194,7 @@ class AtomicBudgetLedger:
                 "total_cost_usd": str(self._reserved_cost.get(run_id, Decimal("0"))),
                 "incomplete": self._has_unresolved.get(run_id, False),
             }
+
+    def token_limit(self, run_id: str) -> int:
+        with self._lock:
+            return self._max_tokens.get(run_id, DEFAULT_MAX_TOKENS) - self._finalization_reserve.get(run_id, 0)

@@ -87,15 +87,18 @@ class TestUsageByModel(unittest.TestCase):
 class TestDatabaseLedgerTokenCeiling(unittest.TestCase):
     def test_reservations_beyond_the_run_token_limit_are_refused(self) -> None:
         from app.domain.errors import BudgetExhaustedError
-        from app.domain.limits import RUN_TOKEN_LIMIT
+        from app.domain.limits import QUICK_BUDGET_LIMITS
 
         with tempfile.TemporaryDirectory() as td:
             app = create_app(build_container(artifact_root=td))
             ledger = PgBudgetLedger(app.state.session_factory)
             run_id = TestClient(app).post("/api/v1/workspaces/ws1/runs", json={"question": "q", "background_async": False}).json()["run_id"]
-            first = ledger.reserve(run_id, "op1", "a1", RUN_TOKEN_LIMIT - 1000, None, False, None)
+            limit = QUICK_BUDGET_LIMITS.total_tokens - QUICK_BUDGET_LIMITS.finalization_reserve_tokens
+            first = ledger.reserve(run_id, "op1", "a1", limit - 1000, None, False, None)
             with self.assertRaises(BudgetExhaustedError):
                 ledger.reserve(run_id, "op2", "a2", 2000, None, False, None)
+            ledger.reserve(run_id, "op_final", "a_final", 2000, None, False, None, role="answer_composer")
+            self.assertEqual(ledger.token_limit(run_id), limit)
             ledger.settle(first.reservation_id, 1000, None)
             ledger.reserve(run_id, "op3", "a3", 2000, None, False, None)
 

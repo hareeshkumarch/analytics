@@ -275,7 +275,7 @@ def _execute_persisted_run(run_id: str) -> dict[str, str]:
     final_status = str(finished.payload.get("status") or RunStatus.COMPLETED.value)
     if final_status not in {RunStatus.COMPLETED.value, RunStatus.FAILED.value}:
         final_status = RunStatus.COMPLETED.value
-    if not runs.save_answer(answer, final_status=final_status, fence=fence):
+    if not runs.save_answer(answer, final_status=final_status, fence=fence, mark_finished=False):
         latest = runs.get_run(run_id) or latest
         return {
             "run_id": run_id,

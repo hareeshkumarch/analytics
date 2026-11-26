@@ -4,11 +4,14 @@ import binascii
 import contextlib
 import logging
 import os
+from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 import re
 import shutil
 import tempfile
 from typing import Any, Iterator
+from zoneinfo import ZoneInfo
 
 
 from app.api.schemas import (
@@ -23,6 +26,7 @@ from app.domain.errors import (
 )
 from app.domain.limits import (
     DEFAULT_DATA_LIMITS,
+    DEFAULT_GLOBAL_LIMITS,
 )
 from app.domain.models import ConnectorFamily, RunStatus
 
@@ -163,3 +167,17 @@ async def _call_connector(fn: Any, *args: Any) -> Any:
 
 MAX_RUNS_WITH_EVIDENCE = 200
 
+
+
+def workspace_daily_quota() -> tuple[int | None, Decimal | None]:
+    runs = os.environ.get("WORKSPACE_DAILY_RUN_LIMIT", "").strip()
+    cost = os.environ.get("WORKSPACE_DAILY_COST_LIMIT_USD", "").strip()
+    return (
+        int(runs) if runs else DEFAULT_GLOBAL_LIMITS.workspace_daily_runs,
+        Decimal(cost) if cost else DEFAULT_GLOBAL_LIMITS.workspace_daily_cost_usd,
+    )
+
+
+def start_of_business_day(business_timezone: str) -> datetime:
+    local = datetime.now(ZoneInfo(business_timezone))
+    return local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)

@@ -111,9 +111,16 @@ def register(ctx: ApiContext) -> None:
                 run_rec["answer_id"] = answer.answer_id
                 if final.get("error"):
                     run_rec["error"] = final["error"]
-                if app.state.repo_runs.save_answer(answer, final_status=final_status):
+                if app.state.repo_runs.save_answer(answer, final_status=final_status, mark_finished=False):
                     for evt_dict in held_finish:
                         _publish_event(run_id, evt_dict, skip_if_cancelled=True)
+                    app.state.repo_runs.update_status(
+                        run_id,
+                        final_status,
+                        outcome=run_rec["outcome"],
+                        error=final.get("error"),
+                        unless_cancelled=True,
+                    )
         except ClarificationRequired as exc:
             if not _is_cancelled():
                 pending_events = app.state.repo_runs.pause_for_clarification(run_id, exc.prompt)

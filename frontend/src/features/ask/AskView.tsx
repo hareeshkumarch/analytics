@@ -182,6 +182,8 @@ function statusLabel(status: string): string {
   return humanize(status);
 }
 
+const BUDGET_RESOURCES: Record<string, string> = { model_calls: "Model calls", tokens: "Tokens" };
+
 const ROUTE_LABELS: Record<string, string> = {
   direct_query: "Direct query (no planning step)",
   standard: "Planned",
@@ -487,6 +489,7 @@ export function AskView() {
   const nonSchemaTools = toolEvents.filter((e) => e.payload.tool !== "inspect_schema");
   const finishedEvent = active ? [...active.events].reverse().find((e) => e.type === "run.finished") : undefined;
   const timeLimited = Boolean(finishedEvent?.payload.time_budget_exceeded);
+  const budgetWarnings = active ? active.events.filter((e) => e.type === "budget.warning") : [];
   const planEvent = active ? [...active.events].reverse().find((e) => e.type === "plan.updated") : undefined;
   const route = typeof planEvent?.payload.route === "string" ? planEvent.payload.route : null;
   const models = active
@@ -1166,6 +1169,14 @@ export function AskView() {
               {timeLimited && (
                 <Notice tone="warn" title="Stopped at the time limit">
                   The answer may be incomplete. Try Quick mode or a narrower question.
+                </Notice>
+              )}
+              {budgetWarnings.length > 0 && (
+                <Notice tone="warn" title="This run is close to its budget">
+                  {budgetWarnings
+                    .map((e) => `${BUDGET_RESOURCES[String(e.payload.resource)] ?? String(e.payload.resource)}: ${Number(e.payload.used).toLocaleString()} of ${Number(e.payload.limit).toLocaleString()} used`)
+                    .join(" · ")}
+                  . Later steps may be skipped and the answer may be partial.
                 </Notice>
               )}
               {pinError && <Notice tone="err" title={pinError} />}

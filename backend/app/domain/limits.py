@@ -1,3 +1,4 @@
+from decimal import Decimal
 from dataclasses import dataclass
 
 
@@ -61,6 +62,9 @@ class RunBudgetLimits:
     max_depth: int
     max_replans: int
     max_tool_invocations: int
+    total_tokens: int = 500_000
+    finalization_reserve_tokens: int = 24_000
+    warning_fraction: float = 0.8
 
     def __post_init__(self) -> None:
         if self.planner_task_limit < 1:
@@ -87,6 +91,8 @@ QUICK_BUDGET_LIMITS = RunBudgetLimits(
     max_depth=1,
     max_replans=0,
     max_tool_invocations=16,
+    total_tokens=200_000,
+    finalization_reserve_tokens=24_000,
 )
 
 DEEP_BUDGET_LIMITS = RunBudgetLimits(
@@ -100,6 +106,8 @@ DEEP_BUDGET_LIMITS = RunBudgetLimits(
     max_depth=1,
     max_replans=2,
     max_tool_invocations=64,
+    total_tokens=500_000,
+    finalization_reserve_tokens=24_000,
 )
 
 
@@ -117,6 +125,8 @@ class GlobalLimits:
     clarification_expiry_days: int = 7
     sse_event_retention_days: int = 7
     idempotency_key_retention_hours: int = 24
+    workspace_daily_runs: int | None = None
+    workspace_daily_cost_usd: Decimal | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,8 +153,6 @@ INGEST_BUILD_RUNNER_PROFILE = RunnerResourceProfile(
     duckdb_memory_gib=None,
     temp_budget_gib=2,
 )
-
-RUN_TOKEN_LIMIT = 500_000
 
 DEFAULT_DATA_LIMITS = DataLimits()
 DEFAULT_GLOBAL_LIMITS = GlobalLimits()

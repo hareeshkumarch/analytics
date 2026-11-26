@@ -16,6 +16,7 @@ class EventType(str, Enum):
     ANSWER_DELTA = "answer.delta"
     ANSWER_RESET = "answer.reset"
     RUN_FINISHED = "run.finished"
+    BUDGET_WARNING = "budget.warning"
 
 
 @dataclass(frozen=True, slots=True)

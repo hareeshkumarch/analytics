@@ -53,6 +53,35 @@ class TestRepositoriesOnPostgres(unittest.TestCase):
         totals = ledger.get_run_totals(run_id)
         self.assertEqual((totals["total_tokens"], Decimal(str(totals["total_cost_usd"])), totals["incomplete"]), (4000, Decimal("1.50"), True))
 
+    def test_parallel_reservations_cannot_overdraw_the_token_budget(self) -> None:
+        import threading
+
+        from app.domain.errors import BudgetExhaustedError
+        from app.domain.limits import QUICK_BUDGET_LIMITS
+
+        run_id = self._run()
+        ledger = PgBudgetLedger(self.sf)
+        limit = QUICK_BUDGET_LIMITS.total_tokens - QUICK_BUDGET_LIMITS.finalization_reserve_tokens
+        size = limit // 3 + 1
+        granted: list[int] = []
+        lock = threading.Lock()
+
+        def take(i: int) -> None:
+            try:
+                ledger.reserve(run_id, f"op{i}", f"a{i}", size, None, False, None)
+            except BudgetExhaustedError:
+                return
+            with lock:
+                granted.append(i)
+
+        threads = [threading.Thread(target=take, args=(i,)) for i in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(len(granted), 2)
+        self.assertLessEqual(int(str(ledger.get_run_totals(run_id)["total_tokens"])), limit)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -64,6 +64,7 @@ FINAL_ROUND_MIN_TIMEOUT_SECONDS = 30
 OLDER_RESULT_MAX_CHARS = 4_000
 OLDER_RESULT_ROWS = 10
 COMPOSER_ATTEMPT_RESERVE = 1
+MIN_TOKENS_PER_STEP = 8_000
 PRIOR_TURNS = 3
 PRIOR_ANSWER_CHARS = 1500
 STREAM_FLUSH_CHARS = 120
@@ -768,7 +769,9 @@ class InvestigationOrchestrator:
         self._container.budget_ledger.configure_run(
             run_id,
             max_attempts=limits.total_model_attempts,
+            max_tokens=limits.total_tokens,
             max_cost_usd=policy.hard_cost_ceiling_usd,
+            finalization_reserve_tokens=limits.finalization_reserve_tokens,
         )
         use_deep_agents = os.environ.get("AGENT_RUNTIME", "deepagents").strip().lower() != "legacy"
         saved_route = initial_plan.get("route") if isinstance(initial_plan, dict) else None
@@ -880,6 +883,19 @@ class InvestigationOrchestrator:
         ready_batch: tuple[TaskNode, ...] = ()
         batch_outcomes: list[tuple[TaskNode, SpecialistOutcome]] = []
 
+        budget_warned: set[str] = set()
+
+        def _check_budget() -> None:
+            totals = self._container.budget_ledger.get_run_totals(run_id)
+            usage = {
+                "model_calls": (int(str(totals.get("used_attempts", 0))), limits.total_model_attempts),
+                "tokens": (int(str(totals.get("total_tokens", 0))), limits.total_tokens),
+            }
+            for resource, (used, limit) in usage.items():
+                if resource not in budget_warned and limit and used >= limits.warning_fraction * limit:
+                    budget_warned.add(resource)
+                    _emit(EventType.BUDGET_WARNING, {"resource": resource, "used": used, "limit": limit})
+
         def _stop_scheduling(reason: str) -> None:
             for task_id in supervisor.abandon_pending():
                 _emit(EventType.TASK_STATUS, {"task_id": task_id, "status": "cancelled", "error": reason})
@@ -893,6 +909,7 @@ class InvestigationOrchestrator:
             if time.monotonic() >= deadline:
                 timed_out = True
                 return {"action": "finish"}
+            _check_budget()
             if supervisor.all_tasks_joined():
                 return {"action": "review"}
             attempts_for_tasks = _remaining_attempts() - attempt_reserve
@@ -900,6 +917,9 @@ class InvestigationOrchestrator:
                 _stop_scheduling(
                     f"The run used its {limits.total_model_attempts} model calls, so some planned steps did not run."
                 )
+                return {"action": "finish"}
+            if self._container.routing_service.tokens_left(run_id) < MIN_TOKENS_PER_STEP:
+                _stop_scheduling(f"The run used its {limits.total_tokens:,} token budget, so some planned steps did not run.")
                 return {"action": "finish"}
             try:
                 ready_batch = supervisor.next_ready_tasks(max_tasks=attempts_for_tasks)

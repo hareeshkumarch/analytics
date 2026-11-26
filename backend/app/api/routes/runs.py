@@ -1,4 +1,5 @@
 import asyncio
+from decimal import Decimal
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -26,6 +27,7 @@ from app.domain.limits import (
 from app.domain.models import RunStatus
 
 from app.api import support
+from app.api.support import start_of_business_day, workspace_daily_quota
 from app.api.support import TERMINAL_RUN_STATUSES, SSE_HEARTBEAT_SECONDS, SSE_WORKER_POLL_SECONDS, RUN_PAGE_DEFAULT, RUN_PAGE_MAX, RUN_LIST_ANSWER_KEYS
 from app.api.context import ApiContext
 from app.jobs.outbox import dispatch_pending
@@ -83,6 +85,26 @@ def register(ctx: ApiContext) -> APIRouter:
             raise BudgetExhaustedError(
                 f"Global queue limit ({DEFAULT_GLOBAL_LIMITS.max_queued_runs} queued runs) reached."
             )
+        daily_runs, daily_cost = workspace_daily_quota()
+        if daily_runs is not None or daily_cost is not None:
+            try:
+                tz = await asyncio.to_thread(app.state.repo_workspace_settings.get_business_timezone, workspace_id)
+                today = await asyncio.to_thread(app.state.repo_runs.run_ids_since, workspace_id, start_of_business_day(tz))
+                totals = await asyncio.to_thread(app.state.container.budget_ledger.get_runs_totals, today) if daily_cost is not None else {}
+            except SQLAlchemyError as exc:
+                logger.exception("Could not check the workspace quota")
+                raise _db_unavailable("check the workspace quota") from exc
+            if daily_runs is not None and len(today) >= daily_runs:
+                raise BudgetExhaustedError(
+                    f"This workspace reached its daily limit of {daily_runs} questions.",
+                    remediation="Try again tomorrow or raise WORKSPACE_DAILY_RUN_LIMIT.",
+                )
+            spent = sum((Decimal(str(t.get("total_cost_usd") or 0)) for t in totals.values()), Decimal(0))
+            if daily_cost is not None and spent >= daily_cost:
+                raise BudgetExhaustedError(
+                    f"This workspace reached its daily spending limit of ${daily_cost}.",
+                    remediation="Try again tomorrow or raise WORKSPACE_DAILY_COST_LIMIT_USD.",
+                )
 
         parent = None
         if payload.follow_up_of:

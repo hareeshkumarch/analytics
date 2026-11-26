@@ -29,8 +29,8 @@ from app.application.ports.tools import ToolExecution
 from app.domain.errors import BudgetExhaustedError, LimitExceededError, NotFoundError, ValidationError, VersionConflictError
 from app.domain.events import EventType, RunEvent
 from app.domain.models import Answer, RunStatus
-from app.domain.limits import DEEP_BUDGET_LIMITS, DEFAULT_DATA_LIMITS, QUICK_BUDGET_LIMITS, RUN_TOKEN_LIMIT, DataLimits
-from app.domain.providers import BudgetReservation
+from app.domain.limits import DEEP_BUDGET_LIMITS, DEFAULT_DATA_LIMITS, QUICK_BUDGET_LIMITS, DataLimits
+from app.domain.providers import AgentRole, BudgetReservation
 from app.domain.timezone import DEFAULT_BUSINESS_TIMEZONE, normalize_timezone
 from app.domain.usage import summarize_model_usage
 
@@ -488,6 +488,12 @@ class PgRunRepository:
                     _add_run_job(db, run_id)
         return self.get_run(run_id), event
 
+    def run_ids_since(self, workspace_id: str, since: datetime) -> list[str]:
+        with self._sf() as db:
+            return list(
+                db.scalars(select(RunRow.run_id).where(RunRow.workspace_id == workspace_id, RunRow.created_at >= since)).all()
+            )
+
     def count_queued_runs(self) -> int:
         with self._sf() as db:
             return int(
@@ -567,7 +573,9 @@ class PgRunRepository:
                     row.status = "pending"
                     row.claimed_at = None
 
-    def save_answer(self, answer: Answer, final_status: str = "completed", fence: int | None = None) -> bool:
+    def save_answer(
+        self, answer: Answer, final_status: str = "completed", fence: int | None = None, mark_finished: bool = True
+    ) -> bool:
         with self._sf() as db:
             with db.begin():
                 row = db.get(RunRow, answer.run_id, with_for_update=True)
@@ -604,8 +612,9 @@ class PgRunRepository:
                     }
                 )
                 row.answer_json = existing_ans
-                row.status = final_status
-                row.outcome = answer.outcome if final_status == "completed" else final_status
+                if mark_finished:
+                    row.status = final_status
+                    row.outcome = answer.outcome if final_status == "completed" else final_status
         return True
 
 
@@ -1133,10 +1142,11 @@ class PgBudgetLedger:
         max_attempts: int,
         max_tokens: int = 500_000,
         max_cost_usd: Decimal | None = None,
+        finalization_reserve_tokens: int = 0,
     ) -> None:
         # Mode limits are read from the durable run row in reserve(); per-call cost ceilings
         # are passed through RoutingService and enforced transactionally there.
-        del run_id, max_attempts, max_tokens, max_cost_usd
+        del run_id, max_attempts, max_tokens, max_cost_usd, finalization_reserve_tokens
 
     def reserve(
         self,
@@ -1166,12 +1176,8 @@ class PgBudgetLedger:
                 existing = db.scalars(
                     select(BudgetReservationRow).where(BudgetReservationRow.run_id == run_id)
                 ).all()
-                attempt_limit = (
-                    QUICK_BUDGET_LIMITS.total_model_attempts
-                    if run_row.mode == "quick"
-                    else DEEP_BUDGET_LIMITS.total_model_attempts
-                )
-                if len(existing) + 1 > min(attempt_limit, self._max_attempts_default):
+                limits = QUICK_BUDGET_LIMITS if run_row.mode == "quick" else DEEP_BUDGET_LIMITS
+                if len(existing) + 1 > min(limits.total_model_attempts, self._max_attempts_default):
                     raise BudgetExhaustedError(f"Run {run_id} exceeded max model attempts")
 
                 cur_cost = sum(
@@ -1184,8 +1190,9 @@ class PgBudgetLedger:
                 cur_tokens = sum(
                     (r.actual_tokens if r.actual_tokens is not None else r.reserved_tokens) for r in existing
                 )
-                if cur_tokens + estimated_tokens > RUN_TOKEN_LIMIT:
-                    raise BudgetExhaustedError(f"Run {run_id} exceeded token budget ({RUN_TOKEN_LIMIT})")
+                token_limit = limits.total_tokens - (0 if role == AgentRole.ANSWER_COMPOSER.value else limits.finalization_reserve_tokens)
+                if cur_tokens + estimated_tokens > token_limit:
+                    raise BudgetExhaustedError(f"Run {run_id} exceeded token budget ({limits.total_tokens})")
 
                 res_id = f"res_{uuid.uuid4().hex[:12]}"
                 row = BudgetReservationRow(
@@ -1314,6 +1321,12 @@ class PgBudgetLedger:
             "total_cost_usd": str(cost),
             "incomplete": any(not row.settled for row in rows),
         }
+
+    def token_limit(self, run_id: str) -> int:
+        with self._sf() as db:
+            mode = db.scalar(select(RunRow.mode).where(RunRow.run_id == run_id))
+        limits = QUICK_BUDGET_LIMITS if mode == "quick" else DEEP_BUDGET_LIMITS
+        return limits.total_tokens - limits.finalization_reserve_tokens
 
 
 class PgToolExecutionLedger:

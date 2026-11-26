@@ -27,6 +27,7 @@ export const RUN_EVENT_TYPES = [
   "tool.result",
   "model.attempt",
   "clarification.required",
+  "budget.warning",
   "artifact.ready",
   "answer.delta",
   "answer.reset",

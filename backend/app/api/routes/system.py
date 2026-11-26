@@ -32,6 +32,7 @@ def register(ctx: ApiContext) -> APIRouter:
                     "total_model_attempts": lim.total_model_attempts,
                     "max_replans": lim.max_replans,
                     "active_seconds": lim.active_seconds,
+                    "total_tokens": lim.total_tokens,
                 }
                 for lim in (QUICK_BUDGET_LIMITS, DEEP_BUDGET_LIMITS)
             },

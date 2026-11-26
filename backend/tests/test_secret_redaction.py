@@ -34,6 +34,8 @@ class TestSecretsStayOutOfLogsAndTraces(unittest.TestCase):
         ):
             self.assertNotIn(secret, redact_secrets(text))
         self.assertEqual(redact_secrets("North total 12,345.67 for 2024"), "North total 12,345.67 for 2024")
+        for plain in ("Run run_1 exceeded token budget (176000)", "the secret ingredient is patience", "password reset requested"):
+            self.assertEqual(redact_secrets(plain), plain)
 
     def test_provider_error_echoing_the_key_is_redacted_everywhere(self) -> None:
         exporter = InMemorySpanExporter()

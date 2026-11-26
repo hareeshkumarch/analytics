@@ -302,14 +302,21 @@ class TestToolLoop(unittest.TestCase):
 
     def test_low_token_budget_forces_an_answer_round(self) -> None:
         from decimal import Decimal
-        from app.application.services.budget_service import DEFAULT_MAX_TOKENS
+        from app.domain.limits import QUICK_BUDGET_LIMITS
 
         with tempfile.TemporaryDirectory() as td:
             c = build_container(artifact_root=td)
             gw = AlwaysToolsGateway()
             c.providers.register(gw)
             c.routing_service._api_keys[ProviderId.OPENAI] = "test-key"
-            c.budget_ledger.reserve("run_tokens", "seed", "seed", DEFAULT_MAX_TOKENS - 20_000, Decimal("0"), False, None)
+            c.budget_ledger.configure_run(
+                "run_tokens",
+                max_attempts=QUICK_BUDGET_LIMITS.total_model_attempts,
+                max_tokens=QUICK_BUDGET_LIMITS.total_tokens,
+                finalization_reserve_tokens=QUICK_BUDGET_LIMITS.finalization_reserve_tokens,
+            )
+            seed = QUICK_BUDGET_LIMITS.total_tokens - QUICK_BUDGET_LIMITS.finalization_reserve_tokens - 20_000
+            c.budget_ledger.reserve("run_tokens", "seed", "seed", seed, Decimal("0"), False, None)
             os.environ["AGENT_RUNTIME"] = "deepagents"
             ans = InvestigationOrchestrator(c).execute_local(
                 run_id="run_tokens", workspace_id="ws1", question="q", mode=RunMode.QUICK,
