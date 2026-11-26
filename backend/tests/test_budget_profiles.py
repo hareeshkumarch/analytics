@@ -46,7 +46,7 @@ class TestProfiles(unittest.TestCase):
 
 class TestTokenCeiling(unittest.TestCase):
     def test_hitting_the_ceiling_stops_new_work_and_still_answers(self) -> None:
-        small = dataclasses.replace(DEEP_BUDGET_LIMITS, total_tokens=200_000)
+        small = dataclasses.replace(DEEP_BUDGET_LIMITS, total_tokens=200_000, concurrent_specialists=1)
         with tempfile.TemporaryDirectory() as td, patch.object(supervisor_module, "DEEP_BUDGET_LIMITS", small):
             os.environ["AGENT_RUNTIME"] = "deepagents"
             c = build_container(artifact_root=td)
