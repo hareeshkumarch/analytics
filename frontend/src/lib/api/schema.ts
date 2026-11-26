@@ -686,6 +686,28 @@ export interface components {
             /** Snapshot Id */
             snapshot_id?: string | null;
         };
+        /** CriterionOut */
+        CriterionOut: {
+            /** Criterion */
+            criterion: string;
+            /**
+             * Detail
+             * @default
+             */
+            detail?: string;
+            /**
+             * Evidence Ids
+             * @default []
+             */
+            evidence_ids?: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "verified" | "failed" | "blocked" | "not_applicable";
+        } & {
+            [key: string]: unknown;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -842,6 +864,10 @@ export interface components {
             answer_id?: string | null;
             /** Charts */
             charts?: components["schemas"]["ChartOut"][] | null;
+            /** Criteria */
+            criteria?: components["schemas"]["CriterionOut"][] | null;
+            /** Outcome */
+            outcome?: string | null;
             /** Summary Markdown */
             summary_markdown?: string | null;
         } & {
@@ -866,6 +892,8 @@ export interface components {
             /** Error */
             error?: string | null;
             mode?: components["schemas"]["RunMode"] | null;
+            /** Outcome */
+            outcome?: string | null;
             /** Question */
             question?: string | null;
             /** Run Id */

@@ -40,6 +40,9 @@ class RunStatus(str, Enum):
 
 class RunOutcome(str, Enum):
     ANSWERED = "answered"
+    SUCCESS = "success"
+    PARTIAL_SUCCESS = "partial_success"
+    NEEDS_REVIEW = "needs_review"
     INSUFFICIENT_DATA = "insufficient_data"
     CLARIFICATION_EXPIRED = "clarification_expired"
     FAILED = "failed"
@@ -224,6 +227,14 @@ class ChartSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class CriterionResult:
+    criterion: str
+    status: str
+    evidence_ids: tuple[str, ...] = ()
+    detail: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class Answer:
     answer_id: str
     run_id: str
@@ -234,3 +245,5 @@ class Answer:
     snapshot_id: str
     semantic_version_id: str
     created_at: datetime
+    outcome: str = "success"
+    criteria: tuple[CriterionResult, ...] = ()

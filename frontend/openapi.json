@@ -427,6 +427,44 @@
         "title": "CreateRunRequest",
         "type": "object"
       },
+      "CriterionOut": {
+        "additionalProperties": true,
+        "properties": {
+          "criterion": {
+            "title": "Criterion",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "verified",
+              "failed",
+              "blocked",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "criterion",
+          "status"
+        ],
+        "title": "CriterionOut",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -863,6 +901,31 @@
             ],
             "title": "Charts"
           },
+          "criteria": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CriterionOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Criteria"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
           "summary_markdown": {
             "anyOf": [
               {
@@ -963,6 +1026,17 @@
                 "type": "null"
               }
             ]
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
           },
           "question": {
             "anyOf": [

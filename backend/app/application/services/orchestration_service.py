@@ -35,6 +35,7 @@ from app.adapters.query.sqlglot_compiler import SqlGlotQueryCompiler
 from app.application.ports.query import SnapshotQueryPort
 from app.application.services.analytics_tools import AnalyticsToolbox, ToolBudget, ToolErrorCode
 from app.application.services.charts import build_answer_charts
+from app.application.services.verification import assess_answer
 from app.domain.errors import BudgetExhaustedError, ClarificationRequired, public_message
 from app.domain.events import EventType, RunEvent
 from app.domain.limits import DEFAULT_GLOBAL_LIMITS, REPLAN_TASKS
@@ -901,6 +902,7 @@ class InvestigationOrchestrator:
         if on_plan is not None:
             on_plan(_serialize_plan(plan))
         supervisor.accept_plan(plan)
+        planned_criteria = plan.completion_criteria
         _emit(
             EventType.PLAN_UPDATED,
             {"revision": plan.revision, "tasks": [t.task_id for t in plan.tasks], "fallback": plan_fell_back},
@@ -1308,6 +1310,17 @@ class InvestigationOrchestrator:
                     _emit(EventType.ANSWER_RESET, {})
                     _emit(EventType.ANSWER_DELTA, {"text": answer_markdown, "draft_id": "final_answer"})
 
+        outcome, criteria = assess_answer(
+            answer_markdown=answer_markdown,
+            evidence=run_evidence,
+            criteria=planned_criteria,
+            review_approved=final_review_verdict.approved if mode == RunMode.DEEP and final_review_verdict is not None else None,
+            review_contradictions=bool(final_review_verdict and final_review_verdict.contradictions),
+            steps_failed=bool(task_errors),
+            stopped_early=timed_out or bool(budget_limitations),
+        )
+        if outcome == "needs_review":
+            answer_limitations.append("Some figures could not be matched to the evidence they cite; check them before relying on this answer.")
         answer = Answer(
             answer_id=f"ans_{uuid.uuid4().hex[:10]}",
             run_id=run_id,
@@ -1321,6 +1334,8 @@ class InvestigationOrchestrator:
             snapshot_id=snapshot_id,
             semantic_version_id=semantic_version_id,
             created_at=datetime.now(timezone.utc),
+            outcome=outcome,
+            criteria=criteria,
         )
         finished: dict[str, Any] = {"answer_id": answer.answer_id, "tool_calls": toolbox.budget.used}
         if cancelled:
@@ -1336,6 +1351,8 @@ class InvestigationOrchestrator:
             finished["error"] = budget_limitations[0][:500]
         else:
             finished["status"] = RunStatus.COMPLETED.value
+            finished["outcome"] = outcome
+            finished["criteria"] = [{"criterion": c.criterion, "status": c.status} for c in criteria]
             if task_errors:
                 finished["failed_tasks"] = len(task_errors)
             if timed_out:

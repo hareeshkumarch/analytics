@@ -19,6 +19,7 @@ export type UpdateRoutingRequest = Schemas["UpdateRoutingRequest"];
 
 export type ChartOut = Schemas["ChartOut"];
 export type ColumnDetailOut = Schemas["ColumnDetailOut"];
+export type CriterionOut = Schemas["CriterionOut"];
 export type CreateRunOut = Schemas["CreateRunOut"];
 export type ModelStatusOut = Schemas["ModelStatusOut"];
 export type ModelUsageOut = Schemas["ModelUsageOut"];

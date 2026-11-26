@@ -59,16 +59,26 @@ class ChartOut(ApiResponse):
     truncated: bool = False
 
 
+class CriterionOut(ApiResponse):
+    criterion: str
+    status: Literal["verified", "failed", "blocked", "not_applicable"]
+    evidence_ids: list[str] = []
+    detail: str = ""
+
+
 class RunAnswerOut(ApiResponse):
     answer_id: str | None = None
     summary_markdown: str | None = None
     charts: list[ChartOut] | None = None
+    outcome: str | None = None
+    criteria: list[CriterionOut] | None = None
 
 
 class RunOut(ApiResponse):
     run_id: str
     workspace_id: str
     status: str
+    outcome: str | None = None
     mode: RunMode | None = None
     question: str | None = None
     conversation_id: str | None = None

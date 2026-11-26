@@ -46,7 +46,7 @@ def register(ctx: ApiContext) -> APIRouter:
         if ans is None:
             if run_rec and (run_rec.get("answer") or {}).get("summary_markdown"):
                 ans_data = run_rec["answer"]
-                from app.domain.models import Claim
+                from app.domain.models import Claim, CriterionResult
                 ans = Answer(
                     answer_id=ans_data.get("answer_id") or f"ans_{uuid.uuid4().hex[:8]}",
                     run_id=run_id,
@@ -68,6 +68,16 @@ def register(ctx: ApiContext) -> APIRouter:
                     snapshot_id=str(ans_data.get("snapshot_id") or ""),
                     semantic_version_id=str(ans_data.get("semantic_version_id") or ""),
                     created_at=datetime.now(timezone.utc),
+                    outcome=str(ans_data.get("outcome") or "success"),
+                    criteria=tuple(
+                        CriterionResult(
+                            criterion=str(cr.get("criterion", "")),
+                            status=str(cr.get("status", "")),
+                            evidence_ids=tuple(cr.get("evidence_ids", ())),
+                            detail=str(cr.get("detail", "")),
+                        )
+                        for cr in ans_data.get("criteria") or ()
+                    ),
                 )
         if ans is None:
             if not payload.summary_markdown.strip():

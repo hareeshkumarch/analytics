@@ -102,7 +102,7 @@ def register(ctx: ApiContext) -> None:
                 app.state.answers[run_id] = answer
                 final_status = str(final.get("status") or RunStatus.COMPLETED.value)
                 run_rec["status"] = final_status
-                run_rec["outcome"] = "answered" if final_status == RunStatus.COMPLETED.value else final_status
+                run_rec["outcome"] = answer.outcome if final_status == RunStatus.COMPLETED.value else final_status
                 run_rec["answer_id"] = answer.answer_id
                 if final.get("error"):
                     run_rec["error"] = final["error"]

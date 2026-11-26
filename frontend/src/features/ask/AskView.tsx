@@ -25,6 +25,7 @@ import {
 import type { RunMode } from "@/lib/types";
 import { setUrlParam } from "@/lib/url";
 import { AnswerCharts, type AnswerChart } from "@/components/AnswerCharts";
+import { AnswerVerification, type Criterion } from "@/components/AnswerVerification";
 import { ExportMenu } from "@/features/ask/ExportMenu";
 import { SampleDataButton } from "@/components/SampleDataButton";
 import { SAMPLE_QUESTIONS, isSampleDataset } from "@/lib/sample";
@@ -39,6 +40,8 @@ interface Session {
   status: string;
   answer: string;
   charts: AnswerChart[];
+  outcome: string | null;
+  criteria: Criterion[];
   conversationId: string | null;
   /** The answer text came from the saved run; replayed answer.delta events must not be appended again. */
   answerFromServer: boolean;
@@ -95,6 +98,8 @@ function fromStored(run: StoredRun): Session {
     status: run.status,
     answer,
     charts: run.answer?.charts ?? [],
+    outcome: run.answer?.outcome ?? null,
+    criteria: run.answer?.criteria ?? [],
     conversationId: run.conversation_id ?? null,
     answerFromServer: Boolean(answer),
     events: [],
@@ -136,6 +141,8 @@ function applyEvent(s: Session, evt: SseEnvelope): Partial<Session> {
   if (evt.type === "run.finished") {
     next.streaming = false;
     next.connectionLost = false;
+    if (typeof evt.payload.outcome === "string") next.outcome = evt.payload.outcome;
+    if (Array.isArray(evt.payload.criteria)) next.criteria = evt.payload.criteria as Criterion[];
     const failedTasks = Number(evt.payload.failed_tasks ?? 0);
     if (evt.payload.error) next.error = String(evt.payload.error);
     else if (failedTasks > 0) {
@@ -334,6 +341,7 @@ export function AskView() {
         const serverCharts = r.answer?.charts ?? s.charts;
         const sameCharts = serverCharts.map((c) => c.chart_id).join() === s.charts.map((c) => c.chart_id).join();
         const nextError = r.error ?? s.error;
+        const outcome = r.answer?.outcome ?? s.outcome;
         const prompt = r.clarification_prompt ?? null;
         const revision = r.clarification_revision ?? s.clarificationRevision;
         if (
@@ -342,6 +350,7 @@ export function AskView() {
           sameCharts &&
           (r.conversation_id ?? null) === s.conversationId &&
           nextError === s.error &&
+          outcome === s.outcome &&
           prompt === s.clarificationPrompt &&
           revision === s.clarificationRevision
         ) return s;
@@ -350,6 +359,8 @@ export function AskView() {
           status: r.status,
           answer: serverAnswer || s.answer,
           charts: serverCharts,
+          outcome,
+          criteria: r.answer?.criteria ?? s.criteria,
           conversationId: r.conversation_id ?? s.conversationId,
           answerFromServer: Boolean(serverAnswer) || s.answerFromServer,
           error: nextError,
@@ -520,6 +531,8 @@ export function AskView() {
         status: "queued",
         answer: "",
         charts: [],
+        outcome: null,
+        criteria: [],
         conversationId: target.followUpOf
           ? (sessions.find((s) => s.runId === target.followUpOf)?.conversationId ?? null)
           : null,
@@ -1080,6 +1093,7 @@ export function AskView() {
                     <SafeMarkdown content={active.answer} />
                   </EvidenceContext.Provider>
                   {active.status === "completed" && <AnswerCharts charts={active.charts} />}
+                  {active.status === "completed" && <AnswerVerification outcome={active.outcome} criteria={active.criteria} />}
                 </ErrorBoundary>
               ) : (
                 isWorking && (

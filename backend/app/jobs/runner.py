@@ -29,7 +29,7 @@ from app.application.services.routing_service import routing_policy_from_saved
 from app.bootstrap.container import build_container
 from app.domain.events import EventType, RunEvent
 from app.domain.errors import ClarificationRequired, public_message
-from app.domain.models import RunMode, RunStatus
+from app.domain.models import RunMode, RunOutcome, RunStatus
 from app.domain.providers import ProviderId, RoutingPolicy
 
 logger = logging.getLogger(__name__)
@@ -148,7 +148,11 @@ def _execute_persisted_run(run_id: str) -> dict[str, str]:
                 )
             elif persisted.type == EventType.RUN_FINISHED:
                 final_status = str(persisted.payload.get("status") or RunStatus.COMPLETED.value)
-                outcome = "answered" if final_status == RunStatus.COMPLETED.value else final_status
+                outcome = (
+                    str(persisted.payload.get("outcome") or RunOutcome.ANSWERED.value)
+                    if final_status == RunStatus.COMPLETED.value
+                    else final_status
+                )
                 stored = events.append(
                     persisted,
                     status=final_status,

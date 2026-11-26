@@ -593,11 +593,15 @@ class PgRunRepository:
                             for c in answer.claims
                         ],
                         "charts": [asdict(chart) for chart in answer.charts],
+                        "outcome": answer.outcome,
+                        "criteria": [
+                            {**asdict(criterion), "evidence_ids": list(criterion.evidence_ids)} for criterion in answer.criteria
+                        ],
                     }
                 )
                 row.answer_json = existing_ans
                 row.status = final_status
-                row.outcome = "answered" if final_status == "completed" else final_status
+                row.outcome = answer.outcome if final_status == "completed" else final_status
         return True
 
 

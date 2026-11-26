@@ -50,6 +50,18 @@ def neutralize_csv_cell(value: Any) -> str:
     return s
 
 
+OUTCOME_LABELS = {"success": "Verified", "partial_success": "Partly verified", "needs_review": "Needs review"}
+
+
+def _verification_lines(answer: Answer) -> list[str]:
+    if not answer.criteria:
+        return []
+    lines = [f"Outcome: {OUTCOME_LABELS.get(answer.outcome, answer.outcome)}"]
+    for criterion in answer.criteria:
+        lines.append(f"{criterion.status}: {criterion.criterion}" + (f" ({criterion.detail})" if criterion.detail else ""))
+    return lines
+
+
 class ExportService:
     def __init__(self, limits: DataLimits = DEFAULT_DATA_LIMITS) -> None:
         self._limits = limits
@@ -107,6 +119,11 @@ class ExportService:
             f"<div>{html.escape(answer.summary_markdown)}</div>"
             f"<h2>Validated Claims</h2><ul>{claims_html}</ul>"
             + (f"<h2>Charts</h2>{charts_html}" if charts_html else "")
+            + (
+                "<h2>Verification</h2><ul>" + "".join(f"<li>{html.escape(line)}</li>" for line in _verification_lines(answer)) + "</ul>"
+                if answer.criteria
+                else ""
+            )
             +             f"<h2>Limitations</h2><ul>{limitations_html}</ul>"
             "</body></html>"
         )
@@ -147,6 +164,13 @@ class ExportService:
             pdf.multi_cell(0, 5, " | ".join(_chart_header(ch)), new_x="LMARGIN", new_y="NEXT")
             for row in ch.rows:
                 pdf.multi_cell(0, 5, " | ".join(_cell(v) for v in row), new_x="LMARGIN", new_y="NEXT")
+        if answer.criteria:
+            pdf.ln(3)
+            pdf.set_font(_UNICODE_FONT_FAMILY, "B", 12)
+            pdf.cell(0, 8, "Verification", ln=1)
+            pdf.set_font(_UNICODE_FONT_FAMILY, "", 10)
+            for line in _verification_lines(answer):
+                pdf.multi_cell(0, 5, f"- {line}", new_x="LMARGIN", new_y="NEXT")
         if answer.limitations:
             pdf.ln(3)
             pdf.set_font(_UNICODE_FONT_FAMILY, "B", 12)
@@ -179,6 +203,10 @@ class ExportService:
             for row in ch.rows:
                 for cell, value in zip(table.add_row().cells, row):
                     cell.text = _cell(value)
+        if answer.criteria:
+            doc.add_heading("Verification", level=2)
+            for line in _verification_lines(answer):
+                doc.add_paragraph(line, style="List Bullet")
         if answer.limitations:
             doc.add_heading("Limitations", level=2)
             for lim in answer.limitations:
