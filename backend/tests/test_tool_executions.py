@@ -86,7 +86,7 @@ class TestToolExecutionLedger(unittest.TestCase):
     def test_timeout_is_passed_to_the_engine_and_recorded(self) -> None:
         seen: list[int] = []
 
-        def slow(self, snapshot, ir, semantic_version_id, max_rows, *, timeout_seconds):
+        def slow(self, snapshot, ir, semantic_version_id, max_rows, *, timeout_seconds, business_timezone):
             seen.append(timeout_seconds)
             raise QueryTimeoutError("Query exceeded execution deadline")
 

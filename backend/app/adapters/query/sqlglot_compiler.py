@@ -155,7 +155,11 @@ def _parse_bound(value: str, label: str) -> date | datetime:
     return parsed
 
 
-def _period_bounds(start: str, end: str, period: str) -> tuple[date | datetime, str, date | datetime]:
+def _as_timestamp(value: date | datetime) -> datetime:
+    return value if isinstance(value, datetime) else datetime.combine(value, time.min)
+
+
+def _period_bounds(start: str, end: str, period: str) -> tuple[datetime, str, datetime]:
     start_value = _parse_bound(start, f"{period}_start")
     end_value = _parse_bound(end, f"{period}_end")
     start_dt = start_value if isinstance(start_value, datetime) else datetime.combine(start_value, time.min)
@@ -170,7 +174,7 @@ def _period_bounds(start: str, end: str, period: str) -> tuple[date | datetime, 
             f"{period}_start must not be after {period}_end",
             failed_fields=(f"{period}_start", f"{period}_end"),
         )
-    return start_value, end_op, end_bound
+    return _as_timestamp(start_value), end_op, _as_timestamp(end_bound)
 
 
 class SqlGlotQueryCompiler:
@@ -228,7 +232,10 @@ class SqlGlotQueryCompiler:
                         failed_fields=("filters", f.field_id),
                     )
                 sql_op = op_map[f.op]
-                params.append(f.value)
+                if _is_temporal(schemas[table_id], f.field_id) and isinstance(f.value, str):
+                    params.append(_as_timestamp(_parse_bound(f.value, f.field_id)))
+                else:
+                    params.append(f.value)
                 clauses.append(f"{col_sql} {sql_op} ?")
         return " WHERE " + " AND ".join(clauses)
 

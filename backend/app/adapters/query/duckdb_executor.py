@@ -6,6 +6,7 @@ from typing import Any
 
 from app.application.ports.query import CompiledQuery, QueryResult
 from app.domain.errors import QueryTimeoutError
+from app.domain.timezone import DEFAULT_BUSINESS_TIMEZONE, normalize_timezone
 from app.domain.limits import DEFAULT_DATA_LIMITS
 
 DEFAULT_MEMORY_LIMIT = "1GB"
@@ -24,11 +25,12 @@ class DuckDbQueryExecutor:
         snapshot_id: str,
         semantic_version_id: str,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+        business_timezone: str = DEFAULT_BUSINESS_TIMEZONE,
     ) -> QueryResult:
         import duckdb
 
         conn = duckdb.connect(snapshot_path, read_only=True)
-        return self._run(conn, compiled, snapshot_id, semantic_version_id, timeout_seconds)
+        return self._run(conn, compiled, snapshot_id, semantic_version_id, timeout_seconds, business_timezone)
 
     def execute_tables(
         self,
@@ -37,13 +39,14 @@ class DuckDbQueryExecutor:
         snapshot_id: str,
         semantic_version_id: str,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+        business_timezone: str = DEFAULT_BUSINESS_TIMEZONE,
     ) -> QueryResult:
         import duckdb
 
         conn = duckdb.connect(":memory:")
         for name, table in tables.items():
             conn.register(name, table)
-        return self._run(conn, compiled, snapshot_id, semantic_version_id, timeout_seconds)
+        return self._run(conn, compiled, snapshot_id, semantic_version_id, timeout_seconds, business_timezone)
 
     def _run(
         self,
@@ -52,6 +55,7 @@ class DuckDbQueryExecutor:
         snapshot_id: str,
         semantic_version_id: str,
         timeout_seconds: int,
+        business_timezone: str = DEFAULT_BUSINESS_TIMEZONE,
     ) -> QueryResult:
         import duckdb
 
@@ -64,6 +68,7 @@ class DuckDbQueryExecutor:
             conn.execute("SET autoinstall_known_extensions = false")
             conn.execute("SET autoload_known_extensions = false")
             conn.execute(f"SET memory_limit = '{self._memory_limit}'")
+            conn.execute(f"SET TimeZone = '{normalize_timezone(business_timezone)}'")
             try:
                 conn.execute("SET lock_configuration = true")
             except Exception:

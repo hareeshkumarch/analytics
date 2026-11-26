@@ -10,6 +10,7 @@ from app.application.ports.storage import ArtifactStore
 from app.domain.errors import NotFoundError, QueryValidationError
 from app.domain.models import ColumnSchema, TableSchema
 from app.domain.limits import DEFAULT_GLOBAL_LIMITS
+from app.domain.timezone import DEFAULT_BUSINESS_TIMEZONE
 from app.domain.query_ir import QueryIR
 
 from app.adapters.query.duckdb_executor import DuckDbQueryExecutor
@@ -132,6 +133,7 @@ class SnapshotQueryEngine:
         max_rows: int,
         *,
         timeout_seconds: int = DEFAULT_GLOBAL_LIMITS.query_timeout_seconds,
+        business_timezone: str = DEFAULT_BUSINESS_TIMEZONE,
     ) -> tuple[QueryResult, str]:
         schemas = table_schemas(snapshot)
         if not schemas:
@@ -144,5 +146,6 @@ class SnapshotQueryEngine:
             snapshot_id=str(snapshot["snapshot_id"]),
             semantic_version_id=semantic_version_id,
             timeout_seconds=timeout_seconds,
+            business_timezone=business_timezone,
         )
         return result, compiled.sql

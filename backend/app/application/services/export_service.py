@@ -3,6 +3,7 @@ import html
 import io
 import os
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Any
 
 from docx import Document
@@ -62,6 +63,22 @@ def _verification_lines(answer: Answer) -> list[str]:
     return lines
 
 
+def _source_lines(evidence: Sequence[dict[str, Any]]) -> list[str]:
+    lines = []
+    for item in evidence:
+        parts = [f"{item.get('operation') or 'query'}, {item.get('row_count', 0)} rows" + (" (truncated)" if item.get("truncated") else "")]
+        if item.get("snapshot_id"):
+            parts.append(f"snapshot {item['snapshot_id']}")
+        if item.get("semantic_version_id"):
+            parts.append(f"definitions {item['semantic_version_id']}")
+        if item.get("metric_ids"):
+            parts.append("metrics " + ", ".join(map(str, item["metric_ids"])))
+        if item.get("business_timezone"):
+            parts.append(f"time zone {item['business_timezone']}")
+        lines.append(f"{item.get('evidence_id')}: " + "; ".join(parts))
+    return lines
+
+
 class ExportService:
     def __init__(self, limits: DataLimits = DEFAULT_DATA_LIMITS) -> None:
         self._limits = limits
@@ -90,7 +107,9 @@ class ExportService:
             writer.writerow([neutralize_csv_cell(cell) for cell in row])
         return self._check_size(buf.getvalue().encode("utf-8"), "csv")
 
-    def export_html(self, answer: Answer, *, scope_label: str = "Bounded Result") -> bytes:
+    def export_html(
+        self, answer: Answer, *, scope_label: str = "Bounded Result", evidence: Sequence[dict[str, Any]] = ()
+    ) -> bytes:
         claims_html = "".join(
             f"<li><strong>[{html.escape(c.label)}]</strong> {html.escape(c.statement)} "
             f"(Value: {html.escape(str(c.value))} {html.escape(c.currency or c.unit or '')}; "
@@ -124,12 +143,19 @@ class ExportService:
                 if answer.criteria
                 else ""
             )
+            + (
+                "<h2>Sources</h2><ul>" + "".join(f"<li>{html.escape(line)}</li>" for line in _source_lines(evidence)) + "</ul>"
+                if evidence
+                else ""
+            )
             +             f"<h2>Limitations</h2><ul>{limitations_html}</ul>"
             "</body></html>"
         )
         return self._check_size(doc.encode("utf-8"), "html")
 
-    def export_pdf(self, answer: Answer, *, scope_label: str = "Bounded Result") -> bytes:
+    def export_pdf(
+        self, answer: Answer, *, scope_label: str = "Bounded Result", evidence: Sequence[dict[str, Any]] = ()
+    ) -> bytes:
         pdf = FPDF()
         regular_font = _unicode_font_path()
         bold_font = _unicode_font_path(bold=True)
@@ -171,6 +197,13 @@ class ExportService:
             pdf.set_font(_UNICODE_FONT_FAMILY, "", 10)
             for line in _verification_lines(answer):
                 pdf.multi_cell(0, 5, f"- {line}", new_x="LMARGIN", new_y="NEXT")
+        if evidence:
+            pdf.ln(3)
+            pdf.set_font(_UNICODE_FONT_FAMILY, "B", 12)
+            pdf.cell(0, 8, "Sources", ln=1)
+            pdf.set_font(_UNICODE_FONT_FAMILY, "", 9)
+            for line in _source_lines(evidence):
+                pdf.multi_cell(0, 5, f"- {line}", new_x="LMARGIN", new_y="NEXT")
         if answer.limitations:
             pdf.ln(3)
             pdf.set_font(_UNICODE_FONT_FAMILY, "B", 12)
@@ -181,7 +214,9 @@ class ExportService:
         out = bytes(pdf.output())
         return self._check_size(out, "pdf")
 
-    def export_docx(self, answer: Answer, *, scope_label: str = "Bounded Result") -> bytes:
+    def export_docx(
+        self, answer: Answer, *, scope_label: str = "Bounded Result", evidence: Sequence[dict[str, Any]] = ()
+    ) -> bytes:
         doc = Document()
         doc.add_heading("Agentic Analytics Workspace - Investigation Export", level=1)
         doc.add_paragraph(
@@ -206,6 +241,10 @@ class ExportService:
         if answer.criteria:
             doc.add_heading("Verification", level=2)
             for line in _verification_lines(answer):
+                doc.add_paragraph(line, style="List Bullet")
+        if evidence:
+            doc.add_heading("Sources", level=2)
+            for line in _source_lines(evidence):
                 doc.add_paragraph(line, style="List Bullet")
         if answer.limitations:
             doc.add_heading("Limitations", level=2)

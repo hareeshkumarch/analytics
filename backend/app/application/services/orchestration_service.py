@@ -46,6 +46,7 @@ from app.application.services.text_utils import (
 from app.application.services.verification import assess_answer
 from app.domain.errors import BudgetExhaustedError, ClarificationRequired, public_message
 from app.domain.events import EventType, RunEvent
+from app.domain.timezone import DEFAULT_BUSINESS_TIMEZONE
 from app.domain.limits import DEFAULT_GLOBAL_LIMITS, REPLAN_TASKS
 from app.domain.models import Answer, Claim, PlanDAG, RunMode, RunStatus, TaskNode, TaskStatus
 from app.domain.providers import AgentRole, RoutingPolicy
@@ -82,7 +83,8 @@ _DATA_INSTRUCTIONS = (
     "difference, ratio, sum or percent change of those figures. Several independent queries "
     "can be requested in one turn. Never invent, estimate or round figures you did not get from a tool. After "
     "each figure, cite the exact evidence_id returned by that tool result in square brackets, like [<evidence_id>]; "
-    "never cite an id you did not receive. Every tool result has a status: success, partial (truncated: say the "
+    "never cite an id you did not receive. Dates without a time zone, in filters and periods, are read in the "
+    "business_timezone that inspect_schema reports; never add an offset. Every tool result has a status: success, partial (truncated: say the "
     "figure is incomplete or narrow the query), empty (no matching rows), failed (read safe_message and "
     "failed_fields, fix the arguments and try again) or denied (do not retry; answer with what you have). "
     "If the data cannot answer the question, say so plainly. When you have "
@@ -720,6 +722,7 @@ class InvestigationOrchestrator:
         prior_turns: list[dict[str, str]] | None = None,
         initial_plan: Any = None,
         on_plan: Callable[[dict[str, Any]], None] | None = None,
+        business_timezone: str = DEFAULT_BUSINESS_TIMEZONE,
     ) -> Answer:
         seq = 1
         emit_lock = threading.Lock()
@@ -795,6 +798,7 @@ class InvestigationOrchestrator:
                 used_analytical=initial_analytical_calls,
             ),
             raw_record_egress=self._raw_record_egress_allowed(policy),
+            business_timezone=business_timezone,
         )
 
         self._container.budget_ledger.configure_run(

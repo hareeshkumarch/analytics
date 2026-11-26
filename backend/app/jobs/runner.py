@@ -16,6 +16,7 @@ from app.bootstrap.logging_setup import run_context
 from app.adapters.persistence.pg_repositories import (
     PgBudgetLedger,
     PgToolExecutionLedger,
+    PgWorkspaceSettings,
     PgCredentialRepository,
     PgEventLog,
     PgEvidenceRepository,
@@ -226,6 +227,7 @@ def _execute_persisted_run(run_id: str) -> dict[str, str]:
             prior_turns=runs.conversation_turns(workspace_id, str(run.get("conversation_id") or ""), run_id),
             initial_plan=orchestration_state.get("plan"),
             on_plan=save_plan,
+            business_timezone=PgWorkspaceSettings(session_factory).get_business_timezone(workspace_id),
         )
     except ClarificationRequired as exc:
         runs.pause_for_clarification(run_id, exc.prompt, fence=fence)

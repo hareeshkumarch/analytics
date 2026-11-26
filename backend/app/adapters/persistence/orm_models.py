@@ -29,6 +29,7 @@ class WorkspaceRow(Base):
     workspace_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     retained_raw_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    business_timezone: Mapped[str] = mapped_column(String(64), default="UTC", server_default="UTC", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 

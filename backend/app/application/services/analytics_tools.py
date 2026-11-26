@@ -21,6 +21,7 @@ from app.domain.errors import (
     SecurityPolicyError,
 )
 from app.domain.limits import DEFAULT_GLOBAL_LIMITS
+from app.domain.timezone import DEFAULT_BUSINESS_TIMEZONE
 from app.domain.query_ir import AggregateFunction, FilterOperator, QueryIRParseError, parse_query_ir
 
 _tracer = trace.get_tracer("ledgerline.query")
@@ -255,6 +256,30 @@ TOOL_SPECS: dict[str, ToolSpec] = {
 }
 
 
+def _normalized_expression(text: str) -> str:
+    return "".join(text.split()).lower().replace('"', "")
+
+
+def _metric_specs(ir: Any) -> list[tuple[str, AggregateFunction, str]]:
+    table = str(getattr(ir, "table_id", "") or "")
+    specs = list(getattr(ir, "metrics", ()) or ())
+    single = getattr(ir, "metric", None)
+    if single is not None:
+        specs.append(single)
+    return [(table, spec.func, spec.field_id) for spec in specs]
+
+
+def matched_metric_ids(ir: Any, semantics: dict[str, Any] | None) -> list[str]:
+    definitions = (semantics or {}).get("metrics") or []
+    found: list[str] = []
+    for table, func, field_id in _metric_specs(ir):
+        wanted = f"count(distinct{field_id})" if func == AggregateFunction.COUNT_DISTINCT else f"{func.value}({field_id})"
+        for definition in definitions:
+            if definition.get("grain") == table and _normalized_expression(str(definition.get("expression") or "")) == wanted.lower():
+                found.append(str(definition.get("metric_id") or definition.get("display_name") or ""))
+    return list(dict.fromkeys(m for m in found if m))
+
+
 def args_fingerprint(name: str, arguments: dict[str, Any]) -> str:
     return hashlib.sha256((name + json.dumps(arguments, sort_keys=True, default=str)).encode("utf-8")).hexdigest()[:32]
 
@@ -409,6 +434,7 @@ class AnalyticsToolbox:
     budget: ToolBudget
     max_rows_to_model: int = MAX_ROWS_TO_MODEL
     raw_record_egress: bool = False
+    business_timezone: str = DEFAULT_BUSINESS_TIMEZONE
     definitions: tuple[ToolDefinition, ...] = field(default=(INSPECT_SCHEMA_TOOL, RUN_QUERY_TOOL, CALCULATE_TOOL))
     _calculable: dict[str, dict[str, Any]] = field(default_factory=dict, init=False, repr=False)
     _failed_calls: dict[str, str] = field(default_factory=dict, init=False, repr=False)
@@ -516,6 +542,7 @@ class AnalyticsToolbox:
             **_success(f"{len(tables)} table(s)", self.snapshot.get("snapshot_id"), [], {}),
             "snapshot_id": self.snapshot.get("snapshot_id"),
             "definitions_approved": bool(semantics.get("approved")),
+            "business_timezone": self.business_timezone,
             "metric_definitions": [
                 {k: m.get(k) for k in ("display_name", "expression", "grain", "unit", "currency")}
                 for m in semantics.get("metrics", [])
@@ -629,7 +656,14 @@ class AnalyticsToolbox:
             with _tracer.start_as_current_span(
                 "query.run", attributes={"query.operation": ir.operation, "snapshot.id": str(self.snapshot.get("snapshot_id") or "")}
             ) as span:
-                result, sql = self.engine.run(self.snapshot, ir, semantic_version_id, MAX_QUERY_ROWS, timeout_seconds=spec.timeout_seconds)
+                result, sql = self.engine.run(
+                    self.snapshot,
+                    ir,
+                    semantic_version_id,
+                    MAX_QUERY_ROWS,
+                    timeout_seconds=spec.timeout_seconds,
+                    business_timezone=self.business_timezone,
+                )
                 span.set_attribute("query.rows", result.row_count)
                 span.set_attribute("query.truncated", result.truncated)
         except QueryValidationError as exc:
@@ -655,6 +689,9 @@ class AnalyticsToolbox:
             "truncated": result.truncated,
             "snapshot_id": result.snapshot_id,
             "execution_ms": result.execution_ms,
+            "semantic_version_id": semantic_version_id or None,
+            "metric_ids": matched_metric_ids(ir, self.semantics),
+            "business_timezone": self.business_timezone,
         }
         shown = result.rows[: min(self.max_rows_to_model, spec.max_inline_rows)]
         evidence["columns"] = list(result.columns)

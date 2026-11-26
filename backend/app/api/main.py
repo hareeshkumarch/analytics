@@ -22,6 +22,7 @@ from app.adapters.persistence.pg_repositories import (
     PgEvidenceRepository,
     PgPinRepository,
     PgWorkspaceQuota,
+    PgWorkspaceSettings,
     PgRoutingRepository,
     PgRunRepository,
     PgSnapshotRepository,
@@ -85,6 +86,7 @@ def create_app(
     app.state.repo_snapshots = PgSnapshotRepository(sf)
     app.state.repo_pins = PgPinRepository(sf)
     app.state.repo_quota = PgWorkspaceQuota(sf)
+    app.state.repo_workspace_settings = PgWorkspaceSettings(sf)
 
     app.state.runs = {}
     app.state.answers = {}

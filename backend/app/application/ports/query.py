@@ -49,6 +49,7 @@ class SnapshotQueryPort(Protocol):
         max_rows: int,
         *,
         timeout_seconds: int = 15,
+        business_timezone: str = "UTC",
     ) -> tuple[QueryResult, str]: ...
 
 

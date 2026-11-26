@@ -1,4 +1,5 @@
 import asyncio
+from functools import partial
 import hashlib
 import os
 from datetime import datetime, timezone
@@ -13,6 +14,7 @@ from app.api.schemas import (
     CreateExportRequest,
 )
 from app.application.services.charts import chart_from_dict
+from app.application.services.text_utils import EVIDENCE_ID_RE
 from app.bootstrap.container import AppContainer
 from app.domain.models import Answer
 
@@ -93,6 +95,12 @@ def register(ctx: ApiContext) -> APIRouter:
                 semantic_version_id=payload.semantic_version_id,
                 created_at=datetime.now(timezone.utc),
             )
+        cited = {e for claim in ans.claims for e in claim.evidence_ids} | {ch.evidence_id for ch in ans.charts}
+        cited |= set(EVIDENCE_ID_RE.findall(ans.summary_markdown))
+        sources: list[dict[str, Any]] = []
+        if run_rec is not None and cited:
+            stored = await asyncio.to_thread(app.state.repo_evidence.list_run, run_id)
+            sources = [e for e in stored if e.get("evidence_id") in cited]
         if fmt == "csv":
             raw = await asyncio.to_thread(
                 c.export_service.export_csv,
@@ -101,13 +109,13 @@ def register(ctx: ApiContext) -> APIRouter:
             )
             ctype = "text/csv"
         elif fmt == "pdf":
-            raw = await asyncio.to_thread(c.export_service.export_pdf, ans)
+            raw = await asyncio.to_thread(partial(c.export_service.export_pdf, ans, evidence=sources))
             ctype = "application/pdf"
         elif fmt == "docx":
-            raw = await asyncio.to_thread(c.export_service.export_docx, ans)
+            raw = await asyncio.to_thread(partial(c.export_service.export_docx, ans, evidence=sources))
             ctype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         else:
-            raw = await asyncio.to_thread(c.export_service.export_html, ans)
+            raw = await asyncio.to_thread(partial(c.export_service.export_html, ans, evidence=sources))
             ctype = "text/html"
 
         await asyncio.to_thread(c.artifacts.delete_older_than, EXPORT_ARTIFACT_PREFIX, _export_retention_seconds())

@@ -17,6 +17,9 @@ export interface EvidenceRecord {
   truncated: boolean;
   snapshot_id: string;
   execution_ms?: number;
+  semantic_version_id?: string | null;
+  metric_ids?: string[];
+  business_timezone?: string;
   query_ir_hash: string;
   result_hash: string;
   columns: string[];
@@ -160,6 +163,24 @@ export function EvidencePanel({
                     <dd className="break-all font-mono text-body">{evidenceId}</dd>
                     <dt className="text-secondary">Snapshot</dt>
                     <dd className="break-all font-mono text-body">{ev.snapshot_id}</dd>
+                    {ev.semantic_version_id && (
+                      <>
+                        <dt className="text-secondary">Definitions</dt>
+                        <dd className="break-all font-mono text-body">{ev.semantic_version_id}</dd>
+                      </>
+                    )}
+                    {ev.metric_ids && ev.metric_ids.length > 0 && (
+                      <>
+                        <dt className="text-secondary">Metrics</dt>
+                        <dd className="break-all font-mono text-body">{ev.metric_ids.join(", ")}</dd>
+                      </>
+                    )}
+                    {ev.business_timezone && (
+                      <>
+                        <dt className="text-secondary">Time zone</dt>
+                        <dd className="text-body">{ev.business_timezone}</dd>
+                      </>
+                    )}
                     {ev.task_id && (
                       <>
                         <dt className="text-secondary">Step</dt>

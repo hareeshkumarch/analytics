@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { HScroll } from "@/components/HScroll";
 import { Badge, Notice, Spinner, btn, cardCls, cx, inputCls } from "@/components/ui";
 import { ProviderLogo } from "@/components/ConnectorLogo";
+import { BusinessTimezone } from "@/features/settings/BusinessTimezone";
 import { PRESET_OPTIONS, RoutingPreset, useRoutingPolicy } from "@/lib/routing";
 import { humanize, providerLabel, useProviders, useWorkspace } from "@/lib/workspace";
 import type { SaveProviderKeyRequest } from "@/lib/api/types";
@@ -593,6 +594,8 @@ export function SettingsView() {
           {routing.error && <Notice tone="err" title="Couldn't load routing">{errorMessage(routing.error)}</Notice>}
         </section>
       </div>
+
+      <BusinessTimezone workspaceId={ws.id} />
 
       <section className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
         <div className="flex flex-wrap items-baseline justify-between gap-2">

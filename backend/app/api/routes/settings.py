@@ -11,6 +11,7 @@ from app.adapters.persistence.crypto import CredentialCipher
 from app.api.schemas import (
     SaveProviderKeyRequest,
     UpdateRoutingRequest,
+    UpdateWorkspaceSettingsRequest,
 )
 from app.application.ports.providers import ModelRequest
 from app.bootstrap.container import AppContainer
@@ -20,7 +21,7 @@ from app.domain.errors import (
 from app.domain.providers import AgentRole, ProviderId, RoutingPolicy
 
 from app.api.context import ApiContext
-from app.api.responses import ProvidersOut, RoutingPolicyOut
+from app.api.responses import ProvidersOut, RoutingPolicyOut, WorkspaceSettingsOut
 
 PROVIDER_PROBE_COOLDOWN_SECONDS = 10.0
 
@@ -217,5 +218,23 @@ def register(ctx: ApiContext) -> APIRouter:
         c: AppContainer = app.state.container
         c.routing_service._api_keys[payload.provider_id] = payload.api_key
         return {"provider_id": payload.provider_id.value, "status": "configured"}
+
+    @router.get("/api/v1/workspaces/{workspace_id}/settings", response_model=WorkspaceSettingsOut)
+    def get_workspace_settings(workspace_id: str) -> dict[str, Any]:
+        try:
+            tz = app.state.repo_workspace_settings.get_business_timezone(workspace_id)
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to load workspace settings")
+            raise _db_unavailable("load workspace settings") from exc
+        return {"workspace_id": workspace_id, "business_timezone": tz}
+
+    @router.put("/api/v1/workspaces/{workspace_id}/settings", response_model=WorkspaceSettingsOut)
+    def update_workspace_settings(workspace_id: str, payload: UpdateWorkspaceSettingsRequest) -> dict[str, Any]:
+        try:
+            tz = app.state.repo_workspace_settings.set_business_timezone(workspace_id, payload.business_timezone)
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to save workspace settings")
+            raise _db_unavailable("save workspace settings") from exc
+        return {"workspace_id": workspace_id, "business_timezone": tz}
 
     return router

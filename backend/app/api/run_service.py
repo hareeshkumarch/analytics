@@ -88,6 +88,7 @@ def register(ctx: ApiContext) -> None:
                     emit_event=_emit,
                     should_cancel=_is_cancelled,
                     on_evidence=lambda ev: _store_evidence(run_id, ev),
+                    business_timezone=app.state.repo_workspace_settings.get_business_timezone(workspace_id),
                     initial_tool_invocations=prior_tool_invocations,
                     initial_analytical_calls=prior_analytical_calls,
                     evidence_lookup=lambda evidence_id: app.state.repo_evidence.get(run_id, evidence_id),

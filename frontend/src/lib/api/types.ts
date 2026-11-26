@@ -16,6 +16,7 @@ export type RunMode = Schemas["RunMode"];
 export type SaveProviderKeyRequest = Schemas["SaveProviderKeyRequest"];
 export type UpdatePinRequest = Schemas["UpdatePinRequest"];
 export type UpdateRoutingRequest = Schemas["UpdateRoutingRequest"];
+export type UpdateWorkspaceSettingsRequest = Schemas["UpdateWorkspaceSettingsRequest"];
 
 export type ChartOut = Schemas["ChartOut"];
 export type ColumnDetailOut = Schemas["ColumnDetailOut"];
@@ -34,3 +35,4 @@ export type RunUsageOut = Schemas["RunUsageOut"];
 export type SnapshotOut = Schemas["SnapshotOut"];
 export type ToolUsageOut = Schemas["ToolUsageOut"];
 export type UsageOut = Schemas["UsageOut"];
+export type WorkspaceSettingsOut = Schemas["WorkspaceSettingsOut"];

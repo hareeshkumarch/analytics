@@ -239,6 +239,10 @@ class ApproveSemanticsRequest(StrictApiModel):
     expected_version: int = Field(..., ge=1)
 
 
+class UpdateWorkspaceSettingsRequest(StrictApiModel):
+    business_timezone: str = Field(..., min_length=1, max_length=64)
+
+
 class UpdateRoutingRequest(StrictApiModel):
     expected_version: int = Field(..., ge=1)
     preset: RoutingPreset | None = None

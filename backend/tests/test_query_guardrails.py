@@ -1,5 +1,5 @@
 import unittest
-from datetime import date, datetime
+from datetime import datetime
 
 import pyarrow as pa
 
@@ -134,7 +134,8 @@ class TestComparePeriodBounds(unittest.TestCase):
     def test_date_only_end_includes_the_whole_last_day(self) -> None:
         compiled = self.compiler.compile(_compare(), SCHEMAS)
         self.assertEqual(
-            compiled.parameters, (date(2026, 10, 1), date(2026, 11, 1), date(2026, 9, 1), date(2026, 10, 1))
+            compiled.parameters,
+            (datetime(2026, 10, 1), datetime(2026, 11, 1), datetime(2026, 9, 1), datetime(2026, 10, 1)),
         )
         result = DuckDbQueryExecutor().execute_tables(compiled, {"orders": ORDERS}, "snap", "sem")
         current_value, previous_value = result.rows[0]

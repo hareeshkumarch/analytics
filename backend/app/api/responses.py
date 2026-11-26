@@ -41,6 +41,11 @@ class RoutingPolicyOut(ApiResponse):
     hard_cost_ceiling_usd: str | None
 
 
+class WorkspaceSettingsOut(ApiResponse):
+    workspace_id: str
+    business_timezone: str
+
+
 class CreateRunOut(ApiResponse):
     run_id: str
     status: str

@@ -31,6 +31,7 @@ from app.domain.events import EventType, RunEvent
 from app.domain.models import Answer, RunStatus
 from app.domain.limits import DEEP_BUDGET_LIMITS, DEFAULT_DATA_LIMITS, QUICK_BUDGET_LIMITS, RUN_TOKEN_LIMIT, DataLimits
 from app.domain.providers import BudgetReservation
+from app.domain.timezone import DEFAULT_BUSINESS_TIMEZONE, normalize_timezone
 from app.domain.usage import summarize_model_usage
 
 
@@ -1340,3 +1341,20 @@ class PgToolExecutionLedger:
             )
             for r in rows
         ]
+
+
+class PgWorkspaceSettings:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._sf = session_factory
+
+    def get_business_timezone(self, workspace_id: str) -> str:
+        with self._sf() as db:
+            value = db.scalar(select(WorkspaceRow.business_timezone).where(WorkspaceRow.workspace_id == workspace_id))
+        return value or DEFAULT_BUSINESS_TIMEZONE
+
+    def set_business_timezone(self, workspace_id: str, timezone_name: str) -> str:
+        name = normalize_timezone(timezone_name)
+        with self._sf() as db:
+            with db.begin():
+                ensure_workspace(db, workspace_id).business_timezone = name
+        return name
