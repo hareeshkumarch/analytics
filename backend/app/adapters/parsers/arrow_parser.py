@@ -1,4 +1,5 @@
 import io
+from collections.abc import Iterable
 from typing import Any
 
 import pyarrow as pa
@@ -10,14 +11,30 @@ from app.domain.limits import DataLimits
 from app.domain.models import ColumnSchema
 
 
-def _read_arrow_bytes(raw_bytes: bytes) -> pa.Table:
+def _bounded(batches: Iterable[pa.RecordBatch], schema: pa.Schema, limits: DataLimits) -> pa.Table:
+    kept: list[pa.RecordBatch] = []
+    size = rows = 0
+    for batch in batches:
+        size += batch.nbytes
+        rows += batch.num_rows
+        if size > limits.max_expanded_file_bytes:
+            raise LimitExceededError(f"Arrow file expands past max_expanded_file_bytes ({limits.max_expanded_file_bytes})")
+        if rows > limits.max_rows_per_dataset:
+            raise LimitExceededError(f"Arrow file exceeds max_rows_per_dataset ({limits.max_rows_per_dataset})")
+        kept.append(batch)
+    return pa.Table.from_batches(kept, schema=schema)
+
+
+def _read_arrow_bytes(raw_bytes: bytes, limits: DataLimits) -> pa.Table:
     """Read an Arrow IPC file (Feather v2) or an Arrow IPC stream."""
     try:
-        return pa_ipc.open_file(io.BytesIO(raw_bytes)).read_all()
+        reader = pa_ipc.open_file(io.BytesIO(raw_bytes))
+        return _bounded((reader.get_batch(i) for i in range(reader.num_record_batches)), reader.schema, limits)
     except (pa.ArrowInvalid, OSError):
         pass
     try:
-        return pa_ipc.open_stream(io.BytesIO(raw_bytes)).read_all()
+        stream = pa_ipc.open_stream(io.BytesIO(raw_bytes))
+        return _bounded(stream, stream.schema, limits)
     except (pa.ArrowInvalid, OSError) as exc:
         raise ValidationError(
             "File is not a readable Arrow IPC / Feather v2 file.",
@@ -41,7 +58,7 @@ class ArrowIpcFileParser:
             raise LimitExceededError(
                 f"Uploaded Arrow file exceeds max_uploaded_file_bytes ({len(raw_bytes)} > {limits.max_uploaded_file_bytes})"
             )
-        table = _read_arrow_bytes(raw_bytes)
+        table = _read_arrow_bytes(raw_bytes, limits)
         if table.num_rows > limits.max_rows_per_dataset:
             raise LimitExceededError(f"Arrow file exceeds max_rows_per_dataset ({table.num_rows})")
         if table.num_columns > limits.max_columns_per_dataset:

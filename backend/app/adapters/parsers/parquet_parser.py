@@ -27,7 +27,24 @@ class ParquetFileParser:
         opts = options or {}
         allow_nested = set(opts.get("nested_mappings", {}).keys())
 
-        table = pq.read_table(io.BytesIO(raw_bytes))
+        try:
+            parquet = pq.ParquetFile(io.BytesIO(raw_bytes))
+        except (pa.ArrowInvalid, OSError) as exc:
+            raise ValidationError("File is not a readable Parquet file.") from exc
+        if parquet.metadata.num_rows > limits.max_rows_per_dataset:
+            raise LimitExceededError(f"Parquet exceeds max_rows_per_dataset ({parquet.metadata.num_rows})")
+        if parquet.metadata.num_columns > limits.max_columns_per_dataset:
+            raise LimitExceededError(f"Parquet exceeds max_columns_per_dataset ({parquet.metadata.num_columns})")
+        batches: list[pa.RecordBatch] = []
+        expanded = 0
+        for batch in parquet.iter_batches(batch_size=limits.arrow_batch_max_rows):
+            expanded += batch.nbytes
+            if expanded > limits.max_expanded_file_bytes:
+                raise LimitExceededError(
+                    f"Parquet expands past max_expanded_file_bytes ({limits.max_expanded_file_bytes})"
+                )
+            batches.append(batch)
+        table = pa.Table.from_batches(batches, schema=parquet.schema_arrow)
         if table.num_rows > limits.max_rows_per_dataset:
             raise LimitExceededError(f"Parquet exceeds max_rows_per_dataset ({table.num_rows})")
         if table.num_columns > limits.max_columns_per_dataset:

@@ -12,6 +12,7 @@ class DataLimits:
     max_workbook_sheets: int = 20
     max_chars_per_cell: int = 1_000_000
     max_expanded_xlsx_bytes: int = 200_000_000
+    max_expanded_file_bytes: int = 200_000_000
     ingestion_deadline_seconds: int = 300
     max_preview_rows: int = 1_000
     max_chart_points: int = 2_000
@@ -37,6 +38,7 @@ class DataLimits:
             "max_workbook_sheets": self.max_workbook_sheets,
             "max_chars_per_cell": self.max_chars_per_cell,
             "max_expanded_xlsx_bytes": self.max_expanded_xlsx_bytes,
+            "max_expanded_file_bytes": self.max_expanded_file_bytes,
             "ingestion_deadline_seconds": self.ingestion_deadline_seconds,
             "max_preview_rows": self.max_preview_rows,
             "max_chart_points": self.max_chart_points,
