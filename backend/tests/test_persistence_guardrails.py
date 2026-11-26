@@ -123,3 +123,16 @@ class TestRoutingPolicyRoundTrip(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMasterKeyAtStartup(unittest.TestCase):
+    def test_invalid_master_key_fails_startup(self) -> None:
+        import tempfile
+
+        from app.api.main import create_app
+        from app.bootstrap.container import build_container
+        from app.domain.errors import SecurityPolicyError
+
+        with tempfile.TemporaryDirectory() as td, patch.dict(os.environ, {"APP_MASTER_KEY": "not-a-fernet-key"}):
+            with self.assertRaises(SecurityPolicyError):
+                create_app(build_container(artifact_root=td))

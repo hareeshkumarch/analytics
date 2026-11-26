@@ -104,7 +104,10 @@ def create_app(
         c: AppContainer = app.state.container
         try:
             cipher = CredentialCipher()
-        except Exception:
+        except SecurityPolicyError:
+            if os.environ.get("APP_MASTER_KEY", "").strip():
+                raise
+            logger.warning("APP_MASTER_KEY is not set; saved provider keys were not loaded.")
             return
         try:
             creds = app.state.repo_creds.list_active_credentials()
