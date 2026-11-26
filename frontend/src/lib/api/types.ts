@@ -32,4 +32,5 @@ export type RunOut = Schemas["RunOut"];
 export type RunPageOut = Schemas["RunPageOut"];
 export type RunUsageOut = Schemas["RunUsageOut"];
 export type SnapshotOut = Schemas["SnapshotOut"];
+export type ToolUsageOut = Schemas["ToolUsageOut"];
 export type UsageOut = Schemas["UsageOut"];

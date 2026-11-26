@@ -33,6 +33,7 @@ from app.adapters.orchestration.supervisor import (
 from app.adapters.query.snapshot_engine import SnapshotQueryEngine
 from app.adapters.query.sqlglot_compiler import SqlGlotQueryCompiler
 from app.application.ports.query import SnapshotQueryPort
+from app.application.ports.tools import ToolExecution
 from app.application.services.analytics_tools import AnalyticsToolbox, ToolBudget, ToolErrorCode
 from app.application.services.charts import build_answer_charts
 from app.application.services.verification import assess_answer
@@ -704,6 +705,26 @@ class InvestigationOrchestrator:
             task_history_loader=task_history_loader,
         )
 
+    def _record_tool_execution(
+        self, run_id: str, task_id: str, entry: dict[str, Any], evidence: dict[str, Any] | None
+    ) -> None:
+        execution = ToolExecution(
+            execution_id=f"tex_{uuid.uuid4().hex[:16]}",
+            run_id=run_id,
+            task_id=task_id,
+            tool=str(entry.get("tool") or "")[:64],
+            tool_version=str(entry.get("tool_version") or ""),
+            args_fingerprint=str(entry.get("args_fingerprint") or ""),
+            status=str(entry.get("status") or ("success" if entry.get("ok") else "failed")),
+            error_code=entry.get("code"),
+            duration_ms=int(entry.get("duration_ms") or 0),
+            evidence_id=(evidence or {}).get("evidence_id") or entry.get("evidence_id"),
+        )
+        try:
+            self._container.tool_executions.record(execution)
+        except Exception:  # noqa: BLE001
+            logger.exception("Could not record tool execution for run %s", run_id)
+
     def _raw_record_egress_allowed(self, policy: RoutingPolicy) -> bool:
         profiles = self._container.provider_profiles
         return bool(policy.allowed_providers) and all(
@@ -762,6 +783,7 @@ class InvestigationOrchestrator:
 
         def _tool_callback(task_id: str) -> Callable[[dict[str, Any], dict[str, Any] | None], None]:
             def _on_tool(entry: dict[str, Any], evidence: dict[str, Any] | None) -> None:
+                self._record_tool_execution(run_id, task_id, entry, evidence)
                 if evidence is not None:
                     with emit_lock:
                         run_evidence.append(evidence)

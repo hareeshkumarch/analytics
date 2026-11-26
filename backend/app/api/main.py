@@ -17,6 +17,7 @@ from app.adapters.persistence.database import create_session_factory
 from app.adapters.persistence.pg_repositories import (
     PgCredentialRepository,
     PgBudgetLedger,
+    PgToolExecutionLedger,
     PgEventLog,
     PgEvidenceRepository,
     PgPinRepository,
@@ -75,6 +76,7 @@ def create_app(
         durable_budget_ledger = PgBudgetLedger(sf)
         app.state.container.budget_ledger = durable_budget_ledger
         app.state.container.routing_service.set_budget_ledger(durable_budget_ledger)
+    app.state.container.tool_executions = PgToolExecutionLedger(sf)
     app.state.repo_runs = PgRunRepository(sf)
     app.state.repo_events = PgEventLog(sf)
     app.state.repo_evidence = PgEvidenceRepository(sf)

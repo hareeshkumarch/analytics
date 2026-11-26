@@ -332,6 +332,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/runs/{run_id}/tool-executions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tool Executions */
+        get: operations["list_tool_executions_api_v1_workspaces__workspace_id__runs__run_id__tool_executions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/samples/{sample_name}/import": {
         parameters: {
             query?: never;
@@ -1000,6 +1017,63 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** ToolExecutionListOut */
+        ToolExecutionListOut: {
+            /** Executions */
+            executions: components["schemas"]["ToolExecutionOut"][];
+            /** Run Id */
+            run_id: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ToolExecutionOut */
+        ToolExecutionOut: {
+            /** Args Fingerprint */
+            args_fingerprint: string;
+            /** Created At */
+            created_at: string;
+            /** Duration Ms */
+            duration_ms: number;
+            /** Error Code */
+            error_code: string | null;
+            /** Evidence Id */
+            evidence_id: string | null;
+            /** Execution Id */
+            execution_id: string;
+            /** Run Id */
+            run_id: string;
+            /** Status */
+            status: string;
+            /** Task Id */
+            task_id: string;
+            /** Tool */
+            tool: string;
+            /** Tool Version */
+            tool_version: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ToolUsageOut */
+        ToolUsageOut: {
+            /** Avg Duration Ms */
+            avg_duration_ms: number;
+            /** Calls */
+            calls: number;
+            /** Calls Per Task */
+            calls_per_task: number;
+            /** Duplicate Calls */
+            duplicate_calls: number;
+            /** Failed Calls */
+            failed_calls: number;
+            /** Invalid Calls */
+            invalid_calls: number;
+            /** Timeouts */
+            timeouts: number;
+            /** Tool */
+            tool: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** UpdatePinRequest */
         UpdatePinRequest: {
             /** Auto Refresh */
@@ -1027,6 +1101,11 @@ export interface components {
             run_count: number;
             /** Runs */
             runs: components["schemas"]["RunUsageOut"][];
+            /**
+             * Tools
+             * @default []
+             */
+            tools?: components["schemas"]["ToolUsageOut"][];
             /** Workspace Id */
             workspace_id: string;
         } & {
@@ -1858,6 +1937,38 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tool_executions_api_v1_workspaces__workspace_id__runs__run_id__tool_executions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ToolExecutionListOut"];
                 };
             };
             /** @description Validation Error */

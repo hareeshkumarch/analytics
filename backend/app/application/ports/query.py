@@ -47,6 +47,8 @@ class SnapshotQueryPort(Protocol):
         ir: QueryIR,
         semantic_version_id: str,
         max_rows: int,
+        *,
+        timeout_seconds: int = 15,
     ) -> tuple[QueryResult, str]: ...
 
 

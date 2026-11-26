@@ -2,7 +2,8 @@ import hashlib
 import json
 import re
 import threading
-from dataclasses import dataclass, field
+import time
+from dataclasses import dataclass, field, replace
 from decimal import Decimal, DivisionByZero, InvalidOperation
 from enum import Enum
 from typing import Any
@@ -229,6 +230,37 @@ CALCULATE_TOOL = ToolDefinition(
 _PAIRWISE_OPERATIONS = ("difference", "ratio", "percent_change")
 
 
+class ToolEffect(str, Enum):
+    READ = "read"
+    COMPUTE = "compute"
+
+
+@dataclass(frozen=True, slots=True)
+class ToolSpec:
+    definition: ToolDefinition
+    version: str
+    effect: ToolEffect
+    timeout_seconds: int
+    max_inline_rows: int
+    max_inline_bytes: int
+    retry_class: str
+
+
+_INLINE_BYTES = DEFAULT_GLOBAL_LIMITS.max_model_tool_result_bytes
+TOOL_SPECS: dict[str, ToolSpec] = {
+    spec.definition.name: spec
+    for spec in (
+        ToolSpec(INSPECT_SCHEMA_TOOL, "1", ToolEffect.READ, 5, 0, _INLINE_BYTES, "idempotent"),
+        ToolSpec(RUN_QUERY_TOOL, "1", ToolEffect.READ, DEFAULT_GLOBAL_LIMITS.query_timeout_seconds, MAX_ROWS_TO_MODEL, _INLINE_BYTES, "idempotent"),
+        ToolSpec(CALCULATE_TOOL, "1", ToolEffect.COMPUTE, 5, 1, _INLINE_BYTES, "idempotent"),
+    )
+}
+
+
+def args_fingerprint(name: str, arguments: dict[str, Any]) -> str:
+    return hashlib.sha256((name + json.dumps(arguments, sort_keys=True, default=str)).encode("utf-8")).hexdigest()[:32]
+
+
 def _number(value: Any) -> Decimal | None:
     if isinstance(value, bool) or value is None:
         return None
@@ -317,19 +349,19 @@ class ToolOutcome:
     evidence: dict[str, Any] | None = None
 
 
-def _fits(raw: str) -> bool:
-    return len(raw.encode("utf-8")) <= DEFAULT_GLOBAL_LIMITS.max_model_tool_result_bytes
+def _fits(raw: str, limit: int) -> bool:
+    return len(raw.encode("utf-8")) <= limit
 
 
-def _cap(payload: dict[str, Any]) -> str:
+def _cap(payload: dict[str, Any], limit: int) -> str:
     raw = json.dumps(payload, default=str)
-    if _fits(raw):
+    if _fits(raw, limit):
         return raw
     rows = list(payload.get("rows") or [])
-    while rows and not _fits(raw):
+    while rows and not _fits(raw, limit):
         rows = rows[: len(rows) // 2]
         raw = json.dumps({**payload, "rows": rows, "rows_shown": len(rows), "trimmed_for_size": True}, default=str)
-    if _fits(raw):
+    if _fits(raw, limit):
         return raw
     return json.dumps(
         {
@@ -343,9 +375,9 @@ def _cap(payload: dict[str, Any]) -> str:
     )
 
 
-def _cap_schema(payload: dict[str, Any]) -> str:
+def _cap_schema(payload: dict[str, Any], limit: int) -> str:
     raw = json.dumps(payload, default=str)
-    if _fits(raw):
+    if _fits(raw, limit):
         return raw
     compact = [
         {
@@ -356,7 +388,7 @@ def _cap_schema(payload: dict[str, Any]) -> str:
         for t in payload["tables"]
     ]
     raw = json.dumps({**payload, "tables": compact, "schema_compacted": True}, default=str)
-    if _fits(raw):
+    if _fits(raw, limit):
         return raw
     listed = [{"table_id": t["table_id"], "row_count": t["row_count"], "column_count": len(t["columns"])} for t in payload["tables"]]
     return json.dumps(
@@ -411,14 +443,26 @@ class AnalyticsToolbox:
         return self._error(tool, message, ToolErrorCode.INVALID_ARGUMENT, failed_fields=tuple(dict.fromkeys(_FIELD_IN_MESSAGE.findall(message))))
 
     def execute(self, call: ToolCallResult) -> ToolOutcome:
-        name = call.tool_name
+        started = time.monotonic()
+        arguments = call.arguments if isinstance(call.arguments, dict) else {}
+        outcome = self._dispatch(call.tool_name, arguments)
+        spec = TOOL_SPECS.get(call.tool_name)
+        summary = {
+            **outcome.summary,
+            "status": outcome.summary.get("status") or ("failed" if outcome.is_error else "success"),
+            "tool_version": spec.version if spec else "",
+            "args_fingerprint": args_fingerprint(call.tool_name, arguments),
+            "duration_ms": int((time.monotonic() - started) * 1000),
+        }
+        return replace(outcome, summary=summary)
+
+    def _dispatch(self, name: str, arguments: dict[str, Any]) -> ToolOutcome:
         names = [d.name for d in self.definitions]
         if name not in names:
             return self._error(name, f"Unknown tool {name!r}. Available: {', '.join(names)}.", ToolErrorCode.UNKNOWN_TOOL)
         if not self.available:
             return self._error(name, "No dataset snapshot is bound to this run.", ToolErrorCode.UNAVAILABLE)
-        arguments = call.arguments if isinstance(call.arguments, dict) else {}
-        fingerprint = name + json.dumps(arguments, sort_keys=True, default=str)
+        fingerprint = args_fingerprint(name, arguments)
         earlier = self._failed_calls.get(fingerprint)
         if earlier is not None:
             return self._error(
@@ -481,7 +525,7 @@ class AnalyticsToolbox:
             "tables": tables,
         }
         return ToolOutcome(
-            content=_cap_schema(payload),
+            content=_cap_schema(payload, TOOL_SPECS[INSPECT_SCHEMA_TOOL.name].max_inline_bytes),
             is_error=False,
             summary={"tool": INSPECT_SCHEMA_TOOL.name, "ok": True, "tables": len(tables)},
         )
@@ -553,6 +597,7 @@ class AnalyticsToolbox:
 
     def _run_query(self, arguments: dict[str, Any]) -> ToolOutcome:
         assert self.snapshot is not None
+        spec = TOOL_SPECS[RUN_QUERY_TOOL.name]
         if "_invalid_arguments" in arguments:
             self.budget.refund(analytical=True)
             return self._invalid(RUN_QUERY_TOOL.name, "Tool arguments were not valid JSON. Send a JSON object.")
@@ -566,7 +611,7 @@ class AnalyticsToolbox:
             with _tracer.start_as_current_span(
                 "query.run", attributes={"query.operation": ir.operation, "snapshot.id": str(self.snapshot.get("snapshot_id") or "")}
             ) as span:
-                result, sql = self.engine.run(self.snapshot, ir, semantic_version_id, MAX_QUERY_ROWS)
+                result, sql = self.engine.run(self.snapshot, ir, semantic_version_id, MAX_QUERY_ROWS, timeout_seconds=spec.timeout_seconds)
                 span.set_attribute("query.rows", result.row_count)
                 span.set_attribute("query.truncated", result.truncated)
         except QueryValidationError as exc:
@@ -589,7 +634,7 @@ class AnalyticsToolbox:
             "snapshot_id": result.snapshot_id,
             "execution_ms": result.execution_ms,
         }
-        shown = result.rows[: self.max_rows_to_model]
+        shown = result.rows[: min(self.max_rows_to_model, spec.max_inline_rows)]
         evidence["columns"] = list(result.columns)
         evidence["rows"] = json.loads(json.dumps([list(r) for r in shown], default=str))
         withheld = ir.operation == "detail" and not self.raw_record_egress
@@ -628,7 +673,7 @@ class AnalyticsToolbox:
         if notes:
             payload["note"] = " ".join(notes)
         return ToolOutcome(
-            content=_cap(payload),
+            content=_cap(payload, spec.max_inline_bytes),
             is_error=False,
             summary={
                 "tool": RUN_QUERY_TOOL.name,

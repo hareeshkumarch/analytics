@@ -12,7 +12,7 @@ import { HScroll } from "@/components/HScroll";
 import { EmptyState, FilterChips, Notice, SearchInput, btn, cardCls, cx } from "@/components/ui";
 import { useThemeColor } from "@/lib/theme";
 import { relativeTime, useWorkspace } from "@/lib/workspace";
-import type { ModelUsageOut, RunUsageOut, UsageOut } from "@/lib/api/types";
+import type { ModelUsageOut, RunUsageOut, ToolUsageOut, UsageOut } from "@/lib/api/types";
 
 type RunUsageItem = RunUsageOut;
 type ModelUsageItem = ModelUsageOut;
@@ -181,6 +181,59 @@ function ModelUsage({
                   <td className="px-3.5 py-3 text-right tabular-nums text-body">
                     {m.avg_latency_ms === null ? "—" : `${(m.avg_latency_ms / 1000).toFixed(1)} s`}
                   </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </HScroll>
+      )}
+    </section>
+  );
+}
+
+const TOOL_LABELS: Record<string, string> = {
+  inspect_schema: "Inspect schema",
+  run_query_ir: "Run query",
+  calculate: "Calculate",
+};
+
+function ToolUsage({ tools, loading }: { tools: ToolUsageOut[]; loading: boolean }) {
+  return (
+    <section aria-labelledby="usage-tools" className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
+      <div>
+        <h2 id="usage-tools" className="font-display text-lg font-semibold tracking-[-0.01em]">
+          Tool calls
+        </h2>
+        <p className="mt-0.5 text-xs text-secondary">Every data tool the agents called, with how often a call was invalid, repeated or timed out.</p>
+      </div>
+      {tools.length === 0 ? (
+        <EmptyState title={loading ? "Loading…" : "No tool calls in this window"} />
+      ) : (
+        <HScroll className="border border-border" label="Tool calls">
+          <table className="w-full min-w-[720px] border-collapse text-left text-[13px]">
+            <thead>
+              <tr className="bg-panel text-[11px] uppercase tracking-[0.05em] text-secondary">
+                <th className="px-3.5 py-2.5 font-medium">Tool</th>
+                <th className="px-3.5 py-2.5 text-right font-medium">Calls</th>
+                <th className="px-3.5 py-2.5 text-right font-medium">Per step</th>
+                <th className="px-3.5 py-2.5 text-right font-medium">Failed</th>
+                <th className="px-3.5 py-2.5 text-right font-medium">Invalid</th>
+                <th className="px-3.5 py-2.5 text-right font-medium">Repeated</th>
+                <th className="px-3.5 py-2.5 text-right font-medium">Timed out</th>
+                <th className="px-3.5 py-2.5 text-right font-medium">Avg time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tools.map((t) => (
+                <tr key={t.tool} className="border-t border-border">
+                  <td className="px-3.5 py-3 font-medium text-ink">{TOOL_LABELS[t.tool] ?? t.tool}</td>
+                  <td className="px-3.5 py-3 text-right tabular-nums">{t.calls.toLocaleString()}</td>
+                  <td className="px-3.5 py-3 text-right tabular-nums">{t.calls_per_task}</td>
+                  <td className="px-3.5 py-3 text-right tabular-nums">{t.failed_calls}</td>
+                  <td className="px-3.5 py-3 text-right tabular-nums">{t.invalid_calls}</td>
+                  <td className="px-3.5 py-3 text-right tabular-nums">{t.duplicate_calls}</td>
+                  <td className="px-3.5 py-3 text-right tabular-nums">{t.timeouts}</td>
+                  <td className="px-3.5 py-3 text-right tabular-nums text-body">{t.avg_duration_ms.toLocaleString()} ms</td>
                 </tr>
               ))}
             </tbody>
@@ -423,6 +476,8 @@ export function UsageView() {
         windowLabel={WINDOW_OPTIONS.find((o) => o.value === windowFilter)?.label ?? ""}
         loading={isLoading}
       />
+
+      <ToolUsage tools={data?.tools ?? []} loading={isLoading} />
 
       <section aria-labelledby="usage-runs" className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
         <div className="flex items-baseline justify-between gap-3">

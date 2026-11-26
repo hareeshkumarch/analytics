@@ -177,8 +177,39 @@ class ModelUsageOut(ApiResponse):
     avg_latency_ms: int | None
 
 
+class ToolUsageOut(ApiResponse):
+    tool: str
+    calls: int
+    failed_calls: int
+    invalid_calls: int
+    duplicate_calls: int
+    timeouts: int
+    avg_duration_ms: int
+    calls_per_task: float
+
+
 class UsageOut(ApiResponse):
     workspace_id: str
     run_count: int
     runs: list[RunUsageOut]
     models: list[ModelUsageOut]
+    tools: list[ToolUsageOut] = []
+
+
+class ToolExecutionOut(ApiResponse):
+    execution_id: str
+    run_id: str
+    task_id: str
+    tool: str
+    tool_version: str
+    args_fingerprint: str
+    status: str
+    error_code: str | None
+    duration_ms: int
+    evidence_id: str | None
+    created_at: str
+
+
+class ToolExecutionListOut(ApiResponse):
+    run_id: str
+    executions: list[ToolExecutionOut]

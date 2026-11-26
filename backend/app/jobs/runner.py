@@ -15,6 +15,7 @@ from app.adapters.persistence.database import create_session_factory
 from app.bootstrap.logging_setup import run_context
 from app.adapters.persistence.pg_repositories import (
     PgBudgetLedger,
+    PgToolExecutionLedger,
     PgCredentialRepository,
     PgEventLog,
     PgEvidenceRepository,
@@ -88,6 +89,7 @@ def _execute_persisted_run(run_id: str) -> dict[str, str]:
     session_factory = get_worker_session_factory()
     container.budget_ledger = PgBudgetLedger(session_factory)
     container.routing_service.set_budget_ledger(container.budget_ledger)
+    container.tool_executions = PgToolExecutionLedger(session_factory)
 
     runs = PgRunRepository(session_factory)
     events = PgEventLog(session_factory)

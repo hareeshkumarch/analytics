@@ -22,8 +22,10 @@ from app.adapters.persistence.orm_models import (
     SemanticVersionRow,
     SnapshotManifestRow,
     SourceRow,
+    ToolExecutionRow,
     WorkspaceRow,
 )
+from app.application.ports.tools import ToolExecution
 from app.domain.errors import BudgetExhaustedError, LimitExceededError, NotFoundError, ValidationError, VersionConflictError
 from app.domain.events import EventType, RunEvent
 from app.domain.models import Answer, RunStatus
@@ -1302,3 +1304,39 @@ class PgBudgetLedger:
             "total_cost_usd": str(cost),
             "incomplete": any(not row.settled for row in rows),
         }
+
+
+class PgToolExecutionLedger:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._sf = session_factory
+
+    def record(self, execution: ToolExecution) -> None:
+        with self._sf() as db:
+            with db.begin():
+                db.add(ToolExecutionRow(**asdict(execution)))
+
+    def list_for_runs(self, run_ids: list[str]) -> list[ToolExecution]:
+        if not run_ids:
+            return []
+        with self._sf() as db:
+            rows = db.scalars(
+                select(ToolExecutionRow)
+                .where(ToolExecutionRow.run_id.in_(run_ids))
+                .order_by(ToolExecutionRow.created_at, ToolExecutionRow.execution_id)
+            ).all()
+        return [
+            ToolExecution(
+                execution_id=r.execution_id,
+                run_id=r.run_id,
+                task_id=r.task_id,
+                tool=r.tool,
+                tool_version=r.tool_version,
+                args_fingerprint=r.args_fingerprint,
+                status=r.status,
+                error_code=r.error_code,
+                duration_ms=r.duration_ms,
+                evidence_id=r.evidence_id,
+                created_at=r.created_at,
+            )
+            for r in rows
+        ]

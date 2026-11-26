@@ -160,6 +160,22 @@ class RunEvidenceRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 
+class ToolExecutionRow(Base):
+    __tablename__ = "tool_executions"
+    __table_args__ = (Index("ix_tool_executions_run", "run_id", "created_at"),)
+    execution_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    task_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    tool: Mapped[str] = mapped_column(String(64), nullable=False)
+    tool_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    args_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    evidence_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
 class OutboxJobRow(Base):
     __tablename__ = "outbox_jobs"
     job_id: Mapped[str] = mapped_column(String(64), primary_key=True)
