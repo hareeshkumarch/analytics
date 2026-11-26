@@ -100,5 +100,32 @@ class TestDatabaseLedgerTokenCeiling(unittest.TestCase):
             ledger.reserve(run_id, "op3", "a3", 2000, None, False, None)
 
 
+class TestUnresolvedReservationsAreReleased(unittest.TestCase):
+    def _check(self, ledger, run_id: str) -> None:
+        failed = ledger.reserve(run_id, "op1", "a1", 4000, Decimal("1.50"), False, Decimal("2.00"))
+        ledger.release_unresolved(failed.reservation_id, "provider timeout")
+        totals = ledger.get_run_totals(run_id)
+        self.assertEqual((totals["total_tokens"], Decimal(str(totals["total_cost_usd"]))), (0, Decimal("0")))
+        self.assertTrue(totals["incomplete"])
+        ledger.reserve(run_id, "op2", "a2", 4000, Decimal("1.50"), False, Decimal("2.00"))
+
+    def test_memory_ledger(self) -> None:
+        self._check(AtomicBudgetLedger(), "run_mem")
+
+    def test_database_ledger(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            app = create_app(build_container(artifact_root=td))
+            run_id = TestClient(app).post("/api/v1/workspaces/ws1/runs", json={"question": "q", "background_async": False}).json()["run_id"]
+            ledger = PgBudgetLedger(app.state.session_factory)
+            self._check(ledger, run_id)
+            self.assertEqual(Decimal(str(ledger.get_runs_totals([run_id])[run_id]["total_cost_usd"])), Decimal("1.50"))
+
+    def test_memory_settle_keeps_cost_when_none_was_reserved(self) -> None:
+        ledger = AtomicBudgetLedger()
+        res = ledger.reserve("r", "op", "a", 100, None, False, None)
+        ledger.settle(res.reservation_id, 90, Decimal("0.25"))
+        self.assertEqual(ledger.get_run_totals("r")["total_cost_usd"], "0.25")
+
+
 if __name__ == "__main__":
     unittest.main()

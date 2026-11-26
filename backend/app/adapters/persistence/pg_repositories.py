@@ -1148,14 +1148,14 @@ class PgBudgetLedger:
                     raise BudgetExhaustedError(f"Run {run_id} exceeded max model attempts")
 
                 cur_cost = sum(
-                    (r.actual_cost_usd if r.settled and r.actual_cost_usd is not None else (r.reserved_cost_usd or Decimal("0")))
+                    (r.actual_cost_usd if r.actual_cost_usd is not None else (r.reserved_cost_usd or Decimal("0")))
                     for r in existing
                 )
                 add_cost = estimated_cost_usd or Decimal("0")
                 if hard_cost_ceiling_usd is not None and cur_cost + add_cost > hard_cost_ceiling_usd:
                     raise BudgetExhaustedError("Monetary ceiling exceeded")
                 cur_tokens = sum(
-                    (r.actual_tokens if r.settled and r.actual_tokens is not None else r.reserved_tokens) for r in existing
+                    (r.actual_tokens if r.actual_tokens is not None else r.reserved_tokens) for r in existing
                 )
                 if cur_tokens + estimated_tokens > RUN_TOKEN_LIMIT:
                     raise BudgetExhaustedError(f"Run {run_id} exceeded token budget ({RUN_TOKEN_LIMIT})")
@@ -1230,6 +1230,8 @@ class PgBudgetLedger:
                 row = db.get(BudgetReservationRow, reservation_id, with_for_update=True)
                 if row and not row.settled:
                     row.unresolved_reason = reason[:500]
+                    row.actual_tokens = 0
+                    row.actual_cost_usd = Decimal("0")
 
     def get_runs_totals(self, run_ids: list[str]) -> dict[str, dict[str, object]]:
         with self._sf() as db:
@@ -1283,13 +1285,13 @@ class PgBudgetLedger:
                 select(BudgetReservationRow).where(BudgetReservationRow.run_id == run_id)
             ).all()
         tokens = sum(
-            row.actual_tokens if row.settled and row.actual_tokens is not None else row.reserved_tokens
+            row.actual_tokens if row.actual_tokens is not None else row.reserved_tokens
             for row in rows
         )
         cost = sum(
             (
                 row.actual_cost_usd
-                if row.settled and row.actual_cost_usd is not None
+                if row.actual_cost_usd is not None
                 else row.reserved_cost_usd or Decimal("0")
             )
             for row in rows

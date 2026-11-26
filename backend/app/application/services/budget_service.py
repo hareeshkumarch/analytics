@@ -121,8 +121,8 @@ class AtomicBudgetLedger:
             token_delta = actual_tokens - res.reserved_tokens
             self._reserved_tokens[res.run_id] = max(0, self._reserved_tokens.get(res.run_id, 0) + token_delta)
 
-            if actual_cost_usd is not None and res.reserved_cost_usd is not None:
-                cost_delta = actual_cost_usd - res.reserved_cost_usd
+            if actual_cost_usd is not None:
+                cost_delta = actual_cost_usd - (res.reserved_cost_usd or Decimal("0"))
                 self._reserved_cost[res.run_id] = max(
                     Decimal("0"), self._reserved_cost.get(res.run_id, Decimal("0")) + cost_delta
                 )
@@ -136,8 +136,14 @@ class AtomicBudgetLedger:
     def release_unresolved(self, reservation_id: str, reason: str) -> None:
         with self._lock:
             res = self._reservations.get(reservation_id)
-            if res is not None and not res.settled:
-                self._has_unresolved[res.run_id] = True
+            if res is None or res.settled or res.actual_tokens is not None:
+                return
+            self._reserved_tokens[res.run_id] = max(0, self._reserved_tokens.get(res.run_id, 0) - res.reserved_tokens)
+            self._reserved_cost[res.run_id] = max(
+                Decimal("0"), self._reserved_cost.get(res.run_id, Decimal("0")) - (res.reserved_cost_usd or Decimal("0"))
+            )
+            self._reservations[reservation_id] = replace(res, actual_tokens=0, actual_cost_usd=Decimal("0"))
+            self._has_unresolved[res.run_id] = True
 
     def get_runs_totals(self, run_ids: list[str]) -> dict[str, dict[str, object]]:
         return {run_id: self.get_run_totals(run_id) for run_id in run_ids}
@@ -150,8 +156,8 @@ class AtomicBudgetLedger:
             (
                 r.provider_id,
                 r.model_id,
-                r.actual_tokens if r.settled and r.actual_tokens is not None else r.reserved_tokens,
-                r.actual_cost_usd if r.settled and r.actual_cost_usd is not None else r.reserved_cost_usd,
+                r.actual_tokens if r.actual_tokens is not None else r.reserved_tokens,
+                r.actual_cost_usd if r.actual_cost_usd is not None else r.reserved_cost_usd,
                 r.cost_is_unknown,
                 r.settled,
                 r.latency_ms,
