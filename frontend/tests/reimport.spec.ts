@@ -38,9 +38,9 @@ test("a dataset can be imported again with its saved settings", async ({ page })
   await expect(add.getByText(/New version of/)).toBeVisible();
   await expect(add.getByLabel("Host")).toHaveValue("db.example.com");
   await expect(add.getByLabel("Database")).toHaveValue("shop");
-  await expect(add.getByLabel("Password")).toHaveValue("");
+  await expect(add.getByLabel("Password", { exact: true })).toHaveValue("");
   await add.getByLabel("Username").fill("reader");
-  await add.getByLabel("Password").fill("s3cret");
+  await add.getByLabel("Password", { exact: true }).fill("s3cret");
   await add.getByRole("button", { name: "Test connection" }).click();
   await add.getByRole("button", { name: "Import 1 table" }).click();
   await expect.poll(() => seen.body).not.toBeNull();

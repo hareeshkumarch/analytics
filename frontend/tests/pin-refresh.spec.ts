@@ -7,10 +7,11 @@ test("pins show their latest re-run and can opt into automatic re-runs", async (
     { pin_id: "pin_a", title: "Revenue", question_text: "Revenue", run_id: "run_old", version: 1, created_at: now, auto_refresh: false, latest_run_id: "run_new" },
     { pin_id: "pin_b", title: "Fees", question_text: "Fees", run_id: "run_fees", version: 1, created_at: now, auto_refresh: true, latest_run_id: "run_busy" },
   ];
+  const SNAPSHOT = { snapshot_id: "snap_1", source_id: "src_1", version: 1, total_rows: 3, tables: ["orders"], approved: true, created_at: now };
   const runs = [
-    { run_id: "run_old", status: "completed", answer: { summary_markdown: "Old answer." } },
-    { run_id: "run_new", status: "completed", answer: { summary_markdown: "Fresh answer." } },
-    { run_id: "run_fees", status: "completed", answer: { summary_markdown: "Fees were 100." } },
+    { run_id: "run_old", snapshot_id: "snap_1", status: "completed", answer: { summary_markdown: "Old answer." } },
+    { run_id: "run_new", snapshot_id: "snap_1", status: "completed", answer: { summary_markdown: "Fresh answer." } },
+    { run_id: "run_fees", snapshot_id: "snap_1", status: "completed", answer: { summary_markdown: "Fees were 100." } },
     { run_id: "run_busy", status: "running", answer: null },
   ];
   await page.route("**/api/v1/**", async (route) => {
@@ -21,7 +22,7 @@ test("pins show their latest re-run and can opt into automatic re-runs", async (
     }
     if (path.endsWith("/pins")) return route.fulfill({ json: { pins } });
     if (path.endsWith("/runs")) return route.fulfill({ json: { runs, next_before: null } });
-    if (path.endsWith("/snapshots")) return route.fulfill({ json: { snapshots: [] } });
+    if (path.endsWith("/snapshots")) return route.fulfill({ json: { snapshots: [SNAPSHOT] } });
     return route.fulfill({ status: 404, json: { detail: "not mocked" } });
   });
   await page.goto("/dashboard");

@@ -16,7 +16,12 @@ test("usage breaks model calls down by model and filters by provider", async ({ 
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/usage")) {
       return route.fulfill({
-        json: { workspace_id: "default", run_count: 0, runs: [], models: [model("openai", "gpt-x", 4, "0.40"), model("anthropic", "claude-y", 2, "0.10")] },
+        json: {
+          workspace_id: "default",
+          run_count: 1,
+          runs: [{ run_id: "run_1", used_attempts: 6, total_tokens: 6000, total_cost_usd: "0.50", incomplete: false, mode: "quick", status: "completed", created_at: new Date().toISOString(), question: "Fees?" }],
+          models: [model("openai", "gpt-x", 4, "0.40"), model("anthropic", "claude-y", 2, "0.10")],
+        },
       });
     }
     return route.fulfill({ status: 404, json: { detail: "not mocked" } });
