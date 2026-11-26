@@ -63,11 +63,15 @@ def register(ctx: ApiContext) -> None:
                 orch = InvestigationOrchestrator(app.state.container, query_engine=_get_query_engine())
                 policy = _policy_for_workspace(workspace_id)
                 final: dict[str, Any] = {}
+                held_finish: list[dict[str, Any]] = []
 
                 def _emit(evt: Any) -> None:
                     evt_dict = evt.to_sse_dict()
-                    if _publish_event(run_id, evt_dict, skip_if_cancelled=True) and evt_dict["type"] == "run.finished":
+                    if evt_dict["type"] == "run.finished":
                         final.update(evt_dict["payload"])
+                        held_finish.append(evt_dict)
+                        return
+                    _publish_event(run_id, evt_dict, skip_if_cancelled=True)
 
                 prior_tool_invocations, prior_analytical_calls = _prior_tool_usage(run_id)
                 orchestration_state = app.state.repo_runs.get_orchestration_state(run_id)
@@ -107,7 +111,9 @@ def register(ctx: ApiContext) -> None:
                 run_rec["answer_id"] = answer.answer_id
                 if final.get("error"):
                     run_rec["error"] = final["error"]
-                app.state.repo_runs.save_answer(answer, final_status=final_status)
+                if app.state.repo_runs.save_answer(answer, final_status=final_status):
+                    for evt_dict in held_finish:
+                        _publish_event(run_id, evt_dict, skip_if_cancelled=True)
         except ClarificationRequired as exc:
             if not _is_cancelled():
                 pending_events = app.state.repo_runs.pause_for_clarification(run_id, exc.prompt)

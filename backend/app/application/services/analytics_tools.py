@@ -243,6 +243,7 @@ class ToolSpec:
     max_inline_rows: int
     max_inline_bytes: int
     retry_class: str
+    max_argument_bytes: int = 16_384
 
 
 _INLINE_BYTES = DEFAULT_GLOBAL_LIMITS.max_model_tool_result_bytes
@@ -486,6 +487,13 @@ class AnalyticsToolbox:
             return self._error(name, f"Unknown tool {name!r}. Available: {', '.join(names)}.", ToolErrorCode.UNKNOWN_TOOL)
         if not self.available:
             return self._error(name, "No dataset snapshot is bound to this run.", ToolErrorCode.UNAVAILABLE)
+        spec = TOOL_SPECS.get(name)
+        if spec is not None and len(json.dumps(arguments, default=str).encode("utf-8")) > spec.max_argument_bytes:
+            return self._error(
+                name,
+                f"Tool arguments are larger than {spec.max_argument_bytes} bytes. Send a shorter purpose and fewer values.",
+                ToolErrorCode.LIMIT_EXCEEDED,
+            )
         fingerprint = args_fingerprint(name, arguments)
         earlier = self._failed_calls.get(fingerprint)
         if earlier is not None:

@@ -11,6 +11,9 @@ LOCK_TIMEOUT_MS = 5_000
 STATEMENT_TIMEOUT_MS = 30_000
 
 
+POOL_TIMEOUT_SECONDS = 5
+
+
 def create_db_engine(database_url: str | None = None) -> Any:
     url = database_url
     if url is None:
@@ -43,6 +46,7 @@ def create_db_engine(database_url: str | None = None) -> Any:
         pool_pre_ping=True,
         pool_size=10,
         max_overflow=20,
+        pool_timeout=POOL_TIMEOUT_SECONDS,
     )
 
 

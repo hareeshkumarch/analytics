@@ -31,7 +31,7 @@ from app.application.services.routing_service import routing_policy_from_saved
 from app.bootstrap.container import build_container
 from app.domain.events import EventType, RunEvent
 from app.domain.errors import ClarificationRequired, public_message
-from app.domain.models import RunMode, RunOutcome, RunStatus
+from app.domain.models import RunMode, RunStatus
 from app.domain.providers import ProviderId, RoutingPolicy
 
 logger = logging.getLogger(__name__)
@@ -123,6 +123,7 @@ def _execute_persisted_run(run_id: str) -> dict[str, str]:
 
     sequence = int(run.get("last_event_sequence") or 0)
     event_lock = threading.Lock()
+    held_finish: list[RunEvent] = []
 
     def emit(event: RunEvent) -> None:
         nonlocal sequence
@@ -150,20 +151,8 @@ def _execute_persisted_run(run_id: str) -> dict[str, str]:
                     fence=fence,
                 )
             elif persisted.type == EventType.RUN_FINISHED:
-                final_status = str(persisted.payload.get("status") or RunStatus.COMPLETED.value)
-                outcome = (
-                    str(persisted.payload.get("outcome") or RunOutcome.ANSWERED.value)
-                    if final_status == RunStatus.COMPLETED.value
-                    else final_status
-                )
-                stored = events.append(
-                    persisted,
-                    status=final_status,
-                    outcome=outcome,
-                    error=str(persisted.payload.get("error") or "") or None,
-                    only_if_not_cancelled=True,
-                    fence=fence,
-                )
+                held_finish.append(persisted)
+                return
             else:
                 stored = events.append(persisted, only_if_not_cancelled=True, fence=fence)
             if stored is not None:
@@ -266,11 +255,11 @@ def _execute_persisted_run(run_id: str) -> dict[str, str]:
         return {"run_id": run_id, "status": str(latest.get("status") or RunStatus.FAILED.value), "answer_id": ""}
 
     latest = runs.get_run(run_id) or run
-    final_status = str(latest.get("status") or RunStatus.COMPLETED.value)
-    if final_status == RunStatus.CANCELLED.value:
-        return {"run_id": run_id, "answer_id": "", "status": final_status}
-    if final_status not in {RunStatus.COMPLETED.value, RunStatus.FAILED.value}:
-        final_status = RunStatus.COMPLETED.value
+    if latest.get("status") == RunStatus.CANCELLED.value:
+        return {"run_id": run_id, "answer_id": "", "status": RunStatus.CANCELLED.value}
+    if held_finish:
+        finished = held_finish[-1]
+    else:
         with event_lock:
             sequence += 1
             finished = RunEvent(
@@ -281,22 +270,11 @@ def _execute_persisted_run(run_id: str) -> dict[str, str]:
                 run_id=run_id,
                 type=EventType.RUN_FINISHED,
                 occurred_at=datetime.now(timezone.utc),
-                payload={"status": final_status},
+                payload={"status": RunStatus.COMPLETED.value},
             )
-            persisted = events.append(
-                finished,
-                status=final_status,
-                outcome="answered",
-                only_if_not_cancelled=True,
-                    fence=fence,
-            )
-            if persisted is None:
-                latest = runs.get_run(run_id) or latest
-                return {
-                    "run_id": run_id,
-                    "answer_id": "",
-                    "status": str(latest.get("status") or RunStatus.CANCELLED.value),
-                }
+    final_status = str(finished.payload.get("status") or RunStatus.COMPLETED.value)
+    if final_status not in {RunStatus.COMPLETED.value, RunStatus.FAILED.value}:
+        final_status = RunStatus.COMPLETED.value
     if not runs.save_answer(answer, final_status=final_status, fence=fence):
         latest = runs.get_run(run_id) or latest
         return {
@@ -304,4 +282,13 @@ def _execute_persisted_run(run_id: str) -> dict[str, str]:
             "answer_id": "",
             "status": str(latest.get("status") or RunStatus.CANCELLED.value),
         }
+    with event_lock:
+        events.append(
+            finished,
+            status=final_status,
+            outcome=answer.outcome if final_status == RunStatus.COMPLETED.value else final_status,
+            error=str(finished.payload.get("error") or "") or None,
+            only_if_not_cancelled=True,
+            fence=fence,
+        )
     return {"run_id": run_id, "answer_id": answer.answer_id, "status": final_status}

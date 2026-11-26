@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable
 
 from app.application.services.text_utils import CITATION_GROUP_RE as _CITATION, EVIDENCE_ID_RE as _EVIDENCE_ID
-from app.domain.models import CriterionResult
+from app.domain.models import CriterionResult, RunOutcome
 
 GROUNDING_CRITERION = "Every figure in the answer matches the evidence it cites"
 
@@ -107,9 +107,9 @@ def assess_answer(
         planned_status = "verified"
     results = (grounding, *(CriterionResult(text, planned_status, cited) for text in dict.fromkeys(criteria)))
     if any(r.status == "failed" for r in results):
-        outcome = "needs_review"
+        outcome = RunOutcome.NEEDS_REVIEW
     elif any(r.status == "blocked" for r in results):
-        outcome = "partial_success"
+        outcome = RunOutcome.PARTIAL_SUCCESS
     else:
-        outcome = "success"
-    return outcome, results
+        outcome = RunOutcome.SUCCESS
+    return outcome.value, results
