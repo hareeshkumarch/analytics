@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { API_BASE, apiFetch, errorMessage } from "@/lib/api/client";
 import { btn } from "@/components/ui";
 import { workspacePath } from "@/lib/workspace";
@@ -21,10 +21,17 @@ function fileName(question: string, ext: string): string {
 
 export function ExportMenu({ workspaceId, runId, question }: { workspaceId: string; runId: string; question: string }) {
   const [open, setOpen] = useState(false);
+  const [alignRight, setAlignRight] = useState(true);
   const [busy, setBusy] = useState<Format["id"] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+
+  useLayoutEffect(() => {
+    if ((!open && !error) || !trigger.current) return;
+    const rect = trigger.current.getBoundingClientRect();
+    setAlignRight(rect.right >= 220 && rect.left + 220 > window.innerWidth - 16);
+  }, [open, error]);
 
   useEffect(() => {
     if (!open) return;
@@ -104,7 +111,9 @@ export function ExportMenu({ workspaceId, runId, question }: { workspaceId: stri
           tabIndex={-1}
           aria-label="Export answer"
           onKeyDown={onMenuKey}
-          className="absolute right-0 top-full z-30 mt-1 min-w-[200px] border border-border bg-surface py-1 shadow-pop"
+          className={`absolute top-full z-30 mt-1 min-w-[200px] border border-border-strong bg-surface py-1 shadow-pop ${
+            alignRight ? "right-0" : "left-0"
+          }`}
         >
           {FORMATS.map((format) => (
             <button
@@ -120,9 +129,17 @@ export function ExportMenu({ workspaceId, runId, question }: { workspaceId: stri
         </div>
       )}
       {error && (
-        <p role="alert" className="absolute right-0 top-full z-20 mt-1 w-max max-w-[280px] border border-border bg-surface px-3 py-2 text-[12px] text-err shadow-pop">
-          {error}
-        </p>
+        <div
+          role="alert"
+          className={`absolute top-full z-20 mt-1 flex w-max max-w-[min(280px,calc(100vw-2rem))] items-start gap-2 border border-border-strong bg-surface px-3 py-2 text-[12px] text-err shadow-pop ${
+            alignRight ? "right-0" : "left-0"
+          }`}
+        >
+          <span className="flex-1">{error}</span>
+          <button type="button" onClick={() => setError(null)} aria-label="Dismiss export error" className="shrink-0 text-secondary hover:text-ink">
+            ×
+          </button>
+        </div>
       )}
     </div>
   );

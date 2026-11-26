@@ -50,8 +50,8 @@ Design tokens & components, Ask on phone.
 
 Connector logos (`components/ConnectorLogo.tsx`) are the one place fixed brand colours are allowed: each logo is a self-contained tile with its own background and foreground, so it reads the same in both themes.
 
-- **Official marks:** 16 brands use their official mark from [Simple Icons](https://simpleicons.org) 16.35.0 (CC0), vendored as path data in `components/brandPaths.ts`, so the app makes no runtime request.
-- **LLM providers:** `ProviderLogo` (same file) shows the official marks of Anthropic, Google Gemini, Kimi and NVIDIA in Settings. OpenAI, Groq and xAI aren't in Simple Icons, so they get a plain monogram rather than an imitation of their logo.
+- **Official marks:** 16 connector brands and 4 LLM providers use their official mark from [Simple Icons](https://simpleicons.org) 16.35.0 (CC0), vendored as path data in `components/brandPaths.ts`, so the app makes no runtime request.
+- **LLM providers:** `ProviderLogo` (same file) shows vendored brand marks for all seven providers in Settings (Anthropic, Google Gemini, Kimi and NVIDIA from Simple Icons 16.35.0; OpenAI, Groq and xAI vendored separately).
 - **Drawn marks:** AWS (S3, RDS) and Microsoft Azure aren't in Simple Icons, and their official icon packages only allow architecture diagrams, training and documentation (AWS Trademark Guidelines §3(d); Azure icon terms). Those connectors therefore keep a drawn mark in brand colours until written permission is obtained. Generic sources (file upload, link, REST) use a neutral glyph.
 - **Adding a logo:** download `icons/<slug>.svg` from the same Simple Icons version, check it is a single `<path>`, add its `d` to `brandPaths.ts`, and map it in `MARKS`.
 - **Brand rules:** logos are trademarks of their owners and only identify the connector; don't recolour them beyond the brand colour or alter their shape.

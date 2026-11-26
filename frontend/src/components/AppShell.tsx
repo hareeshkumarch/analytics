@@ -110,11 +110,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
   const collapsed = useUiStore((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
-  const workspaceId = useUiStore((s) => s.activeWorkspaceId);
   const [animate, setAnimate] = useState(false);
+  const [isMac, setIsMac] = useState(false);
   const isActive = (href: string) => pathname === href || Boolean(pathname?.startsWith(`${href}/`));
 
   useEffect(() => {
+    setIsMac(/Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent));
     let saved: string | null = null;
     try {
       saved = window.localStorage.getItem(COLLAPSE_KEY);
@@ -214,12 +215,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   href={item.href}
                   aria-label={collapsed ? item.label : undefined}
                   aria-current={active ? "page" : undefined}
-                  className={`group relative flex min-h-[42px] items-center gap-3 text-[13.5px] transition-colors ${
+                  className={`group relative flex min-h-[42px] items-center gap-3 border text-[13.5px] transition-colors focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong ${
                     collapsed ? "justify-center" : "px-2.5"
                   } ${
                     active
-                      ? "bg-surface font-medium text-ink shadow-card ring-1 ring-border"
-                      : "text-body hover:bg-surface/70 hover:text-ink"
+                      ? "border-border bg-surface font-medium text-ink"
+                      : "border-transparent text-body hover:bg-surface/70 hover:text-ink"
                   }`}
                 >
                   <span className={active ? "text-plum" : ""}>
@@ -240,27 +241,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ) : (
               <ThemeToggle />
             )}
-            <div
-              className={`group relative flex items-center gap-2.5 border border-border bg-canvas ${
-                collapsed ? "justify-center p-2.5" : "p-2.5"
-              }`}
-              title={collapsed ? `${workspaceId} workspace · local, no login` : undefined}
-            >
-              <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-ok-dot" />
-              {!collapsed && (
-                <span className="min-w-0">
-                  <span className="block truncate text-[12.5px] font-medium">{workspaceId} workspace</span>
-                  <span className="block text-[11px] text-secondary">Local · no login</span>
-                </span>
-              )}
-              <RailTip show={collapsed}>{workspaceId} workspace · Local</RailTip>
-            </div>
 
             <button
               type="button"
               onClick={toggle}
               aria-expanded={!collapsed}
-              aria-label={collapsed ? "Expand sidebar (Ctrl+B)" : "Collapse sidebar (Ctrl+B)"}
+              aria-label={collapsed ? `Expand sidebar (${isMac ? "⌘ B" : "Ctrl+B"})` : `Collapse sidebar (${isMac ? "⌘ B" : "Ctrl+B"})`}
               className={`group relative flex min-h-[40px] w-full items-center gap-2.5 text-[13px] text-secondary transition-colors hover:bg-surface hover:text-ink ${
                 collapsed ? "justify-center" : "px-2.5"
               }`}
@@ -282,11 +268,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <>
                   <span className="flex-1 text-left">Collapse</span>
                   <kbd className="border border-border bg-surface px-1.5 py-0.5 font-sans text-[10.5px] text-secondary">
-                    Ctrl B
+                    {isMac ? "⌘ B" : "Ctrl B"}
                   </kbd>
                 </>
               )}
-              <RailTip show={collapsed}>Expand · Ctrl B</RailTip>
+              <RailTip show={collapsed}>Expand · {isMac ? "⌘ B" : "Ctrl B"}</RailTip>
             </button>
           </div>
         </aside>

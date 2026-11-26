@@ -38,10 +38,10 @@ export function HScroll({
   const scrollable = edges.left || edges.right;
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={`relative overflow-hidden ${className}`}>
       <div
         ref={ref}
-        className="scrollbar-none overflow-x-auto overscroll-x-contain"
+        className="scrollbar-none relative overflow-x-auto overscroll-x-contain"
         tabIndex={scrollable ? 0 : undefined}
         role={scrollable ? "region" : undefined}
         aria-label={scrollable ? label ?? "Scrollable content" : undefined}

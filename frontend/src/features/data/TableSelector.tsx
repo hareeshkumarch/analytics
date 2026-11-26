@@ -24,6 +24,7 @@ export function TableSelector({
   const q = query.trim().toLowerCase();
   const visible = q ? tables.filter((t) => t.name.toLowerCase().includes(q)) : tables;
   const chosen = new Set(selected);
+  const hiddenSelected = q ? selected.filter((n) => !visible.some((v) => v.name === n)).length : 0;
 
   function setVisible(on: boolean) {
     const names = new Set(visible.map((t) => t.name));
@@ -36,13 +37,14 @@ export function TableSelector({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[13px] text-body">
           {selected.length} of {tables.length} table{tables.length === 1 ? "" : "s"} selected
+          {hiddenSelected > 0 && <span className="text-secondary"> ({hiddenSelected} outside filter)</span>}
         </p>
         <div className="flex gap-1">
           <button type="button" className={btn.ghost} onClick={() => setVisible(true)}>
-            Select all
+            {q ? "Select matches" : "Select all"}
           </button>
           <button type="button" className={btn.ghost} onClick={() => setVisible(false)}>
-            Clear
+            {q ? "Clear matches" : "Clear"}
           </button>
         </div>
       </div>

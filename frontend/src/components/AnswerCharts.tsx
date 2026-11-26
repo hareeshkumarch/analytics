@@ -1,8 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useContext } from "react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { ChartOut } from "@/lib/api/types";
+import { EvidenceContext } from "@/components/SafeMarkdown";
 import { useThemeColor } from "@/lib/theme";
 
 export type AnswerChart = ChartOut;
@@ -12,6 +13,7 @@ const full = new Intl.NumberFormat(undefined, { maximumFractionDigits: 4 });
 const humanize = (field: string) => field.replace(/_/g, " ");
 
 function ChartCard({ chart, small }: { chart: AnswerChart; small: boolean }) {
+  const openEvidence = useContext(EvidenceContext);
   const gridColor = useThemeColor("border", "#E4E4E7");
   const axisColor = useThemeColor("muted", "#696972");
   const surfaceColor = useThemeColor("surface", "#FFFFFF");
@@ -19,8 +21,10 @@ function ChartCard({ chart, small }: { chart: AnswerChart; small: boolean }) {
   const palette = [
     useThemeColor("accent", "#18181B"),
     useThemeColor("clay", "#71717A"),
+    useThemeColor("body", "#3F3F46"),
     useThemeColor("border-strong", "#8C8C96"),
   ];
+  const colorFor = (idx: number) => palette[idx % palette.length];
   const keys = chart.y_fields.map((_, i) => `s${i}`);
   const data = chart.rows.map((row) => {
     const point: Record<string, string | number | null> = { label: String(row[0] ?? "") };
@@ -59,7 +63,7 @@ function ChartCard({ chart, small }: { chart: AnswerChart; small: boolean }) {
           <span className="flex flex-wrap gap-3 text-[11.5px] text-secondary">
             {keys.map((key, i) => (
               <span key={key} className="inline-flex items-center gap-1.5">
-                <span aria-hidden="true" className="inline-block h-2 w-2" style={{ background: palette[i] }} />
+                <span aria-hidden="true" className="inline-block h-2 w-2" style={{ background: colorFor(i) }} />
                 {names[key]}
               </span>
             ))}
@@ -72,14 +76,14 @@ function ChartCard({ chart, small }: { chart: AnswerChart; small: boolean }) {
             <LineChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: -8 }}>
               {axes}
               {keys.map((key, i) => (
-                <Line key={key} dataKey={key} stroke={palette[i]} strokeWidth={2} dot={data.length <= 24} isAnimationActive={false} />
+                <Line key={key} dataKey={key} stroke={colorFor(i)} strokeWidth={2} dot={data.length <= 24} isAnimationActive={false} />
               ))}
             </LineChart>
           ) : (
             <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -8 }} barCategoryGap={chart.chart_type === "histogram" ? 1 : "20%"}>
               {axes}
               {keys.map((key, i) => (
-                <Bar key={key} dataKey={key} fill={palette[i]} maxBarSize={chart.chart_type === "histogram" ? undefined : 36} isAnimationActive={false} />
+                <Bar key={key} dataKey={key} fill={colorFor(i)} maxBarSize={chart.chart_type === "histogram" ? undefined : 36} isAnimationActive={false} />
               ))}
             </BarChart>
           )}
@@ -115,7 +119,18 @@ function ChartCard({ chart, small }: { chart: AnswerChart; small: boolean }) {
         </details>
       )}
       <p className="mt-1.5 text-[11px] text-secondary">
-        Evidence <code className="font-mono">{chart.evidence_id}</code>
+        Evidence{" "}
+        {openEvidence ? (
+          <button
+            type="button"
+            onClick={() => openEvidence(chart.evidence_id)}
+            className="font-mono underline decoration-border-strong underline-offset-4 hover:text-ink"
+          >
+            {chart.evidence_id}
+          </button>
+        ) : (
+          <code className="font-mono">{chart.evidence_id}</code>
+        )}
         {chart.truncated && " · partial data: only the first rows are shown"}
       </p>
     </figure>

@@ -69,13 +69,18 @@ export function DataView() {
       />
 
       <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        <ConnectSource
-          reimport={reimport}
-          onCancelReimport={() => setReimport(null)}
-          onImported={(id) => select(id, "definitions", true)}
-        />
+        <div className={cx("min-w-0", snapshots.length > 0 && !reimport && "order-2 xl:order-1")}>
+          <ConnectSource
+            reimport={reimport}
+            onCancelReimport={() => setReimport(null)}
+            onImported={(id) => select(id, "definitions", true)}
+          />
+        </div>
 
-        <section aria-labelledby="datasets-title" className={cx(cardCls, "min-w-0 space-y-4 p-5 sm:p-6")}>
+        <section
+          aria-labelledby="datasets-title"
+          className={cx(cardCls, "min-w-0 space-y-4 p-5 sm:p-6", snapshots.length > 0 && !reimport && "order-1 xl:order-2")}
+        >
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 id="datasets-title" className="font-display text-lg font-semibold leading-snug tracking-[-0.01em] text-ink">
               Datasets

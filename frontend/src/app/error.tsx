@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
+import { btn } from "@/components/ui";
 
 export default function RouteError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
@@ -15,14 +16,10 @@ export default function RouteError({ error, reset }: { error: Error & { digest?:
         Something on this page couldn&apos;t be shown. Your data and runs are safe. Try again, or go back to Ask.
       </p>
       <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={reset}
-          className="inline-flex min-h-[40px] items-center bg-plum px-[18px] text-[13.5px] font-medium text-on-accent hover:bg-plum-deep"
-        >
+        <button type="button" onClick={reset} className={btn.primary}>
           Try again
         </button>
-        <Link href="/ask" className="inline-flex min-h-[40px] items-center border border-border-strong bg-surface px-[18px] text-[13.5px] text-ink hover:border-plum">
+        <Link href="/ask" className={btn.secondary}>
           Go to Ask
         </Link>
       </div>

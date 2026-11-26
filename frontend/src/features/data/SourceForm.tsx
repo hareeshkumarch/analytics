@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useId } from "react";
+import React, { useId, useState } from "react";
 import { RichSelect } from "@/components/RichSelect";
 import { btn, cx, inputCls } from "@/components/ui";
 import { ConnectorDef, FieldDef, FieldValue, Values, isFieldVisible, toSheetsCsvUrl } from "@/lib/connectors";
@@ -49,6 +49,7 @@ function SheetsLinkHint({ field, value, onChange }: { field: FieldDef; value: st
 }
 
 function Field({ field, id, value, error, disabled, onChange, sheetsHint }: FieldProps & { sheetsHint: boolean }) {
+  const [revealed, setRevealed] = useState(false);
   const describe = describedBy(id, field.help, error);
 
   if (field.type === "select") {
@@ -111,10 +112,28 @@ function Field({ field, id, value, error, disabled, onChange, sheetsHint }: Fiel
           onChange={(e) => onChange(field.key, e.target.value)}
           className={cx(inputCls, "min-h-[120px] py-2.5 font-mono text-xs", error && "border-err")}
         />
+      ) : field.type === "password" ? (
+        <div className="relative">
+          <input
+            {...shared}
+            type={revealed ? "text" : "password"}
+            onChange={(e) => onChange(field.key, e.target.value)}
+            className={cx(inputCls, "pr-14", field.readOnly && "bg-panel text-secondary", error && "border-err")}
+          />
+          <button
+            type="button"
+            onClick={() => setRevealed((r) => !r)}
+            aria-label={revealed ? `Hide ${field.label}` : `Show ${field.label}`}
+            aria-pressed={revealed}
+            className="absolute right-1.5 top-1/2 flex h-8 items-center justify-center px-2 text-xs text-secondary transition-colors hover:text-ink"
+          >
+            {revealed ? "Hide" : "Show"}
+          </button>
+        </div>
       ) : (
         <input
           {...shared}
-          type={field.type === "password" ? "password" : field.type === "number" ? "number" : field.type === "url" ? "url" : "text"}
+          type={field.type === "number" ? "number" : field.type === "url" ? "url" : "text"}
           inputMode={field.type === "number" ? "numeric" : field.type === "url" ? "url" : undefined}
           onChange={(e) => onChange(field.key, e.target.value)}
           className={cx(inputCls, field.readOnly && "bg-panel text-secondary", error && "border-err")}

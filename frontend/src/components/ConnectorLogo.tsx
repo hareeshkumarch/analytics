@@ -128,18 +128,17 @@ const SIZES = {
 } as const;
 
 /*
- * LLM provider logos (keys are backend ProviderId values). Anthropic, Gemini, Kimi and NVIDIA use their
- * official marks from Simple Icons; OpenAI, Groq and xAI are not in Simple Icons, so they get a plain
- * monogram rather than an imitation of their logos.
+ * LLM provider logos (keys are backend ProviderId values). All seven providers render vendored
+ * brand marks from brandPaths.ts.
  */
 const PROVIDER_MARKS: Record<string, Mark> = {
   anthropic: { kind: "brand", slug: "anthropic", fg: "#191919", bg: "#F0EEE6" },
   gemini: { kind: "brand", slug: "googlegemini", fg: "#8E75B2", bg: WHITE },
   kimi: { kind: "brand", slug: "kimi", fg: WHITE, bg: "#000000" },
   nvidia_nim: { kind: "brand", slug: "nvidia", fg: "#76B900", bg: "#1A1A1A" },
-  openai: { kind: "text", text: "OA", fg: WHITE, bg: "#0D0D0D" },
-  groq: { kind: "text", text: "G", fg: WHITE, bg: "#F55036" },
-  xai: { kind: "text", text: "xAI", fg: WHITE, bg: "#000000" },
+  openai: { kind: "brand", slug: "openai", fg: WHITE, bg: "#0D0D0D" },
+  groq: { kind: "brand", slug: "groq", fg: WHITE, bg: "#F55036" },
+  xai: { kind: "brand", slug: "xai", fg: WHITE, bg: "#000000" },
 };
 
 export function ProviderLogo({ providerId, size = "sm" }: { providerId: string; size?: keyof typeof SIZES }) {

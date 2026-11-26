@@ -7,7 +7,7 @@ import { ConnectorLogo, logoIdForFamily } from "@/components/ConnectorLogo";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { HScroll } from "@/components/HScroll";
 import { RichSelect } from "@/components/RichSelect";
-import { Badge, Notice, btn, cx } from "@/components/ui";
+import { Badge, Notice, Spinner, btn, cx } from "@/components/ui";
 import { ApiError, errorMessage } from "@/lib/api/client";
 import { useSemantics } from "@/lib/api/semantics";
 import { deleteSnapshot } from "@/lib/api/snapshots";
@@ -58,23 +58,26 @@ export function DatasetPanel({
   const ws = useWorkspace();
   const queryClient = useQueryClient();
   const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<"idle" | "confirm" | "force">("idle");
+  const [forceReason, setForceReason] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  async function removeDataset() {
-    if (!window.confirm(`Delete ${datasetLabel(snapshot)}? Its imported data is removed; past answers stay readable.`)) return;
+  async function removeDataset(force = false) {
     setDeleting(true);
     setDeleteError(null);
     try {
-      try {
-        await deleteSnapshot(ws.id, snapshot.snapshot_id);
-      } catch (err) {
-        if (!(err instanceof ApiError && err.status === 409 && window.confirm(`${err.message} Delete it anyway?`))) throw err;
-        await deleteSnapshot(ws.id, snapshot.snapshot_id, true);
-      }
+      await deleteSnapshot(ws.id, snapshot.snapshot_id, force);
+      setConfirmDelete("idle");
+      setForceReason(null);
       await queryClient.invalidateQueries({ queryKey: ["snapshots", ws.id] });
       onDeleted();
     } catch (err) {
-      setDeleteError(errorMessage(err, "Couldn't delete this dataset."));
+      if (!force && err instanceof ApiError && err.status === 409) {
+        setConfirmDelete("force");
+        setForceReason(err.message);
+      } else {
+        setDeleteError(errorMessage(err, "Couldn't delete this dataset."));
+      }
     } finally {
       setDeleting(false);
     }
@@ -158,11 +161,48 @@ export function DatasetPanel({
               Import new version
             </button>
           )}
-          <button type="button" onClick={() => void removeDataset()} disabled={deleting} className={btn.ghost}>
-            {deleting ? "Deleting…" : "Delete"}
-          </button>
+          {confirmDelete === "idle" && (
+            <button type="button" onClick={() => setConfirmDelete("confirm")} disabled={deleting} className={btn.ghost}>
+              Delete
+            </button>
+          )}
         </div>
       </div>
+
+      {confirmDelete !== "idle" && (
+        <Notice
+          tone="err"
+          title={confirmDelete === "force" ? "This dataset is referenced by existing runs or pins" : `Delete ${datasetLabel(snapshot)}?`}
+          action={
+            <>
+              <button
+                type="button"
+                className={cx(btn.secondary, "border-err text-err hover:border-err")}
+                disabled={deleting}
+                onClick={() => void removeDataset(confirmDelete === "force")}
+              >
+                {deleting && <Spinner />}
+                {deleting ? "Deleting…" : confirmDelete === "force" ? "Delete anyway" : "Confirm delete"}
+              </button>
+              <button
+                type="button"
+                className={btn.ghost}
+                disabled={deleting}
+                onClick={() => {
+                  setConfirmDelete("idle");
+                  setForceReason(null);
+                }}
+              >
+                Cancel
+              </button>
+            </>
+          }
+        >
+          {confirmDelete === "force"
+            ? `${forceReason ?? "Existing answers or pins use this version."} Deleting removes the imported data; past answers stay readable.`
+            : "Its imported data is removed; past answers stay readable."}
+        </Notice>
+      )}
 
       {deleteError && (
         <Notice tone="err" title="Couldn't delete this dataset">

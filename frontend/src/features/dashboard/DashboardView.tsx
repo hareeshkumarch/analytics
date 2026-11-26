@@ -3,7 +3,7 @@
 import React, { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, errorMessage } from "@/lib/api/client";
 import { anyText, useUrlState } from "@/lib/url";
 import { AnswerCharts } from "@/components/AnswerCharts";
@@ -68,10 +68,39 @@ export function DashboardView() {
   const [windowFilter, setWindowFilter] = useUrlState<WindowFilter>("window", "any", isWindowFilter);
   const [dataset, setDataset] = useUrlState("dataset", "all", anyText);
   const [busyPin, setBusyPin] = useState<string | null>(null);
+  const [autoRefreshPin, setAutoRefreshPin] = useState<string | null>(null);
   const [confirmUnpin, setConfirmUnpin] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const runsById = useMemo(() => new Map((runsQuery.data?.runs ?? []).map((r) => [r.run_id, r])), [runsQuery.data]);
+  const pins = useMemo(() => pinsQuery.data?.pins ?? [], [pinsQuery.data]);
+  const pageRunsById = useMemo(() => new Map((runsQuery.data?.runs ?? []).map((r) => [r.run_id, r])), [runsQuery.data]);
+
+  const missingRunIds = useMemo(() => {
+    if (!runsQuery.isSuccess) return [];
+    const needed = new Set<string>();
+    for (const p of pins) {
+      if (p.run_id && !pageRunsById.has(p.run_id)) needed.add(p.run_id);
+      if (p.latest_run_id && !pageRunsById.has(p.latest_run_id)) needed.add(p.latest_run_id);
+    }
+    return Array.from(needed);
+  }, [pins, pageRunsById, runsQuery.isSuccess]);
+
+  const extraRunQueries = useQueries({
+    queries: missingRunIds.map((runId) => ({
+      queryKey: ["run", ws.id, runId],
+      queryFn: () => apiFetch<RunSummary>(ws.path(`/runs/${encodeURIComponent(runId)}`)),
+      staleTime: 60_000,
+    })),
+  });
+
+  const runsById = useMemo(() => {
+    const map = new Map(pageRunsById);
+    for (const q of extraRunQueries) {
+      if (q.data) map.set(q.data.run_id, q.data);
+    }
+    return map;
+  }, [pageRunsById, extraRunQueries]);
+
   const snapshots = useMemo(() => snapshotsQuery.data?.snapshots ?? [], [snapshotsQuery.data]);
   const snapshotById = useMemo(() => new Map(snapshots.map((s) => [s.snapshot_id, s])), [snapshots]);
 
@@ -81,8 +110,6 @@ export function DashboardView() {
     const newer = snapshots.find((s) => s.source_id === snap.source_id && s.approved && s.version > snap.version);
     return newer ?? null;
   }
-
-  const pins = useMemo(() => pinsQuery.data?.pins ?? [], [pinsQuery.data]);
 
   const shownRun = useCallback(
     (pin: PinItem): RunSummary | undefined => {
@@ -94,11 +121,14 @@ export function DashboardView() {
 
   async function setAutoRefresh(pin: PinItem, enabled: boolean) {
     setActionError(null);
+    setAutoRefreshPin(pin.pin_id);
     try {
       await apiFetch(ws.path(`/pins/${encodeURIComponent(pin.pin_id)}`), { method: "PATCH", body: JSON.stringify({ auto_refresh: enabled } satisfies UpdatePinRequest) });
       await qc.invalidateQueries({ queryKey: ["pins", ws.id] });
     } catch (err) {
       setActionError(errorMessage(err, "Couldn't change this pin."));
+    } finally {
+      setAutoRefreshPin(null);
     }
   }
   const datasetOptions: RichOption[] = useMemo(() => {
@@ -143,7 +173,6 @@ export function DashboardView() {
   async function unpin(pin: PinItem) {
     if (confirmUnpin !== pin.pin_id) {
       setConfirmUnpin(pin.pin_id);
-      window.setTimeout(() => setConfirmUnpin((cur) => (cur === pin.pin_id ? null : cur)), 4000);
       return;
     }
     setBusyPin(pin.pin_id);
@@ -159,19 +188,28 @@ export function DashboardView() {
     }
   }
 
+  const nowMs = Date.now();
+  const windowCounts = {
+    any: pins.length,
+    d7: pins.filter((p) => Date.parse(p.created_at) >= nowMs - 7 * 864e5).length,
+    d30: pins.filter((p) => Date.parse(p.created_at) >= nowMs - 30 * 864e5).length,
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Dashboard"
         description="Answers you pinned, the dataset each one used, and whether newer data has arrived since."
         action={
-          <Link href="/ask" className={btn.primary}>
-            Ask a question
-          </Link>
+          pins.length > 0 ? (
+            <Link href="/ask" className={btn.primary}>
+              Ask a question
+            </Link>
+          ) : undefined
         }
       />
 
-      {pins.length > 0 && (
+      {pins.length > 1 && (
         <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
           <SearchInput className="lg:w-[280px]" label="Search pinned answers" placeholder="Search pinned answers" value={query} onChange={setQuery} />
           <FilterChips
@@ -179,12 +217,12 @@ export function DashboardView() {
             value={windowFilter}
             onChange={setWindowFilter}
             options={[
-              { value: "any", label: "Any time" },
-              { value: "7d", label: "Last 7 days" },
-              { value: "30d", label: "Last 30 days" },
+              { value: "any", label: "Any time", count: windowCounts.any },
+              { value: "7d", label: "Last 7 days", count: windowCounts.d7 },
+              { value: "30d", label: "Last 30 days", count: windowCounts.d30 },
             ]}
           />
-          <div className="grid grid-cols-2 gap-2 lg:flex">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex">
             <div className="min-w-0 lg:w-[220px]">
               <RichSelect compact ariaLabel="Dataset" value={dataset} options={datasetOptions} onChange={setDataset} />
             </div>
@@ -196,6 +234,17 @@ export function DashboardView() {
       )}
 
       {actionError && <Notice tone="err" title={actionError} />}
+
+      {runsQuery.error && (
+        <Notice tone="err" title="Couldn't load saved answers" action={<button type="button" className={btn.secondary} onClick={() => void runsQuery.refetch()}>Try again</button>}>
+          {errorMessage(runsQuery.error)}
+        </Notice>
+      )}
+      {snapshotsQuery.error && (
+        <Notice tone="err" title="Couldn't load datasets" action={<button type="button" className={btn.secondary} onClick={() => void snapshotsQuery.refetch()}>Try again</button>}>
+          {errorMessage(snapshotsQuery.error)}
+        </Notice>
+      )}
 
       {pinsQuery.isLoading && (
         <div className="space-y-3" aria-live="polite">
@@ -226,6 +275,7 @@ export function DashboardView() {
       {pins.length > 0 && visible.length === 0 && (
         <EmptyState
           title="No pinned answers match"
+          body="No pinned answers match the current search or filter settings."
           action={
             filtersActive ? (
               <button
@@ -255,6 +305,9 @@ export function DashboardView() {
             const newer = newerVersion(snap);
             const text = excerpt(run?.answer?.summary_markdown ?? undefined);
             const busy = busyPin === pin.pin_id;
+            const missingIdx = missingRunIds.indexOf(pin.run_id);
+            const loadingRun = runsQuery.isLoading || (missingIdx >= 0 && Boolean(extraRunQueries[missingIdx]?.isLoading));
+            const canRefresh = Boolean(snap);
             return (
               <li key={pin.pin_id} className={cx(cardCls, "flex flex-col gap-3 p-5")}>
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -262,6 +315,14 @@ export function DashboardView() {
                   {updating ? (
                     <Badge tone="info" dot pulse>
                       Updating
+                    </Badge>
+                  ) : latestFailed ? (
+                    <Badge tone="warn" dot>
+                      Re-run failed
+                    </Badge>
+                  ) : !snap && run && snapshotsQuery.isSuccess ? (
+                    <Badge tone="warn" dot>
+                      Dataset removed
                     </Badge>
                   ) : newer ? (
                     <Badge tone="warn" dot>
@@ -275,33 +336,41 @@ export function DashboardView() {
                 </div>
                 {pin.question_text.trim() !== pin.title.trim() && <p className="text-[13px] leading-relaxed text-secondary">{pin.question_text}</p>}
                 <p className={cx("text-[13.5px] leading-relaxed", text ? "text-body" : "text-secondary")}>
-                  {text || (runsQuery.isLoading ? "Loading the answer…" : "The saved answer isn't available.")}
+                  {text || (loadingRun ? "Loading the answer…" : "The saved answer isn't available.")}
                 </p>
-                {latestFailed && <p className="text-xs text-err">The latest re-run failed; this is the earlier answer.</p>}
+                {latestFailed && <p className="text-xs text-err">The latest re-run failed; showing the earlier answer.</p>}
                 <AnswerCharts charts={run?.answer?.charts} small />
-                <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-body">
+                <label className={cx("flex min-h-[40px] cursor-pointer items-center gap-2 text-[12.5px]", canRefresh ? "text-body" : "cursor-not-allowed text-secondary opacity-60")}>
                   <input
                     type="checkbox"
                     className="h-4 w-4 accent-plum"
                     checked={Boolean(pin.auto_refresh)}
+                    disabled={!canRefresh || autoRefreshPin === pin.pin_id}
                     onChange={(e) => void setAutoRefresh(pin, e.target.checked)}
                   />
                   Re-run automatically when newer data is approved
                 </label>
                 <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
                   <span className="text-[12px] text-secondary">
-                    {snap ? `${datasetLabel(snap)} v${snap.version} · ` : ""}pinned {relativeTime(pin.created_at)}
+                    {snap ? `${datasetLabel(snap)} v${snap.version} · ` : run && snapshotsQuery.isSuccess ? "Removed dataset · " : ""}
+                    {run && run.run_id !== pin.run_id && run.created_at ? `updated ${relativeTime(run.created_at)} · ` : ""}
+                    pinned {relativeTime(pin.created_at)}
                   </span>
                   <span className="flex flex-wrap gap-1.5">
-                    <Link href={`/ask?run=${encodeURIComponent(run?.run_id ?? pin.run_id)}`} className={cx(btn.secondary, "px-3")}>
+                    <Link
+                      href={`/ask?run=${encodeURIComponent(run?.run_id ?? pin.run_id)}`}
+                      aria-label={`Open ${pin.title}`}
+                      className={cx(btn.secondary, "px-3")}
+                    >
                       Open
                     </Link>
                     <button
                       type="button"
                       className={cx(btn.secondary, "px-3")}
                       onClick={() => void rerun(pin)}
-                      disabled={busy}
-                      title={newer ? `Ask again using v${newer.version}` : "Ask the same question again"}
+                      disabled={busy || !canRefresh}
+                      aria-label={`${newer ? "Re-run on new data" : "Re-run"} ${pin.title}`}
+                      title={!canRefresh ? "Dataset was deleted" : newer ? `Ask again using v${newer.version}` : "Ask the same question again"}
                     >
                       {busy && confirmUnpin !== pin.pin_id && <Spinner />}
                       {newer ? "Re-run on new data" : "Re-run"}
@@ -311,9 +380,20 @@ export function DashboardView() {
                       className={cx(btn.ghost, confirmUnpin === pin.pin_id && "text-err hover:text-err")}
                       onClick={() => void unpin(pin)}
                       disabled={busy}
+                      aria-label={confirmUnpin === pin.pin_id ? `Confirm unpin ${pin.title}` : `Unpin ${pin.title}`}
                     >
+                      {busy && confirmUnpin === pin.pin_id && <Spinner />}
                       {confirmUnpin === pin.pin_id ? "Confirm unpin" : "Unpin"}
                     </button>
+                    {confirmUnpin === pin.pin_id && !busy && (
+                      <button
+                        type="button"
+                        className={btn.ghost}
+                        onClick={() => setConfirmUnpin(null)}
+                      >
+                        Cancel
+                      </button>
+                    )}
                   </span>
                 </div>
               </li>

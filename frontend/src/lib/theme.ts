@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 export type ThemePreference = "system" | "light" | "dark";
 
@@ -51,7 +53,7 @@ export function useTheme() {
 export function useThemeColor(token: string, fallback: string): string {
   const [color, setColor] = useState(fallback);
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const read = () => {
       const raw = getComputedStyle(document.documentElement).getPropertyValue(`--${token}`).trim();
       if (raw) setColor(`rgb(${raw.split(/\s+/).join(", ")})`);

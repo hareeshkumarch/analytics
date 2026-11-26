@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isSampleDataset } from "@/lib/sample";
-import { sortSnapshotsNewestFirst, type SnapshotSummary } from "@/lib/workspace";
+import { providerLabel, sortSnapshotsNewestFirst, type SnapshotSummary } from "@/lib/workspace";
 
 const snap = (id: string, created_at: string | null, tables = ["t"]): SnapshotSummary => ({
   snapshot_id: id,
@@ -28,5 +28,14 @@ describe("isSampleDataset", () => {
     expect(isSampleDataset(snap("x", null, ["refunds", "orders", "payouts", "fees"]))).toBe(true);
     expect(isSampleDataset(snap("x", null, ["orders"]))).toBe(false);
     expect(isSampleDataset(null)).toBe(false);
+  });
+});
+
+describe("providerLabel", () => {
+  it("formats brand capitalization accurately", () => {
+    expect(providerLabel("openai")).toBe("OpenAI");
+    expect(providerLabel("xai")).toBe("xAI");
+    expect(providerLabel("nvidia_nim")).toBe("NVIDIA NIM");
+    expect(providerLabel("anthropic")).toBe("Anthropic");
   });
 });

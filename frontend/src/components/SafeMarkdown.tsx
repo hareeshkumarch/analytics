@@ -393,9 +393,11 @@ export function SafeMarkdown({ content }: { content: string }) {
                     {b.lang}
                   </div>
                 )}
-                <pre className="overflow-x-auto px-3.5 py-3 font-mono text-[12.5px] leading-relaxed text-ink">
-                  <code>{b.text}</code>
-                </pre>
+                <HScroll label={b.lang ? `${b.lang} code block` : "Code block"}>
+                  <pre className="px-3.5 py-3 font-mono text-[12.5px] leading-relaxed text-ink">
+                    <code>{b.text}</code>
+                  </pre>
+                </HScroll>
               </div>
             );
           case "table":

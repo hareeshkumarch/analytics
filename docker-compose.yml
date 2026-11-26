@@ -59,6 +59,8 @@ services:
       context: .
       dockerfile: infra/compose/Dockerfile.backend
     command: ["uvicorn", "app.api.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "127.0.0.1:8000:8000"
     environment:
       <<: *provider_keys
       PYTHONPATH: /app
@@ -118,9 +120,12 @@ services:
       context: .
       dockerfile: infra/compose/Dockerfile.frontend
       args:
-        # Inlined into the browser bundle at build time (a runtime env var would be ignored).
+        # Inlined into the browser bundle / Next.js routes manifest at build time.
         NEXT_PUBLIC_API_BASE: /api/v1
+        API_PROXY_ORIGIN: http://api:8000
     command: ["npx", "next", "start", "-p", "3000", "-H", "0.0.0.0"]
+    ports:
+      - "127.0.0.1:3000:3000"
     depends_on:
       - api
     networks:

@@ -8,7 +8,7 @@ export function cx(...parts: (string | false | null | undefined)[]): string {
 
 export const btn = {
   primary:
-    "inline-flex min-h-[40px] items-center justify-center gap-2 bg-plum px-[18px] text-[13.5px] font-medium text-on-accent transition-colors hover:bg-plum-deep disabled:cursor-not-allowed disabled:bg-plum/35",
+    "inline-flex min-h-[40px] items-center justify-center gap-2 bg-plum px-[18px] text-[13.5px] font-medium text-on-accent transition-colors hover:bg-plum-deep disabled:cursor-not-allowed disabled:opacity-45",
   secondary:
     "inline-flex min-h-[40px] items-center justify-center gap-2 border border-border-strong bg-surface px-[18px] text-[13.5px] text-ink transition-colors hover:border-plum disabled:cursor-not-allowed disabled:opacity-60",
   ghost:
@@ -16,8 +16,17 @@ export const btn = {
   link: "inline-flex min-h-[40px] items-center gap-1.5 px-1 text-[13px] font-medium text-ink underline decoration-border-strong underline-offset-4 hover:decoration-ink",
 };
 
-export const inputCls =
-  "min-h-[44px] w-full border border-border-strong bg-surface px-3 text-sm text-ink placeholder:text-secondary transition-colors focus:border-plum focus:outline-none focus:ring-[3px] focus:ring-plum-soft disabled:opacity-60";
+export const btnSm = {
+  primary:
+    "inline-flex min-h-[34px] items-center justify-center gap-1.5 bg-plum px-3.5 text-[13px] font-medium text-on-accent transition-colors hover:bg-plum-deep disabled:cursor-not-allowed disabled:opacity-45",
+  secondary:
+    "inline-flex min-h-[34px] items-center justify-center gap-1.5 border border-border-strong bg-surface px-3.5 text-[13px] text-ink transition-colors hover:border-plum disabled:cursor-not-allowed disabled:opacity-60",
+};
+
+export const inputBaseCls =
+  "w-full border border-border-strong bg-surface px-3 text-sm text-ink placeholder:text-secondary transition-colors focus:border-plum focus:outline-none focus:ring-[3px] focus:ring-plum-soft disabled:opacity-60";
+
+export const inputCls = `min-h-[44px] ${inputBaseCls}`;
 
 export const cardCls = " border border-border bg-surface shadow-card";
 
@@ -34,11 +43,11 @@ export function Skeleton({ className }: { className: string }) {
 type Tone = "neutral" | "ok" | "warn" | "err" | "info";
 
 const NOTICE_TONES: Record<Tone, string> = {
-  neutral: "bg-panel text-body",
-  info: "bg-panel text-body",
-  ok: "bg-ok-soft text-ok",
-  warn: "bg-warn-soft text-warn",
-  err: "bg-err-soft text-err",
+  neutral: "border border-border bg-panel text-body",
+  info: "border border-border bg-panel text-body",
+  ok: "border border-border bg-ok-soft text-ok",
+  warn: "border border-warn/25 bg-warn-soft text-warn",
+  err: "border border-err/25 bg-err-soft text-err",
 };
 
 export function Notice({
@@ -102,12 +111,14 @@ export function SearchInput({
   placeholder,
   label,
   className = "",
+  dense = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
   label: string;
   className?: string;
+  dense?: boolean;
 }) {
   return (
     <div className={cx("relative min-w-0", className)}>
@@ -135,7 +146,11 @@ export function SearchInput({
           }
         }}
         placeholder={placeholder}
-        className={`${inputCls} min-h-[40px] pl-9 pr-9 [&::-webkit-search-cancel-button]:hidden`}
+        className={cx(
+          inputBaseCls,
+          dense ? "h-9 py-1.5 pl-9 pr-9" : "min-h-[40px] pl-9 pr-9",
+          "[&::-webkit-search-cancel-button]:hidden"
+        )}
       />
       {value && (
         <button

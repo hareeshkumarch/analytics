@@ -95,7 +95,9 @@ export function FileSource({
   const id = useId();
   const [dragging, setDragging] = useState(false);
   const { draft, detected, errors } = source;
-  const fileError = showErrors || draft.file ? errors.file : undefined;
+  const hasPaste = Boolean(draft.text.trim());
+  const pasteSizeError = !draft.file && hasPaste ? errors.file : undefined;
+  const fileError = !hasPaste && (showErrors || draft.file) ? errors.file : undefined;
   const nameError = showErrors || draft.nameEdited ? errors.name : undefined;
 
   return (
@@ -120,7 +122,9 @@ export function FileSource({
             e.preventDefault();
             if (!disabled) setDragging(true);
           }}
-          onDragLeave={() => setDragging(false)}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+          }}
           onDrop={(e) => {
             e.preventDefault();
             setDragging(false);
@@ -142,7 +146,7 @@ export function FileSource({
           </span>
         </label>
         {fileError && (
-          <p id={`${id}-file-err`} className="text-xs text-err">
+          <p id={`${id}-file-err`} role="alert" className="text-xs text-err">
             {fileError}
           </p>
         )}
@@ -154,9 +158,16 @@ export function FileSource({
       </div>
 
       <div className="space-y-1.5">
-        <label htmlFor={`${id}-paste`} className="block text-[12.5px] font-medium text-body">
-          Or paste CSV text
-        </label>
+        <div className="flex items-center justify-between gap-2">
+          <label htmlFor={`${id}-paste`} className="block text-[12.5px] font-medium text-body">
+            Or paste CSV text
+          </label>
+          {hasPaste && (
+            <button type="button" disabled={disabled} onClick={() => source.setText("")} className="text-xs text-secondary underline-offset-4 hover:text-ink hover:underline">
+              Clear text
+            </button>
+          )}
+        </div>
         <textarea
           id={`${id}-paste`}
           rows={4}
@@ -164,9 +175,16 @@ export function FileSource({
           disabled={disabled}
           spellCheck={false}
           placeholder={"order_id,amount\nA-001,19.90"}
+          aria-invalid={Boolean(pasteSizeError)}
+          aria-describedby={pasteSizeError ? `${id}-paste-err` : undefined}
           onChange={(e) => source.setText(e.target.value)}
-          className={cx(inputCls, "min-h-[96px] py-2.5 font-mono text-xs")}
+          className={cx(inputCls, "min-h-[96px] py-2.5 font-mono text-xs", pasteSizeError && "border-err")}
         />
+        {pasteSizeError && (
+          <p id={`${id}-paste-err`} role="alert" className="text-xs text-err">
+            {pasteSizeError}
+          </p>
+        )}
       </div>
 
       <div className="space-y-1.5">

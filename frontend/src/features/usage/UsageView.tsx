@@ -11,7 +11,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { HScroll } from "@/components/HScroll";
 import { EmptyState, FilterChips, Notice, SearchInput, btn, cardCls, cx } from "@/components/ui";
 import { useThemeColor } from "@/lib/theme";
-import { relativeTime, useWorkspace } from "@/lib/workspace";
+import { providerLabel, relativeTime, useWorkspace } from "@/lib/workspace";
 import type { ModelUsageOut, RunUsageOut, ToolUsageOut, UsageOut } from "@/lib/api/types";
 
 type RunUsageItem = RunUsageOut;
@@ -101,7 +101,8 @@ function ModelUsage({
   const active = providers.includes(provider) ? provider : "all";
   const shown = active === "all" ? models : models.filter((m) => m.provider_id === active);
   const value = (m: ModelUsageItem) => (metric === "cost" ? Number(m.total_cost_usd) || 0 : metric === "runs" ? m.calls : m.total_tokens);
-  const max = Math.max(1, ...shown.map(value));
+  const rawMax = Math.max(...shown.map(value), 0);
+  const max = rawMax > 0 ? rawMax : 1;
   const barLabel = metric === "cost" ? "cost" : metric === "runs" ? "model calls" : "tokens";
   return (
     <section aria-labelledby="usage-models" className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
@@ -110,7 +111,7 @@ function ModelUsage({
           <h2 id="usage-models" className="font-display text-lg font-semibold tracking-[-0.01em]">
             By model
           </h2>
-          <p className="mt-0.5 text-xs text-secondary">Every model call in the last {windowLabel.toLowerCase()}, across all modes and statuses. Bars show {barLabel}.</p>
+          <p className="mt-0.5 text-xs text-secondary">All model calls in the last {windowLabel.toLowerCase()} across all modes and statuses. Bars show {barLabel}.</p>
         </div>
         {providers.length > 1 && (
           <div role="group" aria-label="Provider" className="flex flex-wrap gap-1.5">
@@ -125,7 +126,7 @@ function ModelUsage({
                   active === p ? "border-ink bg-ink text-canvas" : "border-border bg-surface text-body hover:border-ink"
                 )}
               >
-                {p === "all" ? "All providers" : p}
+                {p === "all" ? "All providers" : providerLabel(p)}
               </button>
             ))}
           </div>
@@ -153,7 +154,7 @@ function ModelUsage({
                 <tr key={`${m.provider_id}:${m.model_id}`} className="border-t border-border">
                   <td className="px-3.5 py-3">
                     <span className="block font-medium text-ink">{m.model_id}</span>
-                    <span className="block text-xs text-secondary">{m.provider_id}</span>
+                    <span className="block text-xs text-secondary">{providerLabel(m.provider_id)}</span>
                   </td>
                   <td className="px-3.5 py-3">
                     <div className="h-2 overflow-hidden bg-panel" aria-hidden="true">
@@ -330,9 +331,12 @@ export function UsageView() {
   }, [runs]);
 
   const chartData = useMemo(() => bucketRuns(runs, windowFilter), [runs, windowFilter]);
-  const maxModeTokens = Math.max(1, ...totals.byMode.map((m) => m.tokens));
+  const modeMetricVal = (m: (typeof totals.byMode)[number]) => (metric === "cost" ? m.cost : metric === "runs" ? m.runs : m.tokens);
+  const rawMaxMode = Math.max(...totals.byMode.map(modeMetricVal), 0);
+  const maxModeMetric = rawMaxMode > 0 ? rawMaxMode : 1;
   const filtersActive = statusFilter !== "all" || modeFilter !== "all" || windowFilter !== "7d" || Boolean(search.trim());
   const metricLabel = metric === "tokens" ? "Tokens" : metric === "cost" ? "Cost (USD)" : "Runs";
+  const hasAnyWorkspaceRuns = (data?.runs?.length ?? 0) > 0;
 
   function clearFilters() {
     setStatusFilter("all");
@@ -347,29 +351,50 @@ export function UsageView() {
         title="Usage"
         description="Model calls, tokens and cost for each question, from the budget ledger. Costs we couldn't price are marked."
         action={
-          <span className="inline-flex items-center gap-2 text-xs text-secondary" aria-live="polite">
+          <span className="inline-flex items-center gap-2 text-xs text-secondary" aria-live={error ? "polite" : undefined}>
             <span aria-hidden="true" className={cx("h-1.5 w-1.5 rounded-full", error ? "bg-err-dot" : "animate-pulse bg-ok-dot")} />
             {error ? "Not updating" : dataUpdatedAt ? `Updated ${new Date(dataUpdatedAt).toLocaleTimeString()}` : "Live"}
           </span>
         }
       />
 
-      <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-center" role="group" aria-label="Filters">
-        <FilterChips label="Time window" options={WINDOW_OPTIONS} value={windowFilter} onChange={setWindowFilter} />
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-          <SearchInput className="col-span-2 sm:w-[240px]" label="Search questions" placeholder="Search questions" value={search} onChange={setSearch} />
-          <div className="min-w-0 sm:w-[160px]">
-            <RichSelect compact ariaLabel="Run status" value={statusFilter} options={STATUS_OPTIONS} onChange={setStatusFilter} />
-          </div>
-          <div className="min-w-0 sm:w-[140px]">
-            <RichSelect compact ariaLabel="Run mode" value={modeFilter} options={MODE_OPTIONS} onChange={setModeFilter} />
-          </div>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-4" role="group" aria-label="Filters">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <SearchInput
+            dense
+            className="w-full sm:w-[240px]"
+            label="Search questions"
+            placeholder="Search questions"
+            value={search}
+            onChange={setSearch}
+          />
+          <RichSelect
+            dense
+            triggerClassName="min-w-[148px] whitespace-nowrap"
+            ariaLabel="Run status"
+            value={statusFilter}
+            options={STATUS_OPTIONS}
+            onChange={setStatusFilter}
+          />
+          <RichSelect
+            dense
+            triggerClassName="min-w-[132px] whitespace-nowrap"
+            ariaLabel="Run mode"
+            value={modeFilter}
+            options={MODE_OPTIONS}
+            onChange={setModeFilter}
+          />
           {filtersActive && (
-            <button type="button" onClick={clearFilters} className={cx(btn.ghost, "col-span-2 sm:col-span-1")}>
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap px-3 text-[13px] text-secondary transition-colors hover:bg-sidebar hover:text-ink"
+            >
               Reset filters
             </button>
           )}
         </div>
+        <FilterChips label="Time window" options={WINDOW_OPTIONS} value={windowFilter} onChange={setWindowFilter} />
       </div>
 
       {error && <Notice tone="err" title="Couldn't load usage">{errorMessage(error)}</Notice>}
@@ -377,7 +402,7 @@ export function UsageView() {
       <dl
         className={cx(
           cardCls,
-          "grid grid-cols-2 divide-border overflow-hidden max-lg:[&>*:nth-child(-n+4)]:border-b max-lg:[&>*:nth-child(odd)]:border-r lg:grid-cols-5 lg:divide-x"
+          "grid grid-cols-2 divide-border overflow-hidden max-lg:last:col-span-2 max-lg:[&>*:last-child]:col-span-2 max-lg:[&>*:nth-child(-n+4)]:border-b max-lg:[&>*:nth-child(odd):not(:last-child)]:border-r lg:grid-cols-5 lg:divide-x"
         )}
       >
         <Stat label="Questions" value={totals.runs.toLocaleString()} hint={`${totals.byMode[0].runs} quick · ${totals.byMode[1].runs} deep`} loading={isLoading} />
@@ -392,166 +417,183 @@ export function UsageView() {
         />
       </dl>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <section aria-labelledby="usage-chart" className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 id="usage-chart" className="font-display text-lg font-semibold tracking-[-0.01em]">
-              {metricLabel} per {windowFilter === "24h" ? "hour" : "day"}
-            </h2>
-            <FilterChips
-              label="Chart metric"
-              value={metric}
-              onChange={setMetric}
-              options={[
-                { value: "tokens", label: "Tokens" },
-                { value: "cost", label: "Cost" },
-                { value: "runs", label: "Questions" },
-              ]}
-            />
-          </div>
-          {chartData.length === 0 ? (
-            <div className="flex h-56 items-center justify-center bg-panel text-[13.5px] text-secondary">
-              {isLoading ? "Loading…" : "No runs in this view."}
-            </div>
-          ) : (
-            <div className="h-56 w-full" role="img" aria-label={`${metricLabel} per ${windowFilter === "24h" ? "hour" : "day"}; the table below lists every run.`}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -8 }}>
-                  <CartesianGrid stroke={gridColor} vertical={false} />
-                  <XAxis dataKey="label" stroke={axisColor} fontSize={11} tickLine={false} axisLine={false} minTickGap={12} />
-                  <YAxis
-                    stroke={axisColor}
-                    fontSize={11}
-                    tickLine={false}
-                    axisLine={false}
-                    width={48}
-                    tickFormatter={(v) => (metric === "cost" ? `$${compact.format(Number(v))}` : compact.format(Number(v)))}
-                  />
-                  <Tooltip
-                    cursor={{ fill: gridColor, fillOpacity: 0.45 }}
-                    formatter={(value) => [metric === "cost" ? formatCost(Number(value)) : Number(value).toLocaleString(), metricLabel]}
-                    contentStyle={{
-                      borderRadius: 0,
-                      border: `1px solid ${gridColor}`,
-                      background: surfaceColor,
-                      color: inkColor,
-                      fontSize: 12,
-                    }}
-                  />
-                  <Bar dataKey={metric} fill={barColor} maxBarSize={36} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </section>
-
-        <section aria-labelledby="usage-modes" className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
-          <h2 id="usage-modes" className="font-display text-lg font-semibold tracking-[-0.01em]">
-            By mode
-          </h2>
-          <ul className="space-y-4">
-            {totals.byMode.map((m) => (
-              <li key={m.mode} className="space-y-1.5">
-                <div className="flex items-baseline justify-between gap-3 text-[13.5px]">
-                  <span className="font-medium capitalize">{m.mode}</span>
-                  <span className="tabular-nums text-secondary">
-                    {m.runs} run{m.runs === 1 ? "" : "s"} · {formatCost(m.cost)}
-                  </span>
-                </div>
-                <div className="h-2 overflow-hidden bg-panel" aria-hidden="true">
-                  <div className="h-full bg-plum" style={{ width: `${(m.tokens / maxModeTokens) * 100}%` }} />
-                </div>
-                <div className="text-xs tabular-nums text-secondary">{m.tokens.toLocaleString()} tokens</div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      </div>
-
-      <ModelUsage
-        models={data?.models ?? []}
-        metric={metric}
-        provider={providerFilter}
-        onProvider={setProviderFilter}
-        windowLabel={WINDOW_OPTIONS.find((o) => o.value === windowFilter)?.label ?? ""}
-        loading={isLoading}
-      />
-
-      <ToolUsage tools={data?.tools ?? []} loading={isLoading} />
-
-      <section aria-labelledby="usage-runs" className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 id="usage-runs" className="font-display text-lg font-semibold tracking-[-0.01em]">
-            Questions
-          </h2>
-          <span className="text-xs text-secondary">{runs.length.toLocaleString()} in view</span>
-        </div>
-        {runs.length === 0 ? (
+      {!isLoading && !error && data && !hasAnyWorkspaceRuns && !filtersActive ? (
+        <div className={cardCls}>
           <EmptyState
-            title={isLoading ? "Loading…" : "No runs match these filters"}
+            title="No usage recorded yet"
+            body="Ask your first question to start tracking token spend, model calls, and tool latency here."
             action={
-              filtersActive && !isLoading ? (
-                <button type="button" className={btn.secondary} onClick={clearFilters}>
-                  Reset filters
-                </button>
-              ) : undefined
+              <Link href="/ask" className={btn.primary}>
+                Go to Ask
+              </Link>
             }
           />
-        ) : (
-          <HScroll className="border border-border" label="Runs">
-            <table className="w-full min-w-[720px] border-collapse text-left text-[13px]">
-              <thead>
-                <tr className="bg-panel text-[11px] uppercase tracking-[0.05em] text-secondary">
-                  <th className="px-3.5 py-2.5 font-medium">When</th>
-                  <th className="px-3.5 py-2.5 font-medium">Question</th>
-                  <th className="px-3.5 py-2.5 font-medium">Mode</th>
-                  <th className="px-3.5 py-2.5 font-medium">Status</th>
-                  <th className="px-3.5 py-2.5 text-right font-medium">Model calls</th>
-                  <th className="px-3.5 py-2.5 text-right font-medium">Tokens</th>
-                  <th className="px-3.5 py-2.5 text-right font-medium">Cost</th>
-                </tr>
-              </thead>
-              <tbody>
-                {runs.slice(0, 100).map((r) => {
-                  const status = r.status ?? "queued";
-                  return (
-                    <tr key={r.run_id} className="border-t border-border align-top">
-                      <td className="whitespace-nowrap px-3.5 py-3 text-secondary" title={r.created_at ?? undefined}>
-                        {relativeTime(r.created_at)}
-                      </td>
-                      <td className="max-w-[320px] px-3.5 py-3">
-                        <Link href={`/ask?run=${encodeURIComponent(r.run_id)}`} className="line-clamp-2 text-ink underline decoration-border underline-offset-4 hover:decoration-ink" title={r.question ?? undefined}>
-                          {r.question || "Untitled question"}
-                        </Link>
-                        {r.error && <span className="mt-0.5 line-clamp-1 block text-xs text-err">Failed: see the run for details</span>}
-                      </td>
-                      <td className="px-3.5 py-3 capitalize text-body">{r.mode ?? "quick"}</td>
-                      <td className="whitespace-nowrap px-3.5 py-3">
-                        <span className="inline-flex items-center gap-1.5 capitalize text-body">
-                          <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[status] ?? "bg-secondary"}`} />
-                          {status.replaceAll("_", " ")}
-                        </span>
-                      </td>
-                      <td className="px-3.5 py-3 text-right tabular-nums">{r.used_attempts}</td>
-                      <td className="px-3.5 py-3 text-right tabular-nums">{r.total_tokens.toLocaleString()}</td>
-                      <td className="px-3.5 py-3 text-right tabular-nums">
-                        {r.incomplete ? (
-                          <span className="text-secondary" title="Some model calls have no settled price">
-                            —
-                          </span>
-                        ) : (
-                          formatCost(Number(r.total_cost_usd) || 0)
-                        )}
-                      </td>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+            <section aria-labelledby="usage-chart" className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 id="usage-chart" className="font-display text-lg font-semibold tracking-[-0.01em]">
+                  {metricLabel} per {windowFilter === "24h" ? "hour" : "day"}
+                </h2>
+                <FilterChips
+                  label="Chart metric"
+                  value={metric}
+                  onChange={setMetric}
+                  options={[
+                    { value: "tokens", label: "Tokens" },
+                    { value: "cost", label: "Cost" },
+                    { value: "runs", label: "Questions" },
+                  ]}
+                />
+              </div>
+              {chartData.length === 0 ? (
+                <div className="flex h-56 items-center justify-center bg-panel text-[13.5px] text-secondary">
+                  {isLoading ? "Loading…" : "No runs in this view."}
+                </div>
+              ) : (
+                <div className="h-56 w-full" role="img" aria-label={`${metricLabel} per ${windowFilter === "24h" ? "hour" : "day"}; the table below lists every run.`}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -8 }}>
+                      <CartesianGrid stroke={gridColor} vertical={false} />
+                      <XAxis dataKey="label" stroke={axisColor} fontSize={11} tickLine={false} axisLine={false} minTickGap={12} />
+                      <YAxis
+                        stroke={axisColor}
+                        fontSize={11}
+                        tickLine={false}
+                        axisLine={false}
+                        width={48}
+                        tickFormatter={(v) => (metric === "cost" ? `$${compact.format(Number(v))}` : compact.format(Number(v)))}
+                      />
+                      <Tooltip
+                        cursor={{ fill: gridColor, fillOpacity: 0.45 }}
+                        formatter={(value) => [metric === "cost" ? formatCost(Number(value)) : Number(value).toLocaleString(), metricLabel]}
+                        contentStyle={{
+                          borderRadius: 0,
+                          border: `1px solid ${gridColor}`,
+                          background: surfaceColor,
+                          color: inkColor,
+                          fontSize: 12,
+                        }}
+                      />
+                      <Bar dataKey={metric} fill={barColor} maxBarSize={36} isAnimationActive={false} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </section>
+
+            <section aria-labelledby="usage-modes" className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
+              <h2 id="usage-modes" className="font-display text-lg font-semibold tracking-[-0.01em]">
+                By mode
+              </h2>
+              <ul className="space-y-4">
+                {totals.byMode.map((m) => (
+                  <li key={m.mode} className="space-y-1.5">
+                    <div className="flex items-baseline justify-between gap-3 text-[13.5px]">
+                      <span className="font-medium capitalize">{m.mode}</span>
+                      <span className="tabular-nums text-secondary">
+                        {m.runs} run{m.runs === 1 ? "" : "s"} · {formatCost(m.cost)}
+                      </span>
+                    </div>
+                    <div className="h-2 overflow-hidden bg-panel" aria-hidden="true">
+                      <div className="h-full bg-plum" style={{ width: `${(modeMetricVal(m) / maxModeMetric) * 100}%` }} />
+                    </div>
+                    <div className="text-xs tabular-nums text-secondary">{m.tokens.toLocaleString()} tokens</div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
+
+          <ModelUsage
+            models={data?.models ?? []}
+            metric={metric}
+            provider={providerFilter}
+            onProvider={setProviderFilter}
+            windowLabel={WINDOW_OPTIONS.find((o) => o.value === windowFilter)?.label ?? ""}
+            loading={isLoading}
+          />
+
+          <ToolUsage tools={data?.tools ?? []} loading={isLoading} />
+
+          <section aria-labelledby="usage-runs" className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 id="usage-runs" className="font-display text-lg font-semibold tracking-[-0.01em]">
+                Questions
+              </h2>
+              <span className="text-xs text-secondary">{runs.length.toLocaleString()} in view</span>
+            </div>
+            {runs.length === 0 ? (
+              <EmptyState
+                title={isLoading ? "Loading…" : "No runs match these filters"}
+                action={
+                  filtersActive && !isLoading ? (
+                    <button type="button" className={btn.secondary} onClick={clearFilters}>
+                      Reset filters
+                    </button>
+                  ) : undefined
+                }
+              />
+            ) : (
+              <HScroll className="border border-border" label="Runs">
+                <table className="w-full min-w-[720px] border-collapse text-left text-[13px]">
+                  <thead>
+                    <tr className="bg-panel text-[11px] uppercase tracking-[0.05em] text-secondary">
+                      <th className="px-3.5 py-2.5 font-medium">When</th>
+                      <th className="px-3.5 py-2.5 font-medium">Question</th>
+                      <th className="px-3.5 py-2.5 font-medium">Mode</th>
+                      <th className="px-3.5 py-2.5 font-medium">Status</th>
+                      <th className="px-3.5 py-2.5 text-right font-medium">Model calls</th>
+                      <th className="px-3.5 py-2.5 text-right font-medium">Tokens</th>
+                      <th className="px-3.5 py-2.5 text-right font-medium">Cost</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </HScroll>
-        )}
-        {runs.length > 100 && <p className="text-xs text-secondary">Showing the 100 most recent of {runs.length.toLocaleString()} runs.</p>}
-      </section>
+                  </thead>
+                  <tbody>
+                    {runs.slice(0, 100).map((r) => {
+                      const status = r.status ?? "queued";
+                      const cost = formatCost(Number(r.total_cost_usd) || 0);
+                      return (
+                        <tr key={r.run_id} className="border-t border-border align-top">
+                          <td className="whitespace-nowrap px-3.5 py-3 text-secondary" title={r.created_at ?? undefined}>
+                            {relativeTime(r.created_at)}
+                          </td>
+                          <td className="max-w-[320px] px-3.5 py-3">
+                            <Link href={`/ask?run=${encodeURIComponent(r.run_id)}`} className="line-clamp-2 text-ink underline decoration-border underline-offset-4 hover:decoration-ink" title={r.question ?? undefined}>
+                              {r.question || "Untitled question"}
+                            </Link>
+                            {r.error && <span className="mt-0.5 line-clamp-1 block text-xs text-err">Failed: see the run for details</span>}
+                          </td>
+                          <td className="px-3.5 py-3 capitalize text-body">{r.mode ?? "quick"}</td>
+                          <td className="whitespace-nowrap px-3.5 py-3">
+                            <span className="inline-flex items-center gap-1.5 capitalize text-body">
+                              <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[status] ?? "bg-secondary"}`} />
+                              {status.replaceAll("_", " ")}
+                            </span>
+                          </td>
+                          <td className="px-3.5 py-3 text-right tabular-nums">{r.used_attempts}</td>
+                          <td className="px-3.5 py-3 text-right tabular-nums">{r.total_tokens.toLocaleString()}</td>
+                          <td className="px-3.5 py-3 text-right tabular-nums">
+                            {r.incomplete ? (
+                              <span className="text-secondary" title="Some model calls had no declared price">
+                                ≥ {cost}
+                              </span>
+                            ) : (
+                              cost
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </HScroll>
+            )}
+            {runs.length > 100 && <p className="text-xs text-secondary">Showing the 100 most recent of {runs.length.toLocaleString()} runs.</p>}
+          </section>
+        </>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api/client";
@@ -51,13 +51,25 @@ export function EvidencePanel({
     retry: false,
   });
 
+  const [copiedSql, setCopiedSql] = useState(false);
   const ev = query.data;
   const shown = ev?.rows?.length ?? 0;
+
+  async function copySql() {
+    if (!ev?.sql) return;
+    try {
+      await navigator.clipboard.writeText(ev.sql);
+      setCopiedSql(true);
+      window.setTimeout(() => setCopiedSql(false), 1500);
+    } catch {
+      setCopiedSql(false);
+    }
+  }
 
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-ink/25" />
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px]" />
         <Dialog.Content
           aria-describedby={undefined}
           className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[640px] flex-col border-l border-border bg-surface shadow-pop focus:outline-none"
@@ -79,7 +91,15 @@ export function EvidencePanel({
           <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
             {query.isLoading && <Skeleton className="h-32" />}
             {query.isError && (
-              <Notice tone="err" title="This evidence isn't available">
+              <Notice
+                tone="err"
+                title="This evidence isn't available"
+                action={
+                  <button type="button" className={btn.secondary} onClick={() => void query.refetch()}>
+                    Try again
+                  </button>
+                }
+              >
                 It couldn&apos;t be loaded. The run may have been deleted or the API may be unreachable; try again, or re-run the question.
               </Notice>
             )}
@@ -121,10 +141,17 @@ export function EvidencePanel({
                 </section>
 
                 <section aria-label="SQL" className="space-y-2">
-                  <h3 className="text-[12px] font-semibold uppercase tracking-wide text-secondary">Query (read-only SQL)</h3>
-                  <pre className="overflow-x-auto border border-border bg-panel px-3.5 py-3 font-mono text-[12px] leading-relaxed text-ink">
-                    <code>{ev.sql}</code>
-                  </pre>
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-[12px] font-semibold uppercase tracking-wide text-secondary">Query (read-only SQL)</h3>
+                    <button type="button" onClick={() => void copySql()} className="inline-flex min-h-[32px] items-center px-2 text-xs text-secondary transition-colors hover:text-ink">
+                      {copiedSql ? "Copied SQL" : "Copy SQL"}
+                    </button>
+                  </div>
+                  <HScroll className="border border-border bg-panel" label="SQL query">
+                    <pre className="px-3.5 py-3 font-mono text-[12px] leading-relaxed text-ink">
+                      <code>{ev.sql}</code>
+                    </pre>
+                  </HScroll>
                 </section>
 
                 <Details summary="Technical identifiers">

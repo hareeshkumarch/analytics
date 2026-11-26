@@ -119,3 +119,17 @@ export function formatBytes(bytes: number | null | undefined): string {
 export function humanize(id: string): string {
   return id.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+const PROVIDER_LABELS: Record<string, string> = {
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+  gemini: "Gemini",
+  groq: "Groq",
+  xai: "xAI",
+  kimi: "Kimi",
+  nvidia_nim: "NVIDIA NIM",
+};
+
+export function providerLabel(id: string): string {
+  return PROVIDER_LABELS[id] ?? humanize(id);
+}

@@ -175,7 +175,9 @@ function SourceSetup({
       requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
       return;
     }
-    if (isFile) setTableName(reimport?.selectedTables.length === 1 ? reimport.selectedTables[0] : file.draft.name.trim());
+    if (isFile) {
+      setTableName(!file.draft.nameEdited && reimport?.selectedTables.length === 1 ? reimport.selectedTables[0] : file.draft.name.trim());
+    }
     void flow.connect(isFile ? () => file.build(def) : () => Promise.resolve(toPayload(def, values)), probe, reimport?.selectedTables);
   }
 
@@ -222,6 +224,13 @@ function SourceSetup({
       )}
 
       <StepProgress steps={steps} current={current} busy={flow.busy} status={statusText(flow.phase, flow.error, probe, flow.tables.length)} />
+
+      {flow.error && (
+        <FlowErrorNotice
+          error={flow.error}
+          fieldKeys={new Set(inDetails && !isFile ? def.fields.filter((f) => isFieldVisible(f, values)).map((f) => f.key) : [])}
+        />
+      )}
 
       {inDetails && (
         <form ref={formRef} noValidate onSubmit={submitDetails} className="space-y-4">
@@ -280,8 +289,8 @@ function SourceSetup({
               {flow.phase === "importing" && <Spinner />}
               {flow.phase === "importing" ? "Importing…" : `Import ${importCount} table${importCount === 1 ? "" : "s"}`}
             </button>
-            <button type="button" className={btn.ghost} onClick={flow.back} disabled={flow.busy}>
-              Edit details
+            <button type="button" className={btn.ghost} onClick={flow.back}>
+              {flow.phase === "importing" ? "Cancel import" : "Edit details"}
             </button>
           </div>
         </form>
@@ -301,13 +310,6 @@ function SourceSetup({
           {flow.result.snapshot.tables.length === 1 ? "" : "s"}. {def.fields.some((f) => f.secret) ? "Credentials were cleared from this form. " : ""}
           Approve the proposed definitions under Datasets so Ask can use this data.
         </Notice>
-      )}
-
-      {flow.error && (
-        <FlowErrorNotice
-          error={flow.error}
-          fieldKeys={new Set(inDetails && !isFile ? def.fields.filter((f) => isFieldVisible(f, values)).map((f) => f.key) : [])}
-        />
       )}
     </div>
   );
@@ -330,7 +332,7 @@ export function ConnectSource({
   useEffect(() => {
     if (!reimport) return;
     sectionRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
-    sectionRef.current?.querySelector<HTMLElement>("input:not([type=hidden]), button")?.focus({ preventScroll: true });
+    sectionRef.current?.querySelector<HTMLElement>("form input:not([type=hidden]), form textarea, input:not([type=hidden]), button")?.focus({ preventScroll: true });
   }, [reimport]);
 
   return (

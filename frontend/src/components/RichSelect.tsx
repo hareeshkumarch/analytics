@@ -12,6 +12,8 @@ interface RichSelectProps {
   onChange: (value: string) => void;
   placeholder?: string;
   compact?: boolean;
+  dense?: boolean;
+  triggerClassName?: string;
   disabled?: boolean;
   hint?: string;
   ariaLabel?: string;
@@ -24,6 +26,8 @@ export function RichSelect({
   onChange,
   placeholder = "Select…",
   compact = false,
+  dense = false,
+  triggerClassName = "",
   disabled = false,
   hint,
   ariaLabel,
@@ -83,7 +87,8 @@ export function RichSelect({
     const panelHeight = Math.min(listRef.current?.scrollHeight ?? 280, 288);
     const spaceBelow = window.innerHeight - rect.bottom;
     setDropUp(spaceBelow < panelHeight + 16 && rect.top > spaceBelow);
-    setAlignRight(rect.left + 260 > window.innerWidth - 16);
+    const minMenuWidth = Math.min(Math.max(rect.width, 260), window.innerWidth - 32);
+    setAlignRight(rect.left + minMenuWidth > window.innerWidth - 16 && rect.right >= minMenuWidth);
   }, [open]);
 
   useEffect(() => {
@@ -155,16 +160,17 @@ export function RichSelect({
         role="combobox"
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-controls={listId}
+        aria-controls={open ? listId : undefined}
         aria-labelledby={nameText ? `${labelId} ${id}-value` : undefined}
         aria-label={nameText ? undefined : selected?.label ?? placeholder}
+        aria-describedby={hint ? `${id}-hint` : undefined}
         aria-activedescendant={open && activeIdx >= 0 ? optionId(activeIdx) : undefined}
         disabled={disabled}
         onClick={() => (open ? setOpen(false) : openList())}
         onKeyDown={handleKeyDown}
-        className={`flex w-full items-center justify-between gap-2 border bg-surface text-left text-[13.5px] text-ink transition-colors hover:border-plum disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border ${
+        className={`flex w-full items-center justify-between gap-2 border bg-surface text-left text-[13.5px] text-ink transition-colors hover:border-plum disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border-strong ${
           open ? "border-plum ring-[3px] ring-plum-soft" : "border-border-strong"
-        } ${compact ? "min-h-[40px] px-3 sm:min-w-[180px]" : "min-h-[44px] px-3.5"}`}
+        } ${dense ? "h-9 px-3 py-1.5" : compact ? "min-h-[40px] px-3" : "min-h-[44px] px-3.5"} ${triggerClassName}`}
       >
         <span id={`${id}-value`} className={`flex min-w-0 items-center gap-2 ${selected ? "" : "text-secondary"}`}>
           {selected?.icon}
@@ -186,7 +192,7 @@ export function RichSelect({
           <path d="m6 9 6 6 6-6" />
         </svg>
       </button>
-      {hint && <p className="mt-1.5 text-[11px] leading-snug text-secondary">{hint}</p>}
+      {hint && <p id={`${id}-hint`} className="mt-1.5 text-[11px] leading-snug text-secondary">{hint}</p>}
 
       {open && (
         <ul
@@ -196,7 +202,7 @@ export function RichSelect({
           aria-labelledby={nameText ? labelId : undefined}
           aria-label={nameText ? undefined : placeholder}
           tabIndex={-1}
-          className={`absolute z-50 max-h-72 w-full min-w-[min(260px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] space-y-0.5 overflow-y-auto overscroll-contain border border-border bg-surface p-1.5 shadow-pop ${
+          className={`absolute z-50 max-h-72 w-full min-w-[min(260px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] space-y-0.5 overflow-y-auto overscroll-contain border border-border-strong bg-surface p-1.5 shadow-pop ${
             dropUp ? "bottom-full mb-1.5" : "top-full mt-1.5"
           } ${alignRight ? "right-0" : "left-0"}`}
         >
