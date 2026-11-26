@@ -82,6 +82,15 @@ class TestApiAndInfra(unittest.TestCase):
         self.assertNotIn("secret-api-key", enc)
         self.assertEqual(cipher.decrypt(enc), "secret-api-key")
 
+    def test_cors_rejects_arbitrary_local_ports_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            app = create_app(build_container(artifact_root=td))
+            with TestClient(app) as client:
+                allowed = client.get("/api/v1/health", headers={"Origin": "http://127.0.0.1:3000"})
+                self.assertEqual(allowed.headers.get("access-control-allow-origin"), "http://127.0.0.1:3000")
+                rejected = client.get("/api/v1/health", headers={"Origin": "http://127.0.0.1:9999"})
+                self.assertIsNone(rejected.headers.get("access-control-allow-origin"))
+
 
 if __name__ == "__main__":
     unittest.main()

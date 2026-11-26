@@ -34,6 +34,7 @@ class DomainError(Exception):
         retryable: bool | None = None,
         field_errors: dict[str, str] | None = None,
         remediation: str | None = None,
+        failed_fields: tuple[str, ...] = (),
     ) -> None:
         super().__init__(message)
         if code is not None:
@@ -42,6 +43,7 @@ class DomainError(Exception):
             self.retryable = retryable
         self.field_errors = field_errors or {}
         self.remediation = remediation
+        self.failed_fields = tuple(dict.fromkeys(failed_fields))
 
     def to_envelope(self, request_id: str) -> ErrorEnvelope:
         return ErrorEnvelope(

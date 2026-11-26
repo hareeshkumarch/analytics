@@ -29,6 +29,8 @@ class TestSecretsStayOutOfLogsAndTraces(unittest.TestCase):
             ("Hunter2Secret", f"could not connect to {DB_URL}"),
             ("AIzaSyA1234567890abcdefghijk", "key=AIzaSyA1234567890abcdefghijk"),
             ("gsk_abcdefghijklmnop", "groq key gsk_abcdefghijklmnop rejected"),
+            ("MyJsonPass99", '{"password": "MyJsonPass99", "api_key": "MyJsonKey99"}'),
+            ("MyJsonKey99", json.dumps({"msg": '{"api_key": "MyJsonKey99"}'})),
         ):
             self.assertNotIn(secret, redact_secrets(text))
         self.assertEqual(redact_secrets("North total 12,345.67 for 2024"), "North total 12,345.67 for 2024")

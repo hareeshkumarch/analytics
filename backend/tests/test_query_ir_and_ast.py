@@ -1,6 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -87,6 +88,11 @@ class TestQueryIrAndAst(unittest.TestCase):
         for sql in bad_queries:
             with self.assertRaises(SecurityPolicyError, msg=f"Failed to reject: {sql}"):
                 validate_sql_ast(sql)
+
+    def test_missing_sqlglot_fails_closed(self) -> None:
+        with patch.dict(sys.modules, {"sqlglot": None}):
+            with self.assertRaises(SecurityPolicyError):
+                validate_sql_ast("SELECT 1")
 
 
 if __name__ == "__main__":

@@ -123,6 +123,19 @@ class TestRestPagination(unittest.TestCase):
         header = '<https://api.github.com/x?page=2>; rel="next", <https://api.github.com/x?page=5>; rel="last"'
         self.assertEqual(_next_link_from_header(header), "https://api.github.com/x?page=2")
         self.assertIsNone(_next_link_from_header('<https://api.github.com/x?page=1>; rel="prev"'))
+        self.assertIsNone(_next_link_from_header("<https://api.github.com/x?page=1>; rel=prev; title=next"))
+        self.assertIsNone(_next_link_from_header('<https://api.github.com/x?page=1>; rel="next-page"'))
+        self.assertIsNone(
+            _next_link_from_header('<https://api.github.com/x?page=1>; title="a < b; rel=\\"next\\""; rel="prev"')
+        )
+        self.assertEqual(
+            _next_link_from_header('<https://api.github.com/x?page=2>; rel="prev next"'),
+            "https://api.github.com/x?page=2",
+        )
+        self.assertEqual(
+            _next_link_from_header("<https://api.github.com/x?page=2>; rel=next"),
+            "https://api.github.com/x?page=2",
+        )
 
     def test_link_header_mode_with_root_array(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
@@ -291,6 +304,14 @@ class TestSafety(unittest.TestCase):
         cleaned, dropped = _strip_unknown_citations(text, {"ev_aaaaaaaaaaaa"})
         self.assertEqual(cleaned, "Revenue was 10 [ev_aaaaaaaaaaaa] and fees 2 .")
         self.assertEqual(sorted(dropped), ["ev_bbbbbbbbbbbb", "ev_cccccccccccc"])
+
+    def test_fenced_json_extraction_does_not_cross_blocks(self) -> None:
+        from app.application.services.text_utils import extract_json_object
+
+        multi = "```python\nobj = {not_json\n```\n```json\n{\"ok\": true, \"n\": 2}\n```"
+        self.assertEqual(extract_json_object(multi), {"ok": True, "n": 2})
+        self.assertEqual(extract_json_object('```json {"single": 1} ```'), {"single": 1})
+        self.assertEqual(extract_json_object('```json\n{"truncated": true}'), {"truncated": True})
 
     def test_source_config_redaction(self) -> None:
         safe = _redacted_source_config(

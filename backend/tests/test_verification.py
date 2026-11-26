@@ -22,6 +22,11 @@ class TestUngroundedFigures(unittest.TestCase):
         )
         self.assertEqual(ungrounded_figures(text, EVIDENCE), [])
 
+    def test_indian_grouped_currency_formats(self) -> None:
+        evidence = [{"evidence_id": EV, "rows": [[100000, 1234567.89]]}]
+        self.assertEqual(ungrounded_figures(f"Revenue was ₹1,00,000 [{EV}] and ₹12,34,567.89 [{EV}].", evidence), [])
+        self.assertEqual(ungrounded_figures(f"Revenue was ₹9,00,000 [{EV}].", evidence), ["₹9,00,000"])
+
     def test_mismatch_and_uncited_figures(self) -> None:
         self.assertEqual(ungrounded_figures(f"North sold 999.99 [{EV}].", EVIDENCE), ["999.99"])
         self.assertEqual(ungrounded_figures("Total was 1,234.5 overall.", EVIDENCE), [])

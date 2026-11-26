@@ -1,6 +1,5 @@
 import hashlib
 import json
-import re
 import threading
 import time
 from dataclasses import dataclass, field, replace
@@ -50,7 +49,6 @@ _DENIED_CODES = frozenset(
         ToolErrorCode.CANCELLED,
     }
 )
-_FIELD_IN_MESSAGE = re.compile(r"'([A-Za-z_][A-Za-z0-9_]*)'")
 
 
 def _code_for(exc: DomainError) -> ToolErrorCode:
@@ -439,8 +437,8 @@ class AnalyticsToolbox:
             summary={"tool": tool, "ok": False, "status": status, "code": code.value, "error": message[:300]},
         )
 
-    def _invalid(self, tool: str, message: str) -> ToolOutcome:
-        return self._error(tool, message, ToolErrorCode.INVALID_ARGUMENT, failed_fields=tuple(dict.fromkeys(_FIELD_IN_MESSAGE.findall(message))))
+    def _invalid(self, tool: str, message: str, *, failed_fields: tuple[str, ...] = ()) -> ToolOutcome:
+        return self._error(tool, message, ToolErrorCode.INVALID_ARGUMENT, failed_fields=failed_fields)
 
     def execute(self, call: ToolCallResult) -> ToolOutcome:
         started = time.monotonic()
@@ -535,9 +533,17 @@ class AnalyticsToolbox:
         operation = arguments.get("operation")
         refs = arguments.get("values")
         if operation not in ("sum", *_PAIRWISE_OPERATIONS) or not isinstance(refs, list) or not 1 <= len(refs) <= 50:
-            return self._invalid(CALCULATE_TOOL.name, "Give an operation (sum, difference, ratio, percent_change) and 1-50 values.")
+            return self._invalid(
+                CALCULATE_TOOL.name,
+                "Give an operation (sum, difference, ratio, percent_change) and 1-50 values.",
+                failed_fields=("operation", "values"),
+            )
         if operation in _PAIRWISE_OPERATIONS and len(refs) != 2:
-            return self._invalid(CALCULATE_TOOL.name, f"{operation} takes exactly two values: current first, then baseline.")
+            return self._invalid(
+                CALCULATE_TOOL.name,
+                f"{operation} takes exactly two values: current first, then baseline.",
+                failed_fields=("values",),
+            )
         inputs: list[dict[str, Any]] = []
         for ref in refs:
             source = self._calculable.get(str(ref.get("evidence_id"))) if isinstance(ref, dict) else None
@@ -555,12 +561,20 @@ class AnalyticsToolbox:
                 )
             number = _number(source["rows"][row][source["columns"].index(column)])
             if number is None:
-                return self._invalid(CALCULATE_TOOL.name, f"{ref['evidence_id']} row {row} column {column!r} is not a number.")
+                return self._invalid(
+                    CALCULATE_TOOL.name,
+                    f"{ref['evidence_id']} row {row} column {column!r} is not a number.",
+                    failed_fields=("values",),
+                )
             inputs.append({"evidence_id": ref["evidence_id"], "row": row, "column": column, "value": str(number)})
         try:
             result = _apply(operation, [Decimal(item["value"]) for item in inputs])
         except (DivisionByZero, InvalidOperation):
-            return self._invalid(CALCULATE_TOOL.name, "The baseline value is zero, so this can't be computed.")
+            return self._invalid(
+                CALCULATE_TOOL.name,
+                "The baseline value is zero, so this can't be computed.",
+                failed_fields=("values",),
+            )
         formula = f"{operation}(" + ", ".join(f"{i['evidence_id']}[{i['row']}].{i['column']}" for i in inputs) + ")"
         inputs_hash = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode("utf-8")).hexdigest()
         result_text = _plain(result)
@@ -605,7 +619,11 @@ class AnalyticsToolbox:
             ir = parse_query_ir(arguments)
         except QueryIRParseError as exc:
             self.budget.refund(analytical=True)
-            return self._invalid(RUN_QUERY_TOOL.name, f"Invalid query (not counted against the budget): {exc}")
+            return self._invalid(
+                RUN_QUERY_TOOL.name,
+                f"Invalid query (not counted against the budget): {exc}",
+                failed_fields=exc.failed_fields,
+            )
         semantic_version_id = str((self.semantics or {}).get("semantic_version_id") or "")
         try:
             with _tracer.start_as_current_span(
@@ -616,7 +634,11 @@ class AnalyticsToolbox:
                 span.set_attribute("query.truncated", result.truncated)
         except QueryValidationError as exc:
             self.budget.refund(analytical=True)
-            return self._invalid(RUN_QUERY_TOOL.name, f"Invalid query (not counted against the budget): {exc}")
+            return self._invalid(
+                RUN_QUERY_TOOL.name,
+                f"Invalid query (not counted against the budget): {exc}",
+                failed_fields=exc.failed_fields,
+            )
         except DomainError as exc:
             return self._error(RUN_QUERY_TOOL.name, f"{exc}", _code_for(exc), retryable=exc.retryable)
         except Exception as exc:  # noqa: BLE001

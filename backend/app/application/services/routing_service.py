@@ -1,5 +1,4 @@
 from decimal import Decimal
-import re
 import threading
 import time
 from typing import Any, Callable, Generator, cast
@@ -12,6 +11,7 @@ from app.application.ports.clock import Clock
 from app.adapters.providers.http_utils import STREAM_UNSUPPORTED
 from app.application.ports.providers import BudgetLedger, ModelRequest, ModelResponse
 from app.application.services.budget_service import DEFAULT_MAX_TOKENS
+from app.application.services.text_utils import clean_single_line
 from app.domain.errors import CircuitOpenError, ProviderError
 from app.domain.limits import DEFAULT_GLOBAL_LIMITS
 from app.domain.providers import (
@@ -392,7 +392,7 @@ class RoutingService:
                     self._ledger.release_unresolved(reservation.reservation_id, str(exc))
                     if exc.code == "schema_mismatch" and repairs_used < max_repairs and attempts_used < max_attempts:
                         repairs_used += 1
-                        clean_err = re.sub(r"[\r\n\t]+", " ", str(exc)).strip()[:200]
+                        clean_err = clean_single_line(exc, limit=200)
                         current_request = ModelRequest(
                             request_id=f"{request.request_id}_repair",
                             run_id=request.run_id,

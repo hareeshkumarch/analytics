@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useMemo } from "react";
 import { HScroll } from "@/components/HScroll";
+import { parseEvidenceCitation } from "@/lib/text";
 
 const SAFE_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 
@@ -31,64 +32,215 @@ function EvidenceChip({ id }: { id: string }) {
   );
 }
 
-const INLINE =
-  /(\[ev_[0-9a-f]{12}(?:,\s*ev_[0-9a-f]{12})*\]|\*\*(?!\s)[^*\n]+?(?<!\s)\*\*|(?<![\w])__(?!\s)[^_\n]+?(?<!\s)__(?![\w])|`[^`\n]+`|\[[^\]\n]+\]\([^)\s]+\)|\*(?![\s*])[^*\n]+?(?<!\s)\*|(?<![\w])_(?![\s_])[^_\n]+?(?<!\s)_(?![\w]))/g;
+const MAX_INLINE_DEPTH = 6;
 
-function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
-  const out: React.ReactNode[] = [];
-  let last = 0;
-  let i = 0;
-  for (const match of text.matchAll(INLINE)) {
-    const token = match[0];
-    const start = match.index ?? 0;
-    if (start > last) out.push(text.slice(last, start));
-    const key = `${keyPrefix}-${i++}`;
-    if (token.startsWith("**") || token.startsWith("__")) {
-      out.push(
-        <strong key={key} className="font-semibold text-ink">
-          {renderInline(token.slice(2, -2), key)}
-        </strong>
-      );
-    } else if (token.startsWith("`")) {
-      out.push(
-        <code key={key} className="bg-panel px-1.5 py-0.5 font-mono text-[0.86em] text-ink">
-          {token.slice(1, -1)}
-        </code>
-      );
-    } else if (/^\[ev_[0-9a-f]{12}(?:,\s*ev_[0-9a-f]{12})*\]$/.test(token)) {
-      token
-        .slice(1, -1)
-        .split(",")
-        .forEach((id, n) => out.push(<EvidenceChip key={`${key}-${n}`} id={id.trim()} />));
-    } else if (token.startsWith("[")) {
-      const m = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(token);
-      const href = m ? safeHref(m[2]) : null;
-      out.push(
-        href ? (
-          <a
-            key={key}
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer nofollow"
-            className="font-medium text-plum underline decoration-plum/30 underline-offset-2 hover:decoration-plum"
-          >
-            {m![1]}
-            <span className="ml-1 text-[0.8em] font-normal text-secondary">({new URL(href).host || "email"})</span>
-          </a>
-        ) : (
-          token
-        )
-      );
-    } else {
-      out.push(
-        <em key={key} className="italic">
-          {renderInline(token.slice(1, -1), key)}
-        </em>
-      );
-    }
-    last = start + token.length;
+const isSpace = (ch: string | undefined): boolean => ch === " " || ch === "\t" || ch === "\n" || ch === "\r";
+const isWordChar = (ch: string | undefined): boolean => ch !== undefined && /\w/.test(ch);
+
+function findClosingDelimiter(
+  text: string,
+  from: number,
+  marker: string,
+  requireBoundary: boolean,
+): { index: number; lineExhausted: boolean } {
+  const len = marker.length;
+  const lineEnd = text.indexOf("\n", from);
+  const limit = lineEnd === -1 ? text.length : lineEnd;
+  for (let idx = text.indexOf(marker, from); idx !== -1 && idx <= limit - len; idx = text.indexOf(marker, idx + 1)) {
+    if (idx === from) continue;
+    if (isSpace(text[idx - 1])) continue;
+    if (len === 1 && (text[idx - 1] === marker || text[idx + 1] === marker)) continue;
+    if (requireBoundary && isWordChar(text[idx + len])) continue;
+    return { index: idx, lineExhausted: false };
   }
-  if (last < text.length) out.push(text.slice(last));
+  return { index: -1, lineExhausted: lineEnd === -1 };
+}
+
+function stripTrailingHeadingHashes(text: string): string {
+  let end = text.length;
+  while (end > 0 && text[end - 1] === "#") end--;
+  if (end === text.length || end === 0 || !isSpace(text[end - 1])) return text;
+  while (end > 0 && isSpace(text[end - 1])) end--;
+  return text.slice(0, end);
+}
+
+function renderInline(text: string, keyPrefix: string, depth = 0): React.ReactNode[] {
+  if (!text || depth >= MAX_INLINE_DEPTH) return text ? [text] : [];
+  const out: React.ReactNode[] = [];
+  let plainStart = 0;
+  let pos = 0;
+  let seq = 0;
+  let nextCloseBracket = -2;
+  const noMore = { code: false, dstar: false, star: false, dunder: false, under: false };
+
+  const flushPlain = (end: number) => {
+    if (end > plainStart) out.push(text.slice(plainStart, end));
+  };
+
+  while (pos < text.length) {
+    const ch = text[pos];
+
+    if (ch === "`" && !noMore.code) {
+      const close = text.indexOf("`", pos + 1);
+      if (close === -1 || text.slice(pos + 1, close).includes("\n")) {
+        if (close === -1) noMore.code = true;
+        pos += 1;
+        continue;
+      }
+      if (close > pos + 1) {
+        flushPlain(pos);
+        out.push(
+          <code key={`${keyPrefix}-${seq++}`} className="bg-panel px-1.5 py-0.5 font-mono text-[0.86em] text-ink">
+            {text.slice(pos + 1, close)}
+          </code>
+        );
+        pos = close + 1;
+        plainStart = pos;
+        continue;
+      }
+      pos += 1;
+      continue;
+    }
+
+    if (ch === "[") {
+      const citation = parseEvidenceCitation(text, pos);
+      if (citation) {
+        flushPlain(pos);
+        const key = `${keyPrefix}-${seq++}`;
+        citation.ids.forEach((id, n) => out.push(<EvidenceChip key={`${key}-${n}`} id={id} />));
+        pos = citation.end;
+        plainStart = pos;
+        continue;
+      }
+      if (nextCloseBracket !== -1 && nextCloseBracket <= pos) {
+        nextCloseBracket = text.indexOf("]", pos + 1);
+      }
+      if (
+        nextCloseBracket > pos + 1 &&
+        text[nextCloseBracket + 1] === "(" &&
+        !text.slice(pos + 1, nextCloseBracket).includes("\n")
+      ) {
+        let k = nextCloseBracket + 2;
+        while (k < text.length && text[k] !== ")" && !isSpace(text[k])) k++;
+        if (k < text.length && text[k] === ")" && k > nextCloseBracket + 2) {
+          flushPlain(pos);
+          const label = text.slice(pos + 1, nextCloseBracket);
+          const rawHref = text.slice(nextCloseBracket + 2, k);
+          const href = safeHref(rawHref);
+          const key = `${keyPrefix}-${seq++}`;
+          out.push(
+            href ? (
+              <a
+                key={key}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+                className="font-medium text-plum underline decoration-plum/30 underline-offset-2 hover:decoration-plum"
+              >
+                {label}
+                <span className="ml-1 text-[0.8em] font-normal text-secondary">({new URL(href).host || "email"})</span>
+              </a>
+            ) : (
+              text.slice(pos, k + 1)
+            )
+          );
+          pos = k + 1;
+          plainStart = pos;
+          continue;
+        }
+      }
+      pos += 1;
+      continue;
+    }
+
+    if (ch === "*" && text[pos + 1] === "*") {
+      if (!noMore.dstar && !isSpace(text[pos + 2])) {
+        const close = findClosingDelimiter(text, pos + 2, "**", false);
+        if (close.index !== -1) {
+          flushPlain(pos);
+          const key = `${keyPrefix}-${seq++}`;
+          out.push(
+            <strong key={key} className="font-semibold text-ink">
+              {renderInline(text.slice(pos + 2, close.index), key, depth + 1)}
+            </strong>
+          );
+          pos = close.index + 2;
+          plainStart = pos;
+          continue;
+        }
+        if (close.lineExhausted) noMore.dstar = true;
+      }
+      pos += 2;
+      continue;
+    }
+
+    if (ch === "*") {
+      if (!noMore.star && !isSpace(text[pos + 1])) {
+        const close = findClosingDelimiter(text, pos + 1, "*", false);
+        if (close.index !== -1) {
+          flushPlain(pos);
+          const key = `${keyPrefix}-${seq++}`;
+          out.push(
+            <em key={key} className="italic">
+              {renderInline(text.slice(pos + 1, close.index), key, depth + 1)}
+            </em>
+          );
+          pos = close.index + 1;
+          plainStart = pos;
+          continue;
+        }
+        if (close.lineExhausted) noMore.star = true;
+      }
+      pos += 1;
+      continue;
+    }
+
+    if (ch === "_" && text[pos + 1] === "_") {
+      if (!noMore.dunder && !isWordChar(text[pos - 1]) && !isSpace(text[pos + 2])) {
+        const close = findClosingDelimiter(text, pos + 2, "__", true);
+        if (close.index !== -1) {
+          flushPlain(pos);
+          const key = `${keyPrefix}-${seq++}`;
+          out.push(
+            <strong key={key} className="font-semibold text-ink">
+              {renderInline(text.slice(pos + 2, close.index), key, depth + 1)}
+            </strong>
+          );
+          pos = close.index + 2;
+          plainStart = pos;
+          continue;
+        }
+        if (close.lineExhausted) noMore.dunder = true;
+      }
+      pos += 2;
+      continue;
+    }
+
+    if (ch === "_") {
+      if (!noMore.under && !isWordChar(text[pos - 1]) && !isSpace(text[pos + 1])) {
+        const close = findClosingDelimiter(text, pos + 1, "_", true);
+        if (close.index !== -1) {
+          flushPlain(pos);
+          const key = `${keyPrefix}-${seq++}`;
+          out.push(
+            <em key={key} className="italic">
+              {renderInline(text.slice(pos + 1, close.index), key, depth + 1)}
+            </em>
+          );
+          pos = close.index + 1;
+          plainStart = pos;
+          continue;
+        }
+        if (close.lineExhausted) noMore.under = true;
+      }
+      pos += 1;
+      continue;
+    }
+
+    pos += 1;
+  }
+
+  flushPlain(text.length);
   return out;
 }
 
@@ -134,7 +286,7 @@ function parse(src: string): Block[] {
 
     const heading = /^(#{1,4})\s+(.*)$/.exec(trimmed);
     if (heading) {
-      blocks.push({ kind: "heading", level: heading[1].length, text: heading[2].replace(/\s+#+$/, "") });
+      blocks.push({ kind: "heading", level: heading[1].length, text: stripTrailingHeadingHashes(heading[2]) });
       i++;
       continue;
     }

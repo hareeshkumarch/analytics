@@ -3,15 +3,18 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable
 
+from app.application.services.text_utils import CITATION_GROUP_RE as _CITATION, EVIDENCE_ID_RE as _EVIDENCE_ID
 from app.domain.models import CriterionResult
 
 GROUNDING_CRITERION = "Every figure in the answer matches the evidence it cites"
 
-_CITATION = re.compile(r"\[(ev_[0-9a-f]{12}(?:\s*,\s*ev_[0-9a-f]{12})*)\]")
-_EVIDENCE_ID = re.compile(r"ev_[0-9a-f]{12}")
 _DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?)?\b")
 _LIST_MARKER = re.compile(r"^\s*\d+[.)]\s", re.MULTILINE)
-_NUMBER = re.compile(r"(?<![\w.])([$€£₹¥]?)(-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?:\.\d+)?)\s?(%|[KMB]\b|k\b|bn\b)?")
+_NUMBER = re.compile(
+    r"(?<![\w.])([$€£₹¥]?)"
+    r"(-?(?:\d{1,3}(?:,\d{3})+|[1-9]\d?(?:,\d{2})*,\d{3}|\d+)(?:\.\d+)?)"
+    r"\s?(%|[KMB]\b|k\b|bn\b)?"
+)
 _SEGMENT = re.compile(r"(?<=[.!?;:])\s+|\n+")
 _SCALE = {"k": Decimal(1_000), "K": Decimal(1_000), "M": Decimal(1_000_000), "B": Decimal(1_000_000_000), "bn": Decimal(1_000_000_000)}
 

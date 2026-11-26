@@ -1,7 +1,6 @@
 import hashlib
 import json
 import random
-import re
 import time
 from typing import Any, Callable, Iterable
 from urllib.parse import urlencode, urljoin
@@ -31,16 +30,69 @@ from app.domain.models import (
 )
 
 
-_LINK_ENTRY_RE = re.compile(r"<([^>]*)>([^<]*)")
-_REL_NEXT_RE = re.compile(r'\brel\s*=\s*"?[^"]*\bnext\b', re.IGNORECASE)
 PAGINATION_MODES = ("none", "cursor", "next_link", "link_header", "last_id")
+
+
+def _split_outside_quotes(text: str, delimiter: str) -> list[str]:
+    parts: list[str] = []
+    start = 0
+    in_quote = False
+    escaped = False
+    for index, ch in enumerate(text):
+        if escaped:
+            escaped = False
+        elif ch == "\\" and in_quote:
+            escaped = True
+        elif ch == '"':
+            in_quote = not in_quote
+        elif ch == delimiter and not in_quote:
+            parts.append(text[start:index])
+            start = index + 1
+    parts.append(text[start:])
+    return parts
 
 
 def _next_link_from_header(value: str) -> str | None:
     """Return the rel="next" target of an RFC 8288 Link header (GitHub, Shopify, many others)."""
-    for match in _LINK_ENTRY_RE.finditer(value or ""):
-        if _REL_NEXT_RE.search(match.group(2)):
-            return match.group(1).strip() or None
+    if not value:
+        return None
+    i = 0
+    n = len(value)
+    while i < n:
+        while i < n and value[i] in " ,\t\r\n":
+            i += 1
+        if i >= n or value[i] != "<":
+            i += 1
+            continue
+        close = value.find(">", i + 1)
+        if close == -1:
+            break
+        target = value[i + 1 : close].strip()
+        j = close + 1
+        in_quote = False
+        escaped = False
+        while j < n:
+            ch = value[j]
+            if escaped:
+                escaped = False
+            elif ch == "\\" and in_quote:
+                escaped = True
+            elif ch == '"':
+                in_quote = not in_quote
+            elif ch == "," and not in_quote:
+                break
+            j += 1
+        params_raw = value[close + 1 : j]
+        for param in _split_outside_quotes(params_raw, ";"):
+            name, sep, raw_val = param.partition("=")
+            if not sep or name.strip().lower() != "rel":
+                continue
+            rel_val = raw_val.strip()
+            if len(rel_val) >= 2 and rel_val[0] == rel_val[-1] and rel_val[0] in ('"', "'"):
+                rel_val = rel_val[1:-1]
+            if "next" in rel_val.lower().split():
+                return target or None
+        i = j + 1
     return None
 
 

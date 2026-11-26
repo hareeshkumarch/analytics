@@ -12,8 +12,8 @@ MAX_TITLE_CHARS = 120
 CHARTABLE_OPERATIONS = frozenset(
     {"aggregate", "contribution_breakdown", "compare_periods", "distribution", "reconciliation_lookup"}
 )
-_NUMBER = re.compile(r"^-?\d+(\.\d+)?([eE][-+]?\d+)?$")
-_ISO_DATE = re.compile(r"^\d{4}-\d{2}(-\d{2})?([ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?$")
+_NUMBER = re.compile(r"-?\d+(\.\d+)?([eE][-+]?\d+)?")
+_ISO_DATE = re.compile(r"\d{4}-\d{2}(-\d{2})?([ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?")
 _CONTROL = re.compile(r"[\x00-\x1F\x7F]+")
 
 Row = tuple[str | float | None, ...]
@@ -24,7 +24,7 @@ def _number(value: Any) -> float | None:
         return None
     if isinstance(value, (int, float)):
         number = float(value)
-    elif isinstance(value, str) and _NUMBER.match(value.strip()):
+    elif isinstance(value, str) and _NUMBER.fullmatch(value.strip()):
         number = float(value)
     else:
         return None
@@ -88,7 +88,7 @@ def _grouped(columns: list[str], rows: list[list[Any]]) -> tuple[str, str, tuple
     if not series or len(labels) > 1:
         return None
     points: list[Row] = [(_label(r[x]), *(_number(r[i]) for i in series)) for r in rows]
-    is_dates = all(isinstance(p[0], str) and _ISO_DATE.match(p[0]) for p in points)
+    is_dates = all(isinstance(p[0], str) and _ISO_DATE.fullmatch(p[0]) for p in points)
     if is_dates:
         points.sort(key=lambda p: str(p[0]))
     return ("line" if is_dates else "bar"), columns[x], tuple(columns[i] for i in series), points

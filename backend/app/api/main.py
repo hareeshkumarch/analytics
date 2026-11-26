@@ -129,6 +129,7 @@ def create_app(
 
     _load_saved_credentials()
 
+    allow_origin_regex = os.environ.get("CORS_ALLOW_ORIGIN_REGEX", "").strip() or None
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -139,7 +140,7 @@ def create_app(
             ).split(",")
             if o.strip()
         ],
-        allow_origin_regex=os.environ.get("CORS_ALLOW_ORIGIN_REGEX", r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"),
+        allow_origin_regex=allow_origin_regex,
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["Content-Type", "Idempotency-Key", "Last-Event-ID", "X-Request-ID"],

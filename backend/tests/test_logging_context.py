@@ -31,6 +31,8 @@ class TestRequestIds(unittest.TestCase):
         res = self.client.get("/api/v1/health", headers={"X-Request-ID": "bad id\nwith newline"})
         self.assertRegex(res.headers["x-request-id"], r"^[0-9a-f]{12}$")
         self.assertIsNone(clean_request_id("x" * 65))
+        self.assertIsNone(clean_request_id("req-123\n"))
+        self.assertEqual(clean_request_id("req-123"), "req-123")
 
 
 class TestJsonLogs(unittest.TestCase):

@@ -134,71 +134,86 @@ QueryIR = Union[
 
 
 class QueryIRParseError(ValueError):
-    pass
+    def __init__(self, message: str, *, failed_fields: tuple[str, ...] = ()) -> None:
+        super().__init__(message)
+        self.failed_fields = tuple(dict.fromkeys(failed_fields))
 
 
 _MAX_IDENT = 128
 _MAX_LIMIT = 1000
 
 
-def _ident(payload: dict[str, Any], key: str, required: bool = True) -> str:
+def _ident(payload: dict[str, Any], key: str, required: bool = True, *, failed_key: str | None = None) -> str:
+    err_key = failed_key or key
     value = payload.get(key, "")
     if not isinstance(value, str):
-        raise QueryIRParseError(f"'{key}' must be a string")
+        raise QueryIRParseError(f"'{key}' must be a string", failed_fields=(err_key,))
     if required and not value:
-        raise QueryIRParseError(f"'{key}' is required")
+        raise QueryIRParseError(f"'{key}' is required", failed_fields=(err_key,))
     if len(value) > _MAX_IDENT:
-        raise QueryIRParseError(f"'{key}' is too long")
+        raise QueryIRParseError(f"'{key}' is too long", failed_fields=(err_key,))
     return value
 
 
 def _ident_list(payload: dict[str, Any], key: str) -> tuple[str, ...]:
     values = payload.get(key) or []
     if not isinstance(values, list) or not all(isinstance(v, str) and 0 < len(v) <= _MAX_IDENT for v in values):
-        raise QueryIRParseError(f"'{key}' must be a list of column names")
+        raise QueryIRParseError(f"'{key}' must be a list of column names", failed_fields=(key,))
     return tuple(values)
 
 
 def _limit(payload: dict[str, Any], default: int) -> int:
     value = payload.get("limit", default)
     if not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= _MAX_LIMIT:
-        raise QueryIRParseError(f"'limit' must be an integer between 1 and {_MAX_LIMIT}")
+        raise QueryIRParseError(f"'limit' must be an integer between 1 and {_MAX_LIMIT}", failed_fields=("limit",))
     return value
 
 
-def _enum(enum_type: type[Enum], value: Any, key: str) -> Any:
+def _enum(enum_type: type[Enum], value: Any, key: str, *, failed_key: str | None = None) -> Any:
     try:
         return enum_type(value)
     except ValueError as exc:
         allowed = ", ".join(e.value for e in enum_type)
-        raise QueryIRParseError(f"'{key}' must be one of: {allowed}") from exc
+        raise QueryIRParseError(
+            f"'{key}' must be one of: {allowed}",
+            failed_fields=(failed_key or key.split(".")[0],),
+        ) from exc
 
 
 def _metric(payload: Any, key: str) -> AggregateMetricSpec:
     if not isinstance(payload, dict):
-        raise QueryIRParseError(f"'{key}' must be an object with alias, func and field_id")
+        raise QueryIRParseError(
+            f"'{key}' must be an object with alias, func and field_id",
+            failed_fields=(key,),
+        )
     return AggregateMetricSpec(
-        alias=_ident(payload, "alias"),
-        func=_enum(AggregateFunction, payload.get("func"), f"{key}.func"),
-        field_id=_ident(payload, "field_id"),
+        alias=_ident(payload, "alias", failed_key=key),
+        func=_enum(AggregateFunction, payload.get("func"), f"{key}.func", failed_key=key),
+        field_id=_ident(payload, "field_id", failed_key=key),
     )
 
 
 def _filters(payload: dict[str, Any]) -> tuple[FilterPredicate, ...]:
     raw = payload.get("filters") or []
     if not isinstance(raw, list):
-        raise QueryIRParseError("'filters' must be a list")
+        raise QueryIRParseError("'filters' must be a list", failed_fields=("filters",))
     out: list[FilterPredicate] = []
     for item in raw:
         if not isinstance(item, dict):
-            raise QueryIRParseError("each filter must be an object with field_id, op and value")
+            raise QueryIRParseError(
+                "each filter must be an object with field_id, op and value",
+                failed_fields=("filters",),
+            )
         value = item.get("value")
         if value is not None and not isinstance(value, (str, int, float, bool, list)):
-            raise QueryIRParseError("filter 'value' must be a string, number, boolean or list")
+            raise QueryIRParseError(
+                "filter 'value' must be a string, number, boolean or list",
+                failed_fields=("filters",),
+            )
         out.append(
             FilterPredicate(
-                field_id=_ident(item, "field_id"),
-                op=_enum(FilterOperator, item.get("op"), "filters.op"),
+                field_id=_ident(item, "field_id", failed_key="filters"),
+                op=_enum(FilterOperator, item.get("op"), "filters.op", failed_key="filters"),
                 value=value,
             )
         )
@@ -208,15 +223,21 @@ def _filters(payload: dict[str, Any]) -> tuple[FilterPredicate, ...]:
 def _order_by(payload: dict[str, Any]) -> tuple[SortSpec, ...]:
     raw = payload.get("order_by") or []
     if not isinstance(raw, list):
-        raise QueryIRParseError("'order_by' must be a list")
+        raise QueryIRParseError("'order_by' must be a list", failed_fields=("order_by",))
     out: list[SortSpec] = []
     for item in raw:
         if not isinstance(item, dict):
-            raise QueryIRParseError("each order_by entry must be an object with field_id and direction")
+            raise QueryIRParseError(
+                "each order_by entry must be an object with field_id and direction",
+                failed_fields=("order_by",),
+            )
         direction = item.get("direction", "asc")
         if direction not in ("asc", "desc"):
-            raise QueryIRParseError("order_by 'direction' must be 'asc' or 'desc'")
-        out.append(SortSpec(field_id=_ident(item, "field_id"), direction=direction))
+            raise QueryIRParseError(
+                "order_by 'direction' must be 'asc' or 'desc'",
+                failed_fields=("order_by",),
+            )
+        out.append(SortSpec(field_id=_ident(item, "field_id", failed_key="order_by"), direction=direction))
     return tuple(out)
 
 
@@ -232,7 +253,7 @@ def parse_query_ir(payload: dict[str, Any]) -> QueryIR:
     if operation == "aggregate":
         metrics_raw = payload.get("metrics") or []
         if not isinstance(metrics_raw, list) or not metrics_raw:
-            raise QueryIRParseError("'metrics' must be a non-empty list")
+            raise QueryIRParseError("'metrics' must be a non-empty list", failed_fields=("metrics",))
         return AggregateQueryIR(
             table_id=_ident(payload, "table_id"),
             metrics=tuple(_metric(m, "metrics") for m in metrics_raw),
@@ -277,7 +298,7 @@ def parse_query_ir(payload: dict[str, Any]) -> QueryIR:
     if operation == "distribution":
         buckets = payload.get("buckets", 10)
         if not isinstance(buckets, int) or isinstance(buckets, bool) or not 1 <= buckets <= 100:
-            raise QueryIRParseError("'buckets' must be an integer between 1 and 100")
+            raise QueryIRParseError("'buckets' must be an integer between 1 and 100", failed_fields=("buckets",))
         return DistributionQueryIR(
             table_id=_ident(payload, "table_id"),
             field_id=_ident(payload, "field_id"),
@@ -300,5 +321,6 @@ def parse_query_ir(payload: dict[str, Any]) -> QueryIR:
         )
     raise QueryIRParseError(
         "'operation' must be one of: aggregate, detail, compare_periods, contribution_breakdown, "
-        "distribution, reconciliation_lookup"
+        "distribution, reconciliation_lookup",
+        failed_fields=("operation",),
     )

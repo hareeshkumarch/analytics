@@ -52,6 +52,11 @@ class TestToolEnvelope(unittest.TestCase):
         invalid = self._call("run_query_ir", {"operation": "aggregate", "purpose": "x"})
         self.assertEqual((invalid["status"], invalid["code"], invalid["retryable"]), ("failed", "INVALID_ARGUMENT", False))
         self.assertEqual(invalid["failed_fields"], ["metrics"])
+        bad_col = self._call(
+            "run_query_ir",
+            {**QUERY, "metrics": [{"alias": "t", "func": "sum", "field_id": "missing_col"}]},
+        )
+        self.assertEqual(bad_col["failed_fields"], ["missing_col"])
         self.assertEqual(code("inspect_schema", {"table_id": "missing"}), ("failed", "NOT_FOUND"))
         self.assertEqual(code("calculate", {"operation": "sum", "purpose": "t", "values": [{"evidence_id": "ev_x", "row": 0, "column": "a"}]}), ("failed", "NOT_FOUND"))
         with patch.object(SnapshotQueryEngine, "run", side_effect=QueryTimeoutError("Query exceeded execution deadline")):
