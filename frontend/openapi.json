@@ -716,6 +716,68 @@
         "title": "ModelUsageOut",
         "type": "object"
       },
+      "OpsSwitchListOut": {
+        "additionalProperties": true,
+        "properties": {
+          "available": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Available",
+            "type": "array"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/OpsSwitchOut"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "switches": {
+            "items": {
+              "$ref": "#/components/schemas/OpsSwitchOut"
+            },
+            "title": "Switches",
+            "type": "array"
+          }
+        },
+        "required": [
+          "switches",
+          "available",
+          "history"
+        ],
+        "title": "OpsSwitchListOut",
+        "type": "object"
+      },
+      "OpsSwitchOut": {
+        "additionalProperties": true,
+        "properties": {
+          "changed_at": {
+            "title": "Changed At",
+            "type": "string"
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "switch_id": {
+            "title": "Switch Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "switch_id",
+          "paused",
+          "reason",
+          "changed_at"
+        ],
+        "title": "OpsSwitchOut",
+        "type": "object"
+      },
       "PinListOut": {
         "additionalProperties": true,
         "properties": {
@@ -1383,6 +1445,27 @@
         "title": "SaveProviderKeyRequest",
         "type": "object"
       },
+      "SetOpsSwitchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "paused",
+          "reason"
+        ],
+        "title": "SetOpsSwitchRequest",
+        "type": "object"
+      },
       "SnapshotListOut": {
         "additionalProperties": true,
         "properties": {
@@ -1963,6 +2046,91 @@
         "summary": "Health"
       }
     },
+    "/api/v1/metrics": {
+      "get": {
+        "operationId": "metrics_api_v1_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Metrics"
+      }
+    },
+    "/api/v1/ops/switches": {
+      "get": {
+        "operationId": "list_switches_api_v1_ops_switches_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsSwitchListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Switches"
+      }
+    },
+    "/api/v1/ops/switches/{switch_id}": {
+      "put": {
+        "operationId": "set_switch_api_v1_ops_switches__switch_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "switch_id",
+            "required": true,
+            "schema": {
+              "title": "Switch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetOpsSwitchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsSwitchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Switch"
+      }
+    },
     "/api/v1/prompts": {
       "get": {
         "operationId": "list_prompt_templates_api_v1_prompts_get",
@@ -1979,6 +2147,22 @@
           }
         },
         "summary": "List Prompt Templates"
+      }
+    },
+    "/api/v1/ready": {
+      "get": {
+        "operationId": "ready_api_v1_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ready"
       }
     },
     "/api/v1/workspaces/{workspace_id}/connectors/discover": {

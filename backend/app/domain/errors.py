@@ -112,6 +112,12 @@ class BudgetExhaustedError(DomainError):
     http_status = 429
 
 
+class ServicePausedError(DomainError):
+    code = "service_paused"
+    http_status = 503
+    retryable = True
+
+
 class ClarificationRequired(Exception):
     def __init__(self, prompt: str) -> None:
         super().__init__(prompt)

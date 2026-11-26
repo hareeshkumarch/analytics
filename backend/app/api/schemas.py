@@ -272,6 +272,11 @@ class CreatePinRequest(StrictApiModel):
     run_id: str = Field(..., min_length=1, max_length=64)
 
 
+class SetOpsSwitchRequest(StrictApiModel):
+    paused: bool
+    reason: str = Field(..., min_length=1, max_length=500)
+
+
 class UpdatePinRequest(StrictApiModel):
     auto_refresh: bool
 

@@ -14,6 +14,8 @@ from app.adapters.persistence.orm_models import (
     CredentialRefRow,
     ExportArtifactRow,
     IdempotencyKeyRow,
+    OpsSwitchChangeRow,
+    OpsSwitchRow,
     OutboxJobRow,
     PinRow,
     RoutingPolicyRow,
@@ -1438,3 +1440,81 @@ class PgArtifactRepository:
             manifests = db.scalars(select(SnapshotManifestRow.manifest_json)).all()
         tables = {str(a) for m in manifests for a in ((m or {}).get("table_artifacts") or {}).values()}
         return exports | tables
+
+
+class PgOpsSwitches:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._sf = session_factory
+
+    def list_all(self) -> list[dict[str, Any]]:
+        with self._sf() as db:
+            rows = db.scalars(select(OpsSwitchRow).order_by(OpsSwitchRow.switch_id)).all()
+            return [{"switch_id": r.switch_id, "paused": r.paused, "reason": r.reason, "changed_at": r.changed_at.isoformat()} for r in rows]
+
+    def set(self, switch_id: str, paused: bool, reason: str) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        with self._sf() as db:
+            with db.begin():
+                row = db.get(OpsSwitchRow, switch_id, with_for_update=True)
+                if row is None:
+                    row = OpsSwitchRow(switch_id=switch_id, paused=paused, reason=reason, changed_at=now)
+                    db.add(row)
+                else:
+                    row.paused, row.reason, row.changed_at = paused, reason, now
+                db.add(OpsSwitchChangeRow(switch_id=switch_id, paused=paused, reason=reason, changed_at=now))
+        return {"switch_id": switch_id, "paused": paused, "reason": reason, "changed_at": now.isoformat()}
+
+    def history(self, limit: int) -> list[dict[str, Any]]:
+        with self._sf() as db:
+            rows = db.scalars(select(OpsSwitchChangeRow).order_by(OpsSwitchChangeRow.change_id.desc()).limit(limit)).all()
+            return [{"switch_id": r.switch_id, "paused": r.paused, "reason": r.reason, "changed_at": r.changed_at.isoformat()} for r in rows]
+
+
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+class PgOpsMetrics:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._sf = session_factory
+
+    def ping(self) -> None:
+        with self._sf() as db:
+            db.execute(text("SELECT 1"))
+
+    def snapshot(self, *, now: datetime, latency_window_seconds: int, stuck_after_seconds: int) -> dict[str, Any]:
+        since = now - timedelta(seconds=latency_window_seconds)
+        with self._sf() as db:
+            by_status = db.execute(select(RunRow.status, RunRow.mode, RunRow.outcome, func.count()).group_by(RunRow.status, RunRow.mode, RunRow.outcome)).all()
+            oldest_queued = db.scalar(select(func.min(RunRow.created_at)).where(RunRow.status == RunStatus.QUEUED.value))
+            finished = db.execute(
+                select(RunRow.mode, RunRow.outcome, RunRow.created_at, RunEventRow.occurred_at)
+                .join(RunEventRow, RunEventRow.run_id == RunRow.run_id)
+                .where(RunEventRow.type == EventType.RUN_FINISHED.value, RunEventRow.occurred_at >= since)
+            ).all()
+            running = db.execute(
+                select(RunRow.created_at, func.max(RunEventRow.occurred_at))
+                .outerjoin(RunEventRow, RunEventRow.run_id == RunRow.run_id)
+                .where(RunRow.status == RunStatus.RUNNING.value)
+                .group_by(RunRow.run_id, RunRow.created_at)
+            ).all()
+            calls = db.execute(
+                select(
+                    BudgetReservationRow.provider_id,
+                    case((BudgetReservationRow.unresolved_reason.is_(None), "ok"), else_="error"),
+                    func.count(),
+                ).group_by(BudgetReservationRow.provider_id, BudgetReservationRow.unresolved_reason.is_(None))
+            ).all()
+            outbox = db.scalar(select(func.count()).select_from(OutboxJobRow))
+        durations: dict[str, list[float]] = {}
+        for mode, _outcome, created_at, finished_at in finished:
+            durations.setdefault(mode, []).append(max(0.0, (_aware(finished_at) - _aware(created_at)).total_seconds()))
+        return {
+            "runs": [{"status": st, "mode": m, "outcome": o or "none", "count": int(n)} for st, m, o, n in by_status],
+            "recent_finished": [{"mode": m, "outcome": o or "none"} for m, o, _c, _f in finished],
+            "durations": durations,
+            "queue_oldest_age_seconds": max(0.0, (now - _aware(oldest_queued)).total_seconds()) if oldest_queued else 0.0,
+            "stuck_runs": sum(1 for created_at, last_at in running if (now - _aware(last_at or created_at)).total_seconds() > stuck_after_seconds),
+            "model_calls": [{"provider": p or "unknown", "result": r, "count": int(n)} for p, r, n in calls],
+            "outbox_pending": int(outbox or 0),
+        }

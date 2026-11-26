@@ -17,6 +17,8 @@ from app.adapters.persistence.database import create_session_factory
 from app.adapters.persistence.pg_repositories import (
     PgCredentialRepository,
     PgArtifactRepository,
+    PgOpsMetrics,
+    PgOpsSwitches,
     PgBudgetLedger,
     PgToolExecutionLedger,
     PgEventLog,
@@ -28,6 +30,7 @@ from app.adapters.persistence.pg_repositories import (
     PgRunRepository,
     PgSnapshotRepository,
 )
+from app.application.services.ops_controls import OpsSwitches
 from app.bootstrap.tracing import instrument_app
 from app.bootstrap.logging_setup import clean_request_id, configure_logging, request_id_var
 from app.bootstrap.container import AppContainer, build_container
@@ -89,6 +92,9 @@ def create_app(
     app.state.repo_quota = PgWorkspaceQuota(sf)
     app.state.repo_workspace_settings = PgWorkspaceSettings(sf)
     app.state.repo_artifacts = PgArtifactRepository(sf)
+    app.state.ops_metrics = PgOpsMetrics(sf)
+    app.state.ops_switches = OpsSwitches(PgOpsSwitches(sf))
+    app.state.container.routing_service.set_paused_providers(app.state.ops_switches.paused_providers)
 
     app.state.runs = {}
     app.state.answers = {}

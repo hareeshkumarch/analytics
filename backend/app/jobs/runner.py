@@ -20,12 +20,14 @@ from app.adapters.persistence.pg_repositories import (
     PgCredentialRepository,
     PgEventLog,
     PgEvidenceRepository,
+    PgOpsSwitches,
     PgRoutingRepository,
     PgRunRepository,
     PgSnapshotRepository,
 )
 from app.adapters.query.snapshot_engine import SnapshotQueryEngine
 from app.adapters.query.sqlglot_compiler import SqlGlotQueryCompiler
+from app.application.services.ops_controls import OpsSwitches
 from app.application.services.orchestration_service import InvestigationOrchestrator
 from app.application.services.routing_service import routing_policy_from_saved
 from app.bootstrap.container import build_container
@@ -91,6 +93,7 @@ def _execute_persisted_run(run_id: str) -> dict[str, str]:
     container.budget_ledger = PgBudgetLedger(session_factory)
     container.routing_service.set_budget_ledger(container.budget_ledger)
     container.tool_executions = PgToolExecutionLedger(session_factory)
+    container.routing_service.set_paused_providers(OpsSwitches(PgOpsSwitches(session_factory)).paused_providers)
 
     runs = PgRunRepository(session_factory)
     events = PgEventLog(session_factory)

@@ -8,7 +8,7 @@
 1. Copy `.env.example` to `.env` and set `APP_MASTER_KEY` (generate via `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`).
 2. Run `make doctor` to verify configuration and limits.
 3. Run `make dev` to start `edge` (`127.0.0.1:8080`), `web` (`127.0.0.1:3000`), `api` (`127.0.0.1:8000`), `postgres`, `redis`, and the Celery `worker`. The one-shot `migrate` service applies Alembic migrations before the API and worker start. Background investigations are persisted in PostgreSQL and queued through Redis. Set `RUN_EXECUTION_MODE=inline` in `.env` when running the API without the worker.
-4. Run `make smoke` to verify `/api/v1/health`.
+4. Run `make smoke` to verify `/api/v1/health`. `/api/v1/ready` also checks the database and Redis; incident steps, metrics and the operator switches are in [`runbook.md`](runbook.md).
 
 ## Evaluation
 `make eval` runs the questions in `backend/app/evaluation/corpus/inr_v1.json` against the INR sample dataset in an isolated in-process app, using the provider keys in the environment (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, ...). Each question is scored from its answer and evidence rows: expected figures must appear in the answer and in a cited evidence row, and the run must not need review. Ambiguous, unanswerable and prompt-injection questions have their own checks.

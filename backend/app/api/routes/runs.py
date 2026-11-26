@@ -77,6 +77,7 @@ def register(ctx: ApiContext) -> APIRouter:
                 detail="Celery run execution requires PostgreSQL-backed persistence.",
             )
         try:
+            await asyncio.to_thread(app.state.ops_switches.ensure_runs_allowed)
             queued_count = await asyncio.to_thread(app.state.repo_runs.count_queued_runs)
         except SQLAlchemyError as exc:
             logger.exception("Could not count queued runs in DB")

@@ -1,0 +1,60 @@
+groups:
+  - name: ledgerline
+    rules:
+      - alert: LedgerlineApiDown
+        expr: up{job="ledgerline"} == 0
+        for: 2m
+        labels: {severity: page}
+        annotations:
+          summary: The API is not answering metrics scrapes.
+          runbook: docs/runbook.md#api-down-or-not-ready
+
+      - alert: LedgerlineVerifiedCompletionLow
+        expr: ledgerline_verified_completion_ratio < 0.7 and sum(ledgerline_runs_finished_window) >= 10
+        for: 15m
+        labels: {severity: ticket}
+        annotations:
+          summary: Fewer than 70% of recent runs finished fully verified.
+          runbook: docs/runbook.md#answer-quality-dropped
+
+      - alert: LedgerlineRunLatencyHigh
+        expr: ledgerline_run_duration_seconds{quantile="0.95",mode="quick"} > 120 or ledgerline_run_duration_seconds{quantile="0.95",mode="deep"} > 600
+        for: 15m
+        labels: {severity: ticket}
+        annotations:
+          summary: p95 run duration is above the mode's time budget.
+          runbook: docs/runbook.md#runs-are-slow
+
+      - alert: LedgerlineModelErrorsHigh
+        expr: |
+          sum by (provider) (rate(ledgerline_model_calls_total{result="error"}[10m]))
+            / sum by (provider) (rate(ledgerline_model_calls_total[10m])) > 0.2
+        for: 10m
+        labels: {severity: page}
+        annotations:
+          summary: "More than 20% of model calls to {{ $labels.provider }} are failing."
+          runbook: docs/runbook.md#a-provider-is-failing
+
+      - alert: LedgerlineQueueBacklog
+        expr: ledgerline_queue_oldest_age_seconds > 300
+        for: 5m
+        labels: {severity: page}
+        annotations:
+          summary: The oldest queued run has waited more than 5 minutes.
+          runbook: docs/runbook.md#runs-are-stuck-in-the-queue
+
+      - alert: LedgerlineStuckRuns
+        expr: ledgerline_stuck_runs > 0
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: A run has been running with no progress past the stuck threshold.
+          runbook: docs/runbook.md#a-run-is-stuck
+
+      - alert: LedgerlineSwitchPaused
+        expr: ledgerline_switch_paused == 1
+        for: 4h
+        labels: {severity: ticket}
+        annotations:
+          summary: "Operator switch {{ $labels.switch }} has been paused for 4 hours."
+          runbook: docs/runbook.md#pause-and-resume

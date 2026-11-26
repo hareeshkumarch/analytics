@@ -78,9 +78,9 @@ class TestEvaluationRun(unittest.TestCase):
         args = ["--only", "q02_total_fees", "q12_profit", "q14_prompt_injection", "--out", str(out), "--baseline", str(self.root / "baseline.json"), *extra]
         with TestClient(create_app(c)) as client:
             code = main(args, client=client)
-        latest = sorted(out.glob("*.json"))[-1]
-        report = json.loads(latest.read_text())
-        latest.unlink()
+        report_json = sorted(out.glob("*.json"), key=lambda f: f.stat().st_mtime_ns)[-1]
+        report = json.loads(report_json.read_text())
+        self.markdown = report_json.with_suffix(".md").read_text()
         return code, report
 
     def test_report_scores_questions_and_flags_regressions_against_the_baseline(self) -> None:
@@ -103,7 +103,8 @@ class TestEvaluationRun(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(report["delta"]["newly_failing"], ["q02_total_fees"])
         self.assertLess(report["delta"]["pass_rate"], 0)
-        self.assertIn("FAIL", next((self.root / "reports").glob("*.md")).read_text())
+        self.assertIn("| q02_total_fees | FAIL |", self.markdown)
+        self.assertEqual(len(list((self.root / "reports").glob("*.json"))), 2)
 
 
 if __name__ == "__main__":

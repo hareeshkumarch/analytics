@@ -21,6 +21,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Metrics */
+        get: operations["metrics_api_v1_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ops/switches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Switches */
+        get: operations["list_switches_api_v1_ops_switches_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ops/switches/{switch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Switch */
+        put: operations["set_switch_api_v1_ops_switches__switch_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/prompts": {
         parameters: {
             query?: never;
@@ -30,6 +81,23 @@ export interface paths {
         };
         /** List Prompt Templates */
         get: operations["list_prompt_templates_api_v1_prompts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ready */
+        get: operations["ready_api_v1_ready_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -863,6 +931,30 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** OpsSwitchListOut */
+        OpsSwitchListOut: {
+            /** Available */
+            available: string[];
+            /** History */
+            history: components["schemas"]["OpsSwitchOut"][];
+            /** Switches */
+            switches: components["schemas"]["OpsSwitchOut"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** OpsSwitchOut */
+        OpsSwitchOut: {
+            /** Changed At */
+            changed_at: string;
+            /** Paused */
+            paused: boolean;
+            /** Reason */
+            reason: string;
+            /** Switch Id */
+            switch_id: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** PinListOut */
         PinListOut: {
             /** Pins */
@@ -1070,6 +1162,13 @@ export interface components {
             /** Api Key */
             api_key: string;
             provider_id: components["schemas"]["ProviderId"];
+        };
+        /** SetOpsSwitchRequest */
+        SetOpsSwitchRequest: {
+            /** Paused */
+            paused: boolean;
+            /** Reason */
+            reason: string;
         };
         /** SnapshotListOut */
         SnapshotListOut: {
@@ -1285,6 +1384,81 @@ export interface operations {
             };
         };
     };
+    metrics_api_v1_metrics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+        };
+    };
+    list_switches_api_v1_ops_switches_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsSwitchListOut"];
+                };
+            };
+        };
+    };
+    set_switch_api_v1_ops_switches__switch_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                switch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetOpsSwitchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsSwitchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_prompt_templates_api_v1_prompts_get: {
         parameters: {
             query?: never;
@@ -1301,6 +1475,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PromptTemplateListOut"];
+                };
+            };
+        };
+    };
+    ready_api_v1_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

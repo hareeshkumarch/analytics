@@ -285,6 +285,10 @@ def main(argv: list[str] | None = None, client: TestClient | None = None) -> int
     stamp = report["created_at"].replace(":", "").replace("-", "").replace("+0000", "Z")
     args.out.mkdir(parents=True, exist_ok=True)
     name = f"{corpus['corpus_id']}_v{corpus['version']}_{stamp}"
+    suffix = 1
+    while (args.out / f"{name}.json").exists():
+        suffix += 1
+        name = f"{corpus['corpus_id']}_v{corpus['version']}_{stamp}-{suffix}"
     (args.out / f"{name}.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     markdown = render_markdown(report, problems)
     (args.out / f"{name}.md").write_text(markdown, encoding="utf-8")

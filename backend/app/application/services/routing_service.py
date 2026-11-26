@@ -213,10 +213,14 @@ class RoutingService:
         self._api_keys = api_keys
         self._semaphores = semaphores or CredentialSemaphorePool()
         self._latency_ms: dict[str, float] = {}
+        self._paused_providers: Callable[[], frozenset[ProviderId]] = frozenset
 
     def record_latency(self, model_id: str, latency_ms: int) -> None:
         previous = self._latency_ms.get(model_id)
         self._latency_ms[model_id] = latency_ms if previous is None else previous * (1 - LATENCY_EWMA_WEIGHT) + latency_ms * LATENCY_EWMA_WEIGHT
+
+    def set_paused_providers(self, source: Callable[[], frozenset[ProviderId]]) -> None:
+        self._paused_providers = source
 
     def set_budget_ledger(self, budget_ledger: BudgetLedger) -> None:
         self._ledger = budget_ledger
@@ -237,9 +241,10 @@ class RoutingService:
     ) -> list[ModelProfile]:
         ordered_ids = [manual_model_id] if manual_model_id else list(policy.role_routes.get(role, ()))
         eligible: list[ModelProfile] = []
+        paused = self._paused_providers()
         for mid in ordered_ids:
             model = self._models.get(mid)
-            if not model or not model.enabled:
+            if not model or not model.enabled or model.provider_id in paused:
                 continue
             if model.provider_id not in policy.allowed_providers:
                 continue
@@ -305,8 +310,10 @@ class RoutingService:
             manual_model_id=manual_model_id,
         )
         if not candidates:
+            paused = sorted(p.value for p in self._paused_providers())
             raise ProviderError(
-                f"No eligible model candidate satisfies role={request.role.value} and hard capability/policy filters",
+                f"No eligible model candidate satisfies role={request.role.value} and hard capability/policy filters"
+                + (f"; paused providers: {', '.join(paused)}" if paused else ""),
                 code="no_eligible_route",
                 retryable=False,
             )

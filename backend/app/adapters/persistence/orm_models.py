@@ -140,7 +140,10 @@ class BudgetReservationRow(Base):
 
 class RunEventRow(Base):
     __tablename__ = "run_events"
-    __table_args__ = (UniqueConstraint("run_id", "sequence", name="uq_run_event_seq"),)
+    __table_args__ = (
+        UniqueConstraint("run_id", "sequence", name="uq_run_event_seq"),
+        Index("ix_run_events_type_occurred", "type", "occurred_at"),
+    )
     event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     run_id: Mapped[str] = mapped_column(ForeignKey("runs.run_id"), nullable=False)
     workspace_id: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -193,6 +196,23 @@ class ExportArtifactRow(Base):
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class OpsSwitchRow(Base):
+    __tablename__ = "ops_switches"
+    switch_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    paused: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
+class OpsSwitchChangeRow(Base):
+    __tablename__ = "ops_switch_changes"
+    change_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    switch_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    paused: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 
 class OutboxJobRow(Base):

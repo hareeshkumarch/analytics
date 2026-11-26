@@ -46,6 +46,19 @@ class WorkspaceSettingsOut(ApiResponse):
     business_timezone: str
 
 
+class OpsSwitchOut(ApiResponse):
+    switch_id: str
+    paused: bool
+    reason: str
+    changed_at: str
+
+
+class OpsSwitchListOut(ApiResponse):
+    switches: list[OpsSwitchOut]
+    available: list[str]
+    history: list[OpsSwitchOut]
+
+
 class CreateRunOut(ApiResponse):
     run_id: str
     status: str
