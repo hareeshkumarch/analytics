@@ -115,7 +115,7 @@ class AtomicBudgetLedger:
             res = self._reservations.get(reservation_id)
             if res is None:
                 raise KeyError(f"Unknown reservation_id: {reservation_id}")
-            if res.settled:
+            if res.settled or res.actual_tokens is not None:
                 return res
 
             token_delta = actual_tokens - res.reserved_tokens

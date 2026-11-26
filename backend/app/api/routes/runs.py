@@ -25,6 +25,7 @@ from app.domain.limits import (
 )
 from app.domain.models import RunStatus
 
+from app.api import support
 from app.api.support import TERMINAL_RUN_STATUSES, SSE_HEARTBEAT_SECONDS, SSE_WORKER_POLL_SECONDS, RUN_PAGE_DEFAULT, RUN_PAGE_MAX, RUN_LIST_ANSWER_KEYS
 from app.api.context import ApiContext
 from app.jobs.outbox import dispatch_pending
@@ -278,8 +279,11 @@ def register(ctx: ApiContext) -> APIRouter:
                         last_seq = evt["sequence"]
                         finished = finished or evt["type"] == "run.finished"
                         yield _frame(evt)
-                last_sent = time.monotonic()
+                last_sent = stream_started = time.monotonic()
                 while live and not finished:
+                    if time.monotonic() - stream_started > support.SSE_MAX_STREAM_SECONDS:
+                        logger.warning("Closing SSE stream for run %s: maximum stream age reached", run_id)
+                        break
                     worker_run = run_id not in app.state.bg_tasks
                     try:
                         evt = await asyncio.wait_for(

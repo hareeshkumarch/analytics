@@ -1197,7 +1197,7 @@ class PgBudgetLedger:
                 row = db.get(BudgetReservationRow, reservation_id, with_for_update=True)
                 if not row:
                     raise NotFoundError(f"Reservation {reservation_id} not found")
-                if not row.settled:
+                if not row.settled and row.unresolved_reason is None:
                     row.settled = True
                     row.actual_tokens = actual_tokens
                     row.actual_cost_usd = actual_cost_usd
@@ -1210,7 +1210,7 @@ class PgBudgetLedger:
                     reserved_tokens=row.reserved_tokens,
                     reserved_cost_usd=row.reserved_cost_usd,
                     cost_is_unknown=row.cost_is_unknown,
-                    settled=True,
+                    settled=row.settled,
                     actual_tokens=row.actual_tokens,
                     actual_cost_usd=row.actual_cost_usd,
                     provider_id=row.provider_id or "",

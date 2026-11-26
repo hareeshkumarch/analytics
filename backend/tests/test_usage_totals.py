@@ -108,6 +108,10 @@ class TestUnresolvedReservationsAreReleased(unittest.TestCase):
         self.assertEqual((totals["total_tokens"], Decimal(str(totals["total_cost_usd"]))), (0, Decimal("0")))
         self.assertTrue(totals["incomplete"])
         ledger.reserve(run_id, "op2", "a2", 4000, Decimal("1.50"), False, Decimal("2.00"))
+        ledger.release_unresolved(failed.reservation_id, "again")
+        ledger.settle(failed.reservation_id, 9000, Decimal("1.00"))
+        after = ledger.get_run_totals(run_id)
+        self.assertEqual((after["total_tokens"], Decimal(str(after["total_cost_usd"]))), (4000, Decimal("1.50")))
 
     def test_memory_ledger(self) -> None:
         self._check(AtomicBudgetLedger(), "run_mem")
