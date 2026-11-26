@@ -93,7 +93,6 @@ def create_app(
     app.state.run_event_locks = {}
     app.state.bg_tasks = {}
     app.state.active_run_semaphore = asyncio.Semaphore(DEFAULT_GLOBAL_LIMITS.max_active_root_runs)
-    app.state.idempotency = {}
     app.state.snapshots = {}
     app.state.semantics = {}
     app.state.encrypted_keys = {}

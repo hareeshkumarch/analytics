@@ -51,8 +51,18 @@ def register(ctx: ApiContext) -> APIRouter:
     ) -> JSONResponse:
         canonical_dict = payload.model_dump(mode="json")
         payload_hash = hashlib.sha256(json.dumps(canonical_dict, sort_keys=True).encode("utf-8")).hexdigest()
-        if idempotency_key and idempotency_key in app.state.idempotency:
-            prev_hash, prev_code, prev_resp = app.state.idempotency[idempotency_key]
+        idem_key = hashlib.sha256(f"{workspace_id}\0{idempotency_key}".encode()).hexdigest() if idempotency_key else None
+        previous = None
+        if idem_key:
+            try:
+                previous = await asyncio.to_thread(
+                    app.state.repo_runs.get_idempotent_response, idem_key, DEFAULT_GLOBAL_LIMITS.idempotency_key_retention_hours
+                )
+            except SQLAlchemyError as exc:
+                logger.exception("Could not read idempotency key")
+                raise _db_unavailable("check the Idempotency-Key") from exc
+        if previous:
+            prev_hash, prev_code, prev_resp = previous
             if prev_hash != payload_hash:
                 raise HTTPException(status_code=409, detail="Idempotency-Key reused with different payload")
             return JSONResponse(status_code=prev_code, content=prev_resp)
@@ -137,8 +147,18 @@ def register(ctx: ApiContext) -> APIRouter:
             "status_url": f"/api/v1/workspaces/{workspace_id}/runs/{run_id}",
             "events_url": f"/api/v1/workspaces/{workspace_id}/runs/{run_id}/events",
         }
-        if idempotency_key:
-            app.state.idempotency[idempotency_key] = (payload_hash, 202, resp_body)
+        if idem_key:
+            try:
+                await asyncio.to_thread(
+                    app.state.repo_runs.save_idempotent_response,
+                    idem_key,
+                    payload_hash,
+                    202,
+                    resp_body,
+                    DEFAULT_GLOBAL_LIMITS.idempotency_key_retention_hours,
+                )
+            except SQLAlchemyError:
+                logger.exception("Could not save idempotency key for run %s", run_id)
         return JSONResponse(status_code=202, content=resp_body)
 
     @router.get("/api/v1/workspaces/{workspace_id}/runs", response_model=RunPageOut, response_model_exclude_unset=True)

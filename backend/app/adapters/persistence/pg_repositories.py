@@ -12,6 +12,7 @@ from app.adapters.persistence.database import ensure_conversation, ensure_worksp
 from app.adapters.persistence.orm_models import (
     BudgetReservationRow,
     CredentialRefRow,
+    IdempotencyKeyRow,
     OutboxJobRow,
     PinRow,
     RoutingPolicyRow,
@@ -247,35 +248,29 @@ class PgRunRepository:
                 "clarification_answer": None,
             }
 
-    def fail_interrupted_runs(self) -> list[str]:
-        """Mark runs left queued/running by a previous API process as failed and close their event streams.
-
-        Runs execute inside the API process, so at startup none of them can still be working.
-        """
-        closed: list[str] = []
+    def get_idempotent_response(self, key: str, max_age_hours: int) -> tuple[str, int, dict[str, Any]] | None:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
         with self._sf() as db:
-            with db.begin():
-                rows = db.scalars(select(RunRow).where(RunRow.status.in_(("queued", "running")))).all()
-                now = datetime.now(timezone.utc)
-                for row in rows:
-                    seq = (row.last_event_sequence or 0) + 1
-                    row.status = "failed"
-                    row.outcome = "interrupted"
-                    row.last_event_sequence = seq
-                    row.answer_json = {**(row.answer_json or {}), "error": "The API restarted while this run was in progress."}
-                    db.add(
-                        RunEventRow(
-                            event_id=f"evt_{uuid.uuid4().hex[:16]}",
-                            run_id=row.run_id,
-                            workspace_id=row.workspace_id,
-                            sequence=seq,
-                            type="run.finished",
-                            payload_json={"status": "failed", "error": "The API restarted while this run was in progress."},
-                            occurred_at=now,
+            row = db.scalar(
+                select(IdempotencyKeyRow).where(IdempotencyKeyRow.key == key, IdempotencyKeyRow.created_at >= cutoff)
+            )
+            return (row.payload_hash, row.status_code, row.response_json) if row else None
+
+    def save_idempotent_response(
+        self, key: str, payload_hash: str, status_code: int, response: dict[str, Any], max_age_hours: int
+    ) -> None:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+        try:
+            with self._sf() as db:
+                with db.begin():
+                    db.execute(delete(IdempotencyKeyRow).where(IdempotencyKeyRow.created_at < cutoff))
+                    db.merge(
+                        IdempotencyKeyRow(
+                            key=key, payload_hash=payload_hash, status_code=status_code, response_json=response
                         )
                     )
-                    closed.append(row.run_id)
-        return closed
+        except IntegrityError:
+            pass
 
     def list_active_runs(self) -> list[dict[str, Any]]:
         with self._sf() as db:
