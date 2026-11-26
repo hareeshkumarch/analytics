@@ -38,3 +38,6 @@ Thumbs.db
 
 # Local agent worktrees
 /.claude/worktrees/
+
+# Evaluation reports (baselines live in backend/eval/baselines)
+/backend/eval/reports/

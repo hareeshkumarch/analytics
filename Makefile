@@ -1,4 +1,4 @@
-.PHONY: doctor dev stop migrate test lint lock openapi rotate-keys build smoke backup-dev restore-dev
+.PHONY: doctor dev stop migrate test lint lock openapi rotate-keys build smoke eval backup-dev restore-dev
 
 COMPOSE=docker compose
 
@@ -34,6 +34,9 @@ rotate-keys:
 
 build:
 	$(COMPOSE) build
+
+eval:
+	cd backend && python3 -m app.evaluation $(EVAL_ARGS)
 
 smoke:
 	curl -sf http://127.0.0.1:8080/api/v1/health | python3 -m json.tool

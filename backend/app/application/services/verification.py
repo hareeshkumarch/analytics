@@ -113,3 +113,12 @@ def assess_answer(
     else:
         outcome = RunOutcome.SUCCESS
     return outcome.value, results
+
+
+def mentions_value(markdown: str, value: Decimal) -> bool:
+    text = _LIST_MARKER.sub(" ", _DATE.sub(" ", _CITATION.sub(" ", markdown)))
+    return any(_matches(figure, value) for figure in _figures(text))
+
+
+def evidence_has_value(evidence: list[dict[str, Any]], value: Decimal) -> bool:
+    return any(abs(number - value) < Decimal("0.005") for e in evidence for number in _numbers(e.get("rows") or []))
