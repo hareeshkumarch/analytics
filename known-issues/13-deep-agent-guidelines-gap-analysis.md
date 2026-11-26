@@ -1,6 +1,6 @@
 # 13 - Gap analysis against the Deep Agent Engineering Guidelines v2
 
-Checked 2026-11-25 against `main` @ `da9b4a9`; updated 2026-11-26 @ `a3c645f`. Tracker: hareeshkumarch/analytics#15. Each gap links to its issue.
+Checked 2026-11-25 against `main` @ `da9b4a9`; updated 2026-11-26 @ `52671b1`. Tracker: hareeshkumarch/analytics#15. Each gap links to its issue.
 
 **Status:** Met = enforced in code and covered by tests. Partial = some of it. Gap = missing. N/A = does not apply to this product today (read-only analytics: agents have no write tools, no MCP, no code execution, no long-term memory), with the reason.
 
@@ -12,9 +12,9 @@ Checked 2026-11-25 against `main` @ `da9b4a9`; updated 2026-11-26 @ `a3c645f`. T
 | 2 | Router → fast/deep path | Partial | User picks Quick/Deep; both start with a planner call. #24 |
 | 3 | Query pushdown, validation, parameters, limits, offload | Met | `sqlglot_compiler.py`, bound parameters, row caps with truncation flags, evidence stored outside the prompt. Result caching: #23 |
 | 3 | Snapshot consistency | Met | Runs are bound to an immutable snapshot + semantic version. |
-| 4 | Tool contracts, typed args/results, dedup, circuit breakers, cancellation | Partial | Typed args, one result envelope with statuses and error codes, identical failed calls rejected, circuit breakers, cancellation. Cache: #23. Provenance ledger: #19 |
+| 4 | Tool contracts, typed args/results, dedup, circuit breakers, cancellation | Partial | Typed args, one result envelope with statuses and error codes, identical failed calls rejected, circuit breakers, cancellation, durable tool_executions ledger. Cache: #23 |
 | 5 | Context engineering | Partial | Staged schema shrinking, old tool results trimmed, token estimate before calls, answer-only final round. Prompt caching/versioning/compiler: #25 |
-| 6 | Durable execution state in Postgres | Partial | Runs, events, evidence, budget ledger, LangGraph checkpoints. Celery runs go through the transactional outbox. `tasks`/`tool_executions` tables: #19, #32 |
+| 6 | Durable execution state in Postgres | Partial | Runs, events, evidence, budget ledger, LangGraph checkpoints. Celery runs go through the transactional outbox; every tool call is recorded in `tool_executions`. `tasks` table: #32 |
 | 7 | DAG, checkpoints, resume, cancellation, real progress events | Partial | Plan DAG, events with sequence, resume after crash. Incremental replanning / task rows: #32. Partial-success outcome: #20 |
 | 8 | Scoped subagents, bounded delegation | Met | Deep Agents harness with restricted tools (`FORBIDDEN_DEFAULT_TOOLS`), lifetime specialist cap, planner task limit. Per-task budgets: #32 |
 | 9 | Model routing by capability | Met | Role routes, capability filters, presets, fallback. Measured routing: #27 |
@@ -29,7 +29,7 @@ Checked 2026-11-25 against `main` @ `da9b4a9`; updated 2026-11-26 @ `a3c645f`. T
 | § | Topic | Status | Evidence / issue |
 |---|---|---|---|
 | 17.1 INV-01 | Scope from trusted context | Gap (deferred) | No authentication yet; some endpoints skip workspace checks: #21 |
-| 17.1 INV-02/03 | Tool grants, versioned args, deadlines | Partial | Fixed tool set per agent; deadlines and budgets enforced. Tool versions/timeouts: #19 |
+| 17.1 INV-02/03 | Tool grants, versioned args, deadlines | Met | Fixed tool set per agent; each tool declares version, effect, timeout and result bounds, which are enforced. |
 | 17.1 INV-04 | Subagents cannot widen permissions/budget | Met | Shared run budget and restricted harness for every specialist. |
 | 17.1 INV-05/06 | Approvals; no blind retry of writes | N/A | No write tools. |
 | 17.1 INV-07 | Reuse only valid completed work | Partial | Resume reuses task traces/evidence; fingerprinted reuse: #32 |
@@ -41,7 +41,7 @@ Checked 2026-11-25 against `main` @ `da9b4a9`; updated 2026-11-26 @ `a3c645f`. T
 | 17.1 INV-14 | Stale workers cannot overwrite | Met | `claim_run` bumps `owner_generation`; events, plan, clarification and answer writes are fenced. |
 | 17.1 INV-15 | Fail safely, no invented results | Met | Failures surface with limitations; unmatched figures mark the run needs_review. |
 | 17.2–17.3 | Smallest execution path; stop conditions | Partial | #24, #26 |
-| 18 | Tool registry metadata, envelope | Partial | Envelope done. Registry metadata: #19 |
+| 18 | Tool registry metadata, envelope | Met | Tool specs (version, effect, timeout, inline limits, retry class) and one result envelope. |
 | 19.1–19.4 | Gateway lifecycle, concurrency, IDs, error taxonomy | Partial | Budget reservation before dispatch, bounded tool calls per turn, parallel specialists, error taxonomy with retry flags. Single-flight: #23 |
 | 19.5 | Mutation lifecycle | N/A | No write tools. |
 | 20 | MCP, webhooks | N/A | Not used. API clients: timeouts, SSRF policy, TLS with optional CA (done). |
@@ -74,6 +74,6 @@ Checked 2026-11-25 against `main` @ `da9b4a9`; updated 2026-11-26 @ `a3c645f`. T
 ## Priority order
 
 1. **P0** #16 outbox for Celery runs (done).
-2. **P1** #17 fencing (done), #18 tool envelope and error codes (done), #19 tool ledger, #20 criteria-based completion (done), #21 workspace scoping, #22 analytical correctness, #28 failure-mode tests, #29 security tests (done).
+2. **P1** #17 fencing (done), #18 tool envelope and error codes (done), #19 tool ledger (done), #20 criteria-based completion (done), #21 workspace scoping, #22 analytical correctness, #28 failure-mode tests, #29 security tests (done).
 3. **P2** #23 query cache, #24 execution-path router, #25 prompt versioning and context compiler, #26 budget profiles, #31 artifact lifecycle.
 4. **P3** #27 evaluation harness, #30 operations, #32 durable task records and incremental replanning.
