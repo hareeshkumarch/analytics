@@ -182,6 +182,12 @@ function statusLabel(status: string): string {
   return humanize(status);
 }
 
+const ROUTE_LABELS: Record<string, string> = {
+  direct_query: "Direct query (no planning step)",
+  standard: "Planned",
+  deep: "Deep investigation",
+};
+
 const SUMMARY_FIELDS = ["status", "task_id", "tool", "provider_id", "model_id", "revision", "row_count", "truncated", "code"];
 
 function eventSummary(payload: Record<string, unknown>): string {
@@ -481,6 +487,8 @@ export function AskView() {
   const nonSchemaTools = toolEvents.filter((e) => e.payload.tool !== "inspect_schema");
   const finishedEvent = active ? [...active.events].reverse().find((e) => e.type === "run.finished") : undefined;
   const timeLimited = Boolean(finishedEvent?.payload.time_budget_exceeded);
+  const planEvent = active ? [...active.events].reverse().find((e) => e.type === "plan.updated") : undefined;
+  const route = typeof planEvent?.payload.route === "string" ? planEvent.payload.route : null;
   const models = active
     ? Array.from(
         new Set(
@@ -1285,6 +1293,14 @@ export function AskView() {
                         <>
                           <dt className="text-secondary">Models</dt>
                           <dd className="text-body">{models.join(", ")}</dd>
+                        </>
+                      )}
+                      {route && (
+                        <>
+                          <dt className="text-secondary">Path</dt>
+                          <dd className="text-body" title={typeof planEvent?.payload.route_reason === "string" ? planEvent.payload.route_reason : undefined}>
+                            {ROUTE_LABELS[route] ?? humanize(route)}
+                          </dd>
                         </>
                       )}
                       <dt className="text-secondary">Events</dt>

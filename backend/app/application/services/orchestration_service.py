@@ -36,6 +36,7 @@ from app.application.ports.query import SnapshotQueryPort
 from app.application.ports.tools import ToolExecution
 from app.application.services.analytics_tools import AnalyticsToolbox, ToolBudget, ToolErrorCode
 from app.application.services.charts import build_answer_charts
+from app.application.services.execution_router import ExecutionRoute, RouteDecision, choose_route
 from app.application.services.text_utils import (
     EVIDENCE_ID_RE as _EVIDENCE_ID_RE,
     clean_single_line as _clean_objective,
@@ -808,7 +809,19 @@ class InvestigationOrchestrator:
             max_cost_usd=policy.hard_cost_ceiling_usd,
         )
         use_deep_agents = os.environ.get("AGENT_RUNTIME", "deepagents").strip().lower() != "legacy"
-        attempt_reserve = COMPOSER_ATTEMPT_RESERVE if use_deep_agents else 0
+        saved_route = initial_plan.get("route") if isinstance(initial_plan, dict) else None
+        if saved_route in ExecutionRoute._value2member_map_:
+            route = RouteDecision(ExecutionRoute(saved_route), str(initial_plan.get("route_reason") or ""))
+        else:
+            route = choose_route(
+                question=clean_question,
+                mode=mode,
+                snapshot=snapshot,
+                has_prior_turns=bool(recent_turns),
+                has_clarification=bool(clean_clarification),
+            )
+        direct = route.route == ExecutionRoute.DIRECT_QUERY
+        attempt_reserve = COMPOSER_ATTEMPT_RESERVE if use_deep_agents and not direct else 0
 
         def _remaining_attempts() -> int:
             used = int(self._container.budget_ledger.get_run_totals(run_id).get("used_attempts", 0))
@@ -818,7 +831,7 @@ class InvestigationOrchestrator:
         plan_fell_back = False
         plan_limitations: list[str] = []
         if plan is None:
-            if use_deep_agents:
+            if use_deep_agents and not direct:
                 planner_task_limit = limits.planner_task_limit
                 planner_prompt = (
                     "Create a minimal analytical task plan for this investigation. Return only JSON with keys "
@@ -889,12 +902,18 @@ class InvestigationOrchestrator:
             plan_limitations.append("The planner's reply couldn't be used, so the standard plan ran instead.")
         plan.validate_dag()
         if on_plan is not None:
-            on_plan(_serialize_plan(plan))
+            on_plan({**_serialize_plan(plan), "route": route.route.value, "route_reason": route.reason})
         supervisor.accept_plan(plan)
         planned_criteria = plan.completion_criteria
         _emit(
             EventType.PLAN_UPDATED,
-            {"revision": plan.revision, "tasks": [t.task_id for t in plan.tasks], "fallback": plan_fell_back},
+            {
+                "revision": plan.revision,
+                "tasks": [t.task_id for t in plan.tasks],
+                "fallback": plan_fell_back,
+                "route": route.route.value,
+                "route_reason": route.reason,
+            },
         )
 
         collected_claims: list[Claim] = []
@@ -1202,7 +1221,7 @@ class InvestigationOrchestrator:
             and not final_review_verdict.approved
         ):
             answer_limitations.append("The review found unresolved gaps after the available remediation steps.")
-        if use_deep_agents and summary_parts and not cancelled:
+        if use_deep_agents and summary_parts and not cancelled and not direct:
             composer_prompt = (
                 "Write the final answer to the user's analytical question using only the supplied findings and claims. "
                 "Do not calculate, add, or infer figures. Keep existing evidence IDs exact and cite them with square "
@@ -1322,8 +1341,9 @@ class InvestigationOrchestrator:
             created_at=datetime.now(timezone.utc),
             outcome=outcome,
             criteria=criteria,
+            route=route.route.value,
         )
-        finished: dict[str, Any] = {"answer_id": answer.answer_id, "tool_calls": toolbox.budget.used}
+        finished: dict[str, Any] = {"answer_id": answer.answer_id, "tool_calls": toolbox.budget.used, "route": route.route.value}
         if cancelled:
             finished["status"] = RunStatus.CANCELLED.value
         elif not summary_parts and timed_out:

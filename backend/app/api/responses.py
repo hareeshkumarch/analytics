@@ -77,6 +77,7 @@ class RunAnswerOut(ApiResponse):
     charts: list[ChartOut] | None = None
     outcome: str | None = None
     criteria: list[CriterionOut] | None = None
+    route: str | None = None
 
 
 class RunOut(ApiResponse):

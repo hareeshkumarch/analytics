@@ -247,3 +247,4 @@ class Answer:
     created_at: datetime
     outcome: str = "success"
     criteria: tuple[CriterionResult, ...] = ()
+    route: str = "standard"

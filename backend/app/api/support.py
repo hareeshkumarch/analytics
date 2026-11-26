@@ -37,7 +37,7 @@ SSE_MAX_STREAM_SECONDS = 1800.0
 RUN_PAGE_DEFAULT = 200
 RUN_PAGE_MAX = 500
 EXPORT_ARTIFACT_PREFIX = "exp_"
-RUN_LIST_ANSWER_KEYS = ("answer_id", "summary_markdown", "charts", "outcome", "criteria")
+RUN_LIST_ANSWER_KEYS = ("answer_id", "summary_markdown", "charts", "outcome", "criteria", "route")
 
 
 

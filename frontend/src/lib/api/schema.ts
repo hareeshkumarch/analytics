@@ -903,6 +903,8 @@ export interface components {
             criteria?: components["schemas"]["CriterionOut"][] | null;
             /** Outcome */
             outcome?: string | null;
+            /** Route */
+            route?: string | null;
             /** Summary Markdown */
             summary_markdown?: string | null;
         } & {

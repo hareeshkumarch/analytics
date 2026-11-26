@@ -926,6 +926,17 @@
             ],
             "title": "Outcome"
           },
+          "route": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route"
+          },
           "summary_markdown": {
             "anyOf": [
               {

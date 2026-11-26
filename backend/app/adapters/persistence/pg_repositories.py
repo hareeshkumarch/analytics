@@ -597,6 +597,7 @@ class PgRunRepository:
                         ],
                         "charts": [asdict(chart) for chart in answer.charts],
                         "outcome": answer.outcome,
+                        "route": answer.route,
                         "criteria": [
                             {**asdict(criterion), "evidence_ids": list(criterion.evidence_ids)} for criterion in answer.criteria
                         ],
