@@ -1,4 +1,5 @@
 from decimal import Decimal
+import json
 import threading
 import time
 from typing import Any, Callable, Generator, cast
@@ -10,6 +11,7 @@ from app.adapters.providers.registry import ProviderRegistry
 from app.application.ports.clock import Clock
 from app.adapters.providers.http_utils import STREAM_UNSUPPORTED
 from app.application.ports.providers import BudgetLedger, ModelRequest, ModelResponse
+from app.application.prompts import current_prompt
 from app.application.services.budget_service import DEFAULT_MAX_TOKENS
 from app.application.services.text_utils import clean_single_line
 from app.domain.errors import CircuitOpenError, ProviderError
@@ -68,6 +70,21 @@ def routing_policy_from_saved(saved: dict[str, Any] | None, default: RoutingPoli
 
 
 LATENCY_EWMA_WEIGHT = 0.3
+CONTEXT_CHARS_PER_TOKEN = 3
+
+
+def context_token_sections(request: ModelRequest) -> dict[str, int]:
+    sizes: dict[str, int] = {"system": 0, "user": 0, "assistant": 0, "tool": 0}
+    for message in request.messages:
+        role = str(message.get("role") or "user")
+        key = role if role in sizes else "user"
+        sizes[key] += len(json.dumps(message.get("content"), default=str))
+        if message.get("tool_calls"):
+            sizes["assistant"] += len(json.dumps(message["tool_calls"], default=str))
+    tools = sum(len(t.name) + len(t.description) + len(json.dumps(t.parameters_schema, default=str)) for t in request.tools)
+    sections = {f"context.tokens.{key}": value // CONTEXT_CHARS_PER_TOKEN for key, value in sizes.items()}
+    sections["context.tokens.tool_definitions"] = tools // CONTEXT_CHARS_PER_TOKEN
+    return sections
 
 class CredentialSemaphorePool:
     def __init__(self) -> None:
@@ -296,6 +313,8 @@ class RoutingService:
             )
 
         max_attempts = DEFAULT_GLOBAL_LIMITS.max_attempts_per_logical_step
+        prompt = current_prompt()
+        context_sections = context_token_sections(request)
         max_repairs = DEFAULT_GLOBAL_LIMITS.max_schema_repairs_per_step
         attempts_used = 0
         repairs_used = 0
@@ -343,6 +362,8 @@ class RoutingService:
                         provider_id=model.provider_id.value,
                         model_id=model.model_id,
                         role=request.role.value,
+                        prompt_id=prompt.template_id if prompt else "",
+                        prompt_version=prompt.version if prompt else "",
                     )
                 except BaseException:
                     self._semaphores.release(sem_key)
@@ -373,6 +394,9 @@ class RoutingService:
                             "llm.role": request.role.value,
                             "llm.streaming": bool(streams),
                             "run.id": request.run_id,
+                            "llm.prompt_id": prompt.template_id if prompt else "",
+                            "llm.prompt_version": prompt.version if prompt else "",
+                            **context_sections,
                         },
                     ) as span:
                         if streams and stream_fn is not None:
@@ -391,6 +415,7 @@ class RoutingService:
                             )
                         span.set_attribute("llm.input_tokens", resp.input_tokens)
                         span.set_attribute("llm.output_tokens", resp.output_tokens + resp.reasoning_tokens)
+                        span.set_attribute("llm.cached_input_tokens", resp.cached_input_tokens)
                 except ProviderError as exc:
                     last_error = exc
                     self._ledger.release_unresolved(reservation.reservation_id, str(exc))
@@ -443,6 +468,7 @@ class RoutingService:
                             actual_tokens,
                             actual_cost,
                             latency_ms=latency_ms,
+                            cached_input_tokens=resp.cached_input_tokens or None,
                         )
                     finally:
                         self._semaphores.release(sem_key)

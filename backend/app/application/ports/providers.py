@@ -55,6 +55,7 @@ class ModelResponse:
     input_tokens: int = 0
     output_tokens: int = 0
     reasoning_tokens: int = 0
+    cached_input_tokens: int = 0
     reported_cost_usd: Decimal | None = None
     continuation_state: dict[str, Any] | None = None
 
@@ -100,6 +101,8 @@ class BudgetLedger(Protocol):
         provider_id: str = "",
         model_id: str = "",
         role: str = "",
+        prompt_id: str = "",
+        prompt_version: str = "",
     ) -> BudgetReservation: ...
 
     def settle(
@@ -109,6 +112,9 @@ class BudgetLedger(Protocol):
         actual_cost_usd: Decimal | None,
         *,
         latency_ms: int | None = None,
+        cached_input_tokens: int | None = None,
     ) -> BudgetReservation: ...
+
+    def list_run_attempts(self, run_id: str) -> list[BudgetReservation]: ...
 
     def release_unresolved(self, reservation_id: str, reason: str) -> None: ...

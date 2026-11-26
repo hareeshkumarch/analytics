@@ -56,6 +56,8 @@ class AtomicBudgetLedger:
         provider_id: str = "",
         model_id: str = "",
         role: str = "",
+        prompt_id: str = "",
+        prompt_version: str = "",
     ) -> BudgetReservation:
         with self._lock:
             ceiling = hard_cost_ceiling_usd if hard_cost_ceiling_usd is not None else self._max_cost.get(run_id)
@@ -99,6 +101,8 @@ class AtomicBudgetLedger:
                 provider_id=provider_id,
                 model_id=model_id,
                 role=role,
+                prompt_id=prompt_id,
+                prompt_version=prompt_version,
             )
             self._reservations[res_id] = res
             return res
@@ -110,6 +114,7 @@ class AtomicBudgetLedger:
         actual_cost_usd: Decimal | None,
         *,
         latency_ms: int | None = None,
+        cached_input_tokens: int | None = None,
     ) -> BudgetReservation:
         with self._lock:
             res = self._reservations.get(reservation_id)
@@ -128,7 +133,12 @@ class AtomicBudgetLedger:
                 )
 
             settled = replace(
-                res, settled=True, actual_tokens=actual_tokens, actual_cost_usd=actual_cost_usd, latency_ms=latency_ms
+                res,
+                settled=True,
+                actual_tokens=actual_tokens,
+                actual_cost_usd=actual_cost_usd,
+                latency_ms=latency_ms,
+                cached_input_tokens=cached_input_tokens,
             )
             self._reservations[reservation_id] = settled
             return settled
@@ -147,6 +157,10 @@ class AtomicBudgetLedger:
 
     def get_runs_totals(self, run_ids: list[str]) -> dict[str, dict[str, object]]:
         return {run_id: self.get_run_totals(run_id) for run_id in run_ids}
+
+    def list_run_attempts(self, run_id: str) -> list[BudgetReservation]:
+        with self._lock:
+            return [r for r in self._reservations.values() if r.run_id == run_id]
 
     def get_model_usage(self, run_ids: list[str]) -> list[dict[str, object]]:
         wanted = set(run_ids)

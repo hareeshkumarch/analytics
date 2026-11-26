@@ -111,6 +111,9 @@ class BudgetReservation:
     model_id: str = ""
     role: str = ""
     latency_ms: int | None = None
+    prompt_id: str = ""
+    prompt_version: str = ""
+    cached_input_tokens: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

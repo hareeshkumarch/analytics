@@ -1099,6 +1099,28 @@ class PgWorkspaceQuota:
                 )
 
 
+
+def _reservation_from_row(row: BudgetReservationRow) -> BudgetReservation:
+    return BudgetReservation(
+        reservation_id=row.reservation_id,
+        run_id=row.run_id,
+        operation_id=row.operation_id,
+        attempt_id=row.attempt_id,
+        reserved_tokens=row.reserved_tokens,
+        reserved_cost_usd=row.reserved_cost_usd,
+        cost_is_unknown=row.cost_is_unknown,
+        settled=bool(row.settled),
+        actual_tokens=row.actual_tokens,
+        actual_cost_usd=row.actual_cost_usd,
+        provider_id=row.provider_id or "",
+        model_id=row.model_id or "",
+        role=row.role or "",
+        latency_ms=row.latency_ms,
+        prompt_id=row.prompt_id or "",
+        prompt_version=row.prompt_version or "",
+        cached_input_tokens=row.cached_input_tokens,
+    )
+
 class PgBudgetLedger:
     def __init__(self, session_factory: sessionmaker[Session], max_attempts_default: int = 24) -> None:
         self._sf = session_factory
@@ -1129,6 +1151,8 @@ class PgBudgetLedger:
         provider_id: str = "",
         model_id: str = "",
         role: str = "",
+        prompt_id: str = "",
+        prompt_version: str = "",
     ) -> BudgetReservation:
         if hard_cost_ceiling_usd is not None and cost_is_unknown:
             raise BudgetExhaustedError("Hard monetary ceiling excludes models with unknown pricing")
@@ -1176,21 +1200,11 @@ class PgBudgetLedger:
                     provider_id=provider_id or None,
                     model_id=model_id or None,
                     role=role or None,
+                    prompt_id=prompt_id or None,
+                    prompt_version=prompt_version or None,
                 )
                 db.add(row)
-                return BudgetReservation(
-                    reservation_id=res_id,
-                    run_id=run_id,
-                    operation_id=operation_id,
-                    attempt_id=attempt_id,
-                    reserved_tokens=estimated_tokens,
-                    reserved_cost_usd=estimated_cost_usd,
-                    cost_is_unknown=cost_is_unknown,
-                    settled=False,
-                    provider_id=provider_id,
-                    model_id=model_id,
-                    role=role,
-                )
+                return _reservation_from_row(row)
 
     def settle(
         self,
@@ -1199,6 +1213,7 @@ class PgBudgetLedger:
         actual_cost_usd: Decimal | None,
         *,
         latency_ms: int | None = None,
+        cached_input_tokens: int | None = None,
     ) -> BudgetReservation:
         with self._sf() as db:
             with db.begin():
@@ -1210,22 +1225,15 @@ class PgBudgetLedger:
                     row.actual_tokens = actual_tokens
                     row.actual_cost_usd = actual_cost_usd
                     row.latency_ms = latency_ms
-                return BudgetReservation(
-                    reservation_id=row.reservation_id,
-                    run_id=row.run_id,
-                    operation_id=row.operation_id,
-                    attempt_id=row.attempt_id,
-                    reserved_tokens=row.reserved_tokens,
-                    reserved_cost_usd=row.reserved_cost_usd,
-                    cost_is_unknown=row.cost_is_unknown,
-                    settled=row.settled,
-                    actual_tokens=row.actual_tokens,
-                    actual_cost_usd=row.actual_cost_usd,
-                    provider_id=row.provider_id or "",
-                    model_id=row.model_id or "",
-                    role=row.role or "",
-                    latency_ms=row.latency_ms,
-                )
+                    row.cached_input_tokens = cached_input_tokens
+                return _reservation_from_row(row)
+
+    def list_run_attempts(self, run_id: str) -> list[BudgetReservation]:
+        with self._sf() as db:
+            rows = db.scalars(
+                select(BudgetReservationRow).where(BudgetReservationRow.run_id == run_id).order_by(BudgetReservationRow.reservation_id)
+            ).all()
+            return [_reservation_from_row(row) for row in rows]
 
     def release_unresolved(self, reservation_id: str, reason: str) -> None:
         with self._sf() as db:

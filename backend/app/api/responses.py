@@ -218,6 +218,34 @@ class ToolExecutionOut(ApiResponse):
     cache_hit: bool = False
 
 
+class ModelCallOut(ApiResponse):
+    reservation_id: str
+    role: str
+    provider_id: str
+    model_id: str
+    prompt_id: str
+    prompt_version: str
+    settled: bool
+    reserved_tokens: int
+    actual_tokens: int | None
+    cached_input_tokens: int | None
+    latency_ms: int | None
+
+
+class ModelCallListOut(ApiResponse):
+    run_id: str
+    calls: list[ModelCallOut]
+
+
+class PromptTemplateOut(ApiResponse):
+    template_id: str
+    version: str
+
+
+class PromptTemplateListOut(ApiResponse):
+    templates: list[PromptTemplateOut]
+
+
 class ToolExecutionListOut(ApiResponse):
     run_id: str
     executions: list[ToolExecutionOut]

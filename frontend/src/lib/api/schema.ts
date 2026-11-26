@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/prompts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Prompt Templates */
+        get: operations["list_prompt_templates_api_v1_prompts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/connectors/discover": {
         parameters: {
             query?: never;
@@ -324,6 +341,23 @@ export interface paths {
         };
         /** Get Run Evidence */
         get: operations["get_run_evidence_api_v1_workspaces__workspace_id__runs__run_id__evidence__evidence_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/runs/{run_id}/model-calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Model Calls */
+        get: operations["list_model_calls_api_v1_workspaces__workspace_id__runs__run_id__model_calls_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -757,6 +791,42 @@ export interface components {
                 [key: string]: string | boolean | number;
             };
         };
+        /** ModelCallListOut */
+        ModelCallListOut: {
+            /** Calls */
+            calls: components["schemas"]["ModelCallOut"][];
+            /** Run Id */
+            run_id: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ModelCallOut */
+        ModelCallOut: {
+            /** Actual Tokens */
+            actual_tokens: number | null;
+            /** Cached Input Tokens */
+            cached_input_tokens: number | null;
+            /** Latency Ms */
+            latency_ms: number | null;
+            /** Model Id */
+            model_id: string;
+            /** Prompt Id */
+            prompt_id: string;
+            /** Prompt Version */
+            prompt_version: string;
+            /** Provider Id */
+            provider_id: string;
+            /** Reservation Id */
+            reservation_id: string;
+            /** Reserved Tokens */
+            reserved_tokens: number;
+            /** Role */
+            role: string;
+            /** Settled */
+            settled: boolean;
+        } & {
+            [key: string]: unknown;
+        };
         /** ModelStatusOut */
         ModelStatusOut: {
             /** Enabled */
@@ -821,6 +891,22 @@ export interface components {
             title: string;
             /** Version */
             version: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PromptTemplateListOut */
+        PromptTemplateListOut: {
+            /** Templates */
+            templates: components["schemas"]["PromptTemplateOut"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** PromptTemplateOut */
+        PromptTemplateOut: {
+            /** Template Id */
+            template_id: string;
+            /** Version */
+            version: string;
         } & {
             [key: string]: unknown;
         };
@@ -1195,6 +1281,26 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    list_prompt_templates_api_v1_prompts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptTemplateListOut"];
                 };
             };
         };
@@ -1981,6 +2087,38 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_model_calls_api_v1_workspaces__workspace_id__runs__run_id__model_calls_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelCallListOut"];
                 };
             };
             /** @description Validation Error */

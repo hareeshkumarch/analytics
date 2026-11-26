@@ -131,6 +131,7 @@ class XaiResponsesAdapter:
             structured_output=structured,
             finish_reason=data.get("status", "completed"),
             input_tokens=int(usage.get("input_tokens", 0)),
+            cached_input_tokens=int((usage.get("input_tokens_details") or {}).get("cached_tokens", 0)),
             output_tokens=int(usage.get("output_tokens", 0)),
             continuation_state={"output": data.get("output", [])} if tool_calls else None,
             reported_cost_usd=reported_cost,

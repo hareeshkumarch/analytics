@@ -115,6 +115,7 @@ class GeminiInteractionsAdapter:
             structured_output=structured,
             finish_reason=data.get("status", "completed"),
             input_tokens=int(usage.get("total_input_tokens", 0)),
+            cached_input_tokens=int(usage.get("total_cached_tokens") or 0),
             output_tokens=int(usage.get("total_output_tokens", 0)),
             reasoning_tokens=int(usage.get("total_thought_tokens", 0)),
             continuation_state={"steps": steps} if tool_calls else None,

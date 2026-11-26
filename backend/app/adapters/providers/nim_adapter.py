@@ -123,5 +123,6 @@ class NvidiaNimAdapter:
             structured_output=structured,
             finish_reason=choice.get("finish_reason", "stop"),
             input_tokens=int(usage.get("prompt_tokens", 0)),
+            cached_input_tokens=int((usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0)),
             output_tokens=int(usage.get("completion_tokens", 0)),
         )

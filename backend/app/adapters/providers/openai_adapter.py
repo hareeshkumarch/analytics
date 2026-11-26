@@ -138,6 +138,7 @@ class OpenAiResponsesAdapter:
             finish_reason="refusal" if refusal else data.get("status", "completed"),
             refusal_reason=refusal,
             input_tokens=int(usage.get("input_tokens", 0)),
+            cached_input_tokens=int((usage.get("input_tokens_details") or {}).get("cached_tokens", 0)),
             output_tokens=int(usage.get("output_tokens", 0)),
             continuation_state={"output": data.get("output", [])} if tool_calls else None,
             reasoning_tokens=int(usage.get("output_tokens_details", {}).get("reasoning_tokens", 0)),

@@ -31,7 +31,7 @@ class AnthropicMessagesAdapter:
         if model.capabilities.refusal_fallback:
             payload["fallbacks"] = "default"
         if system_text:
-            payload["system"] = system_text
+            payload["system"] = [{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}]
         if request.tools:
             payload["tools"] = [
                 {
@@ -138,6 +138,7 @@ class AnthropicMessagesAdapter:
             finish_reason=stop_reason,
             refusal_reason=refusal,
             input_tokens=int(usage.get("input_tokens", 0)),
+            cached_input_tokens=int(usage.get("cache_read_input_tokens") or 0),
             output_tokens=int(usage.get("output_tokens", 0)),
             continuation_state={"content": data.get("content", [])} if tool_calls else None,
         )

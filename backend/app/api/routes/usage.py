@@ -7,11 +7,12 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.application.ports.tools import summarize_tool_executions
+from app.application.prompts import ALL_TEMPLATES
 from app.bootstrap.container import AppContainer
 
 from app.api.support import RUN_PAGE_MAX
 from app.api.context import ApiContext
-from app.api.responses import ToolExecutionListOut, UsageOut
+from app.api.responses import ModelCallListOut, PromptTemplateListOut, ToolExecutionListOut, UsageOut
 
 logger = logging.getLogger(__name__)
 
@@ -65,5 +66,27 @@ def register(ctx: ApiContext) -> APIRouter:
             "run_id": run_id,
             "executions": [{**asdict(e), "created_at": e.created_at.isoformat()} for e in executions],
         }
+
+    @router.get(
+        "/api/v1/workspaces/{workspace_id}/runs/{run_id}/model-calls",
+        response_model=ModelCallListOut,
+        response_model_exclude_unset=True,
+    )
+    def list_model_calls(workspace_id: str, run_id: str) -> dict[str, Any]:
+        c: AppContainer = app.state.container
+        try:
+            run = app.state.repo_runs.get_run(run_id)
+            if not run or run.get("workspace_id") != workspace_id:
+                raise HTTPException(status_code=404, detail="Run not found in this workspace")
+            attempts = c.budget_ledger.list_run_attempts(run_id)
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to load model calls for run %s", run_id)
+            raise _db_unavailable("load model calls") from exc
+        keys = ("reservation_id", "role", "provider_id", "model_id", "prompt_id", "prompt_version", "settled", "reserved_tokens", "actual_tokens", "cached_input_tokens", "latency_ms")
+        return {"run_id": run_id, "calls": [{k: getattr(a, k) for k in keys} for a in attempts]}
+
+    @router.get("/api/v1/prompts", response_model=PromptTemplateListOut)
+    def list_prompt_templates() -> dict[str, Any]:
+        return {"templates": [{"template_id": t.template_id, "version": t.version} for t in ALL_TEMPLATES]}
 
     return router

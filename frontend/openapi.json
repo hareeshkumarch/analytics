@@ -516,6 +516,113 @@
         "title": "ImportForm",
         "type": "object"
       },
+      "ModelCallListOut": {
+        "additionalProperties": true,
+        "properties": {
+          "calls": {
+            "items": {
+              "$ref": "#/components/schemas/ModelCallOut"
+            },
+            "title": "Calls",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "calls"
+        ],
+        "title": "ModelCallListOut",
+        "type": "object"
+      },
+      "ModelCallOut": {
+        "additionalProperties": true,
+        "properties": {
+          "actual_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Tokens"
+          },
+          "cached_input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cached Input Tokens"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "prompt_id": {
+            "title": "Prompt Id",
+            "type": "string"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "provider_id": {
+            "title": "Provider Id",
+            "type": "string"
+          },
+          "reservation_id": {
+            "title": "Reservation Id",
+            "type": "string"
+          },
+          "reserved_tokens": {
+            "title": "Reserved Tokens",
+            "type": "integer"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "settled": {
+            "title": "Settled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "reservation_id",
+          "role",
+          "provider_id",
+          "model_id",
+          "prompt_id",
+          "prompt_version",
+          "settled",
+          "reserved_tokens",
+          "actual_tokens",
+          "cached_input_tokens",
+          "latency_ms"
+        ],
+        "title": "ModelCallOut",
+        "type": "object"
+      },
       "ModelStatusOut": {
         "additionalProperties": true,
         "properties": {
@@ -679,6 +786,42 @@
           "created_at"
         ],
         "title": "PinOut",
+        "type": "object"
+      },
+      "PromptTemplateListOut": {
+        "additionalProperties": true,
+        "properties": {
+          "templates": {
+            "items": {
+              "$ref": "#/components/schemas/PromptTemplateOut"
+            },
+            "title": "Templates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "templates"
+        ],
+        "title": "PromptTemplateListOut",
+        "type": "object"
+      },
+      "PromptTemplateOut": {
+        "additionalProperties": true,
+        "properties": {
+          "template_id": {
+            "title": "Template Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "template_id",
+          "version"
+        ],
+        "title": "PromptTemplateOut",
         "type": "object"
       },
       "ProviderId": {
@@ -1818,6 +1961,24 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/api/v1/prompts": {
+      "get": {
+        "operationId": "list_prompt_templates_api_v1_prompts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptTemplateListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Prompt Templates"
       }
     },
     "/api/v1/workspaces/{workspace_id}/connectors/discover": {
@@ -3003,6 +3164,54 @@
           }
         },
         "summary": "Get Run Evidence"
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/runs/{run_id}/model-calls": {
+      "get": {
+        "operationId": "list_model_calls_api_v1_workspaces__workspace_id__runs__run_id__model_calls_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelCallListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Model Calls"
       }
     },
     "/api/v1/workspaces/{workspace_id}/runs/{run_id}/tool-executions": {
