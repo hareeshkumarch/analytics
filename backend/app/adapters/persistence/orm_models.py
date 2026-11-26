@@ -13,6 +13,7 @@ from sqlalchemy import (
     UniqueConstraint,
     JSON,
 )
+from sqlalchemy import false as sa_false
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -175,6 +176,7 @@ class ToolExecutionRow(Base):
     duration_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     evidence_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    cache_hit: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_false(), nullable=False)
 
 
 class OutboxJobRow(Base):

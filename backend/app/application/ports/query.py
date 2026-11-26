@@ -29,6 +29,7 @@ class QueryResult:
     semantic_version_id: str
     artifact_id: str | None = None
     units: dict[str, str] = field(default_factory=dict)
+    cache_hit: bool = False
 
 
 class QueryCompiler(Protocol):

@@ -11,6 +11,7 @@ from app.domain.limits import DEFAULT_DATA_LIMITS
 
 DEFAULT_MEMORY_LIMIT = "1GB"
 DEFAULT_TIMEOUT_SECONDS = 15
+EXECUTOR_VERSION = "duckdb-1"
 
 
 class DuckDbQueryExecutor:

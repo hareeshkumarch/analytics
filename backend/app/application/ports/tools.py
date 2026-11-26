@@ -16,6 +16,7 @@ class ToolExecution:
     duration_ms: int
     evidence_id: str | None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    cache_hit: bool = False
 
 
 class ToolExecutionLedger(Protocol):
@@ -38,6 +39,7 @@ def summarize_tool_executions(executions: list[ToolExecution]) -> list[dict[str,
                 "invalid_calls": sum(r.error_code == "INVALID_ARGUMENT" for r in rows),
                 "duplicate_calls": sum(r.error_code == "DUPLICATE_FAILED_CALL" for r in rows),
                 "timeouts": sum(r.error_code == "TIMEOUT" for r in rows),
+                "cache_hits": sum(r.cache_hit for r in rows),
                 "avg_duration_ms": round(sum(r.duration_ms for r in rows) / len(rows)),
                 "calls_per_task": round(len(rows) / len(tasks), 2),
             }

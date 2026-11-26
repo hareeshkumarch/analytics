@@ -1451,6 +1451,11 @@
             "title": "Args Fingerprint",
             "type": "string"
           },
+          "cache_hit": {
+            "default": false,
+            "title": "Cache Hit",
+            "type": "boolean"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -1527,6 +1532,11 @@
         "properties": {
           "avg_duration_ms": {
             "title": "Avg Duration Ms",
+            "type": "integer"
+          },
+          "cache_hits": {
+            "default": 0,
+            "title": "Cache Hits",
             "type": "integer"
           },
           "calls": {

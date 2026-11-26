@@ -1,5 +1,6 @@
 import threading
 from collections import OrderedDict
+from dataclasses import replace
 from typing import Any
 
 import pyarrow as pa
@@ -13,7 +14,10 @@ from app.domain.limits import DEFAULT_GLOBAL_LIMITS
 from app.domain.timezone import DEFAULT_BUSINESS_TIMEZONE
 from app.domain.query_ir import QueryIR
 
-from app.adapters.query.duckdb_executor import DuckDbQueryExecutor
+from app.adapters.query.duckdb_executor import EXECUTOR_VERSION, DuckDbQueryExecutor
+from app.adapters.query.result_cache import SingleFlightCache
+
+SHARED_RESULT_CACHE: SingleFlightCache[QueryResult] = SingleFlightCache()
 
 
 def table_schemas(snapshot: dict[str, Any]) -> dict[str, TableSchema]:
@@ -45,10 +49,12 @@ class SnapshotQueryEngine:
         compiler: QueryCompiler,
         executor: DuckDbQueryExecutor | None = None,
         max_cached_snapshots: int = 4,
+        result_cache: SingleFlightCache[QueryResult] | None = None,
     ) -> None:
         self._artifacts = artifacts
         self._compiler = compiler
         self._executor = executor or DuckDbQueryExecutor()
+        self._results = SHARED_RESULT_CACHE if result_cache is None else result_cache
         self._cache: OrderedDict[str, dict[str, pa.Table]] = OrderedDict()
         self._max_cached = max_cached_snapshots
         self._lock = threading.Lock()
@@ -139,13 +145,33 @@ class SnapshotQueryEngine:
         if not schemas:
             raise QueryValidationError("This snapshot has no table schema to query")
         compiled = self._compiler.compile(ir, schemas, max_rows)
-        tables = self._load_tables(snapshot)
-        result = self._executor.execute_tables(
-            compiled,
-            tables,
-            snapshot_id=str(snapshot["snapshot_id"]),
-            semantic_version_id=semantic_version_id,
-            timeout_seconds=timeout_seconds,
-            business_timezone=business_timezone,
+        snapshot_id = str(snapshot["snapshot_id"])
+        key = (
+            snapshot_id,
+            semantic_version_id,
+            business_timezone,
+            compiled.compiler_version,
+            EXECUTOR_VERSION,
+            compiled.sql,
+            tuple(repr(p) for p in compiled.parameters),
         )
+
+        def execute() -> QueryResult:
+            return self._executor.execute_tables(
+                compiled,
+                self._load_tables(snapshot),
+                snapshot_id=snapshot_id,
+                semantic_version_id=semantic_version_id,
+                timeout_seconds=timeout_seconds,
+                business_timezone=business_timezone,
+            )
+
+        result, hit = self._results.get_or_compute(key, execute)
+        if hit:
+            result = replace(result, query_ir_hash=compiled.query_ir_hash, execution_ms=0, cache_hit=True)
         return result, compiled.sql
+
+    def forget_snapshot(self, snapshot_id: str) -> int:
+        with self._lock:
+            self._cache.pop(snapshot_id, None)
+        return self._results.invalidate(lambda key: isinstance(key, tuple) and key[0] == snapshot_id)

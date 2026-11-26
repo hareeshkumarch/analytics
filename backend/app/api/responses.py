@@ -189,6 +189,7 @@ class ToolUsageOut(ApiResponse):
     invalid_calls: int
     duplicate_calls: int
     timeouts: int
+    cache_hits: int = 0
     avg_duration_ms: int
     calls_per_task: float
 
@@ -213,6 +214,7 @@ class ToolExecutionOut(ApiResponse):
     duration_ms: int
     evidence_id: str | None
     created_at: str
+    cache_hit: bool = False
 
 
 class ToolExecutionListOut(ApiResponse):

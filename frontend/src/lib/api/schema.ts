@@ -1048,6 +1048,11 @@ export interface components {
         ToolExecutionOut: {
             /** Args Fingerprint */
             args_fingerprint: string;
+            /**
+             * Cache Hit
+             * @default false
+             */
+            cache_hit?: boolean;
             /** Created At */
             created_at: string;
             /** Duration Ms */
@@ -1075,6 +1080,11 @@ export interface components {
         ToolUsageOut: {
             /** Avg Duration Ms */
             avg_duration_ms: number;
+            /**
+             * Cache Hits
+             * @default 0
+             */
+            cache_hits?: number;
             /** Calls */
             calls: number;
             /** Calls Per Task */

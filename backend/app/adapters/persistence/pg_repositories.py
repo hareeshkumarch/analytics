@@ -1338,6 +1338,7 @@ class PgToolExecutionLedger:
                 duration_ms=r.duration_ms,
                 evidence_id=r.evidence_id,
                 created_at=r.created_at,
+                cache_hit=r.cache_hit,
             )
             for r in rows
         ]

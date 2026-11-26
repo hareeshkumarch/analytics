@@ -700,6 +700,7 @@ class AnalyticsToolbox:
             "semantic_version_id": semantic_version_id or None,
             "metric_ids": matched_metric_ids(ir, self.semantics),
             "business_timezone": self.business_timezone,
+            "cache_hit": result.cache_hit,
         }
         shown = result.rows[: min(self.max_rows_to_model, spec.max_inline_rows)]
         evidence["columns"] = list(result.columns)
@@ -746,6 +747,7 @@ class AnalyticsToolbox:
                 "tool": RUN_QUERY_TOOL.name,
                 "ok": True,
                 "status": status,
+                "cache_hit": result.cache_hit,
                 "operation": ir.operation,
                 "row_count": result.row_count,
                 "evidence_id": evidence_id,

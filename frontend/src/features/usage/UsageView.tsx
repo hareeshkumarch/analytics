@@ -205,7 +205,7 @@ function ToolUsage({ tools, loading }: { tools: ToolUsageOut[]; loading: boolean
         <h2 id="usage-tools" className="font-display text-lg font-semibold tracking-[-0.01em]">
           Tool calls
         </h2>
-        <p className="mt-0.5 text-xs text-secondary">Every data tool the agents called, with how often a call was invalid, repeated or timed out.</p>
+        <p className="mt-0.5 text-xs text-secondary">Every data tool the agents called, with how often a call was invalid, repeated, timed out or answered from the query cache.</p>
       </div>
       {tools.length === 0 ? (
         <EmptyState title={loading ? "Loading…" : "No tool calls in this window"} />
@@ -221,6 +221,7 @@ function ToolUsage({ tools, loading }: { tools: ToolUsageOut[]; loading: boolean
                 <th className="px-3.5 py-2.5 text-right font-medium">Invalid</th>
                 <th className="px-3.5 py-2.5 text-right font-medium">Repeated</th>
                 <th className="px-3.5 py-2.5 text-right font-medium">Timed out</th>
+                <th className="px-3.5 py-2.5 text-right font-medium">Cached</th>
                 <th className="px-3.5 py-2.5 text-right font-medium">Avg time</th>
               </tr>
             </thead>
@@ -234,6 +235,7 @@ function ToolUsage({ tools, loading }: { tools: ToolUsageOut[]; loading: boolean
                   <td className="px-3.5 py-3 text-right tabular-nums">{t.invalid_calls}</td>
                   <td className="px-3.5 py-3 text-right tabular-nums">{t.duplicate_calls}</td>
                   <td className="px-3.5 py-3 text-right tabular-nums">{t.timeouts}</td>
+                  <td className="px-3.5 py-3 text-right tabular-nums">{t.cache_hits ?? 0}</td>
                   <td className="px-3.5 py-3 text-right tabular-nums text-body">{t.avg_duration_ms.toLocaleString()} ms</td>
                 </tr>
               ))}

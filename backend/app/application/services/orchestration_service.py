@@ -685,6 +685,7 @@ class InvestigationOrchestrator:
             error_code=entry.get("code"),
             duration_ms=int(entry.get("duration_ms") or 0),
             evidence_id=(evidence or {}).get("evidence_id") or entry.get("evidence_id"),
+            cache_hit=bool(entry.get("cache_hit")),
         )
         try:
             self._container.tool_executions.record(execution)

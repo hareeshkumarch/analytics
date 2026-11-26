@@ -173,6 +173,7 @@ def register(ctx: ApiContext) -> APIRouter:
         app.state.repo_quota.release_workspace_bytes(workspace_id, int(removed.get("total_normalized_bytes") or 0))
         app.state.snapshots.pop(snapshot_id, None)
         app.state.semantics.pop(snapshot_id, None)
+        _get_query_engine().forget_snapshot(snapshot_id)
         return {"snapshot_id": snapshot_id, "deleted": True}
 
     ctx.approve_semantics = approve_semantics
