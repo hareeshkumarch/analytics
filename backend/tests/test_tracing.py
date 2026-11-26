@@ -5,6 +5,7 @@ import unittest
 
 from fastapi.testclient import TestClient
 from opentelemetry import trace
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from app.api.main import create_app
@@ -17,6 +18,13 @@ from app.domain.providers import ModelProfile, ProviderId, ProviderProfile
 EXPORTER = InMemorySpanExporter()
 
 
+def attach_exporter(exporter: InMemorySpanExporter) -> bool:
+    if tracing._provider is None:
+        return tracing.configure_tracing("ledgerline-test", exporter=exporter)
+    tracing._provider.add_span_processor(SimpleSpanProcessor(exporter))
+    return True
+
+
 class _Gateway:
     provider_id = ProviderId.OPENAI
 
@@ -27,7 +35,7 @@ class _Gateway:
 class TestTracing(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        if not tracing.configure_tracing("ledgerline-test", exporter=EXPORTER):
+        if not attach_exporter(EXPORTER):
             raise unittest.SkipTest("tracing could not be configured")
 
     def _spans(self):
