@@ -522,7 +522,7 @@ export const CONNECTORS: ConnectorDef[] = [
     category: "databases",
     authSummary: "Database username and password",
     note: "Use a read-only database user. The password is sent for this import and never stored.",
-    fields: mysqlFields({ hostPlaceholder: "db.internal.example", tls: "disable" }),
+    fields: mysqlFields({ hostPlaceholder: "db.internal.example", tls: "require" }),
     keywords: ["mysql", "sql"],
   },
   {
@@ -533,7 +533,7 @@ export const CONNECTORS: ConnectorDef[] = [
     category: "databases",
     authSummary: "Database username and password",
     basedOn: "MySQL",
-    fields: mysqlFields({ hostPlaceholder: "mariadb.internal.example", tls: "disable" }),
+    fields: mysqlFields({ hostPlaceholder: "mariadb.internal.example", tls: "require" }),
     keywords: ["mariadb", "mysql"],
   },
   {

@@ -26,7 +26,7 @@ describe("toPayload", () => {
     const payload = toPayload(def, { ...initialValues(def), host: " db.example.com ", database: "shop", username: "u", password: "p" });
     expect(payload.family).toBe(def.family);
     expect(payload.credentials).toEqual({ username: "u", password: "p" });
-    expect(payload.config).toMatchObject({ host: "db.example.com", database: "shop", port: 3306 });
+    expect(payload.config).toMatchObject({ host: "db.example.com", database: "shop", port: 3306, tls_mode: "require" });
     expect(JSON.stringify(payload.config)).not.toContain('"p"');
   });
 });

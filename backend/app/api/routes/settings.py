@@ -22,6 +22,8 @@ from app.domain.providers import AgentRole, ProviderId, RoutingPolicy
 from app.api.context import ApiContext
 from app.api.responses import ProvidersOut, RoutingPolicyOut
 
+PROVIDER_PROBE_COOLDOWN_SECONDS = 10.0
+
 logger = logging.getLogger(__name__)
 
 
@@ -73,9 +75,14 @@ def register(ctx: ApiContext) -> APIRouter:
 
     @router.post("/api/v1/workspaces/{workspace_id}/providers/{provider_id}/test")
     async def test_provider_connection(workspace_id: str, provider_id: str) -> dict[str, Any]:
-        from app.domain.providers import ProviderId
         c: AppContainer = app.state.container
-        pid = ProviderId(provider_id)
+        try:
+            pid = ProviderId(provider_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=f"Unknown provider: {provider_id}") from exc
+        probed = app.state.provider_probes
+        if time.monotonic() - probed.get((workspace_id, pid), -PROVIDER_PROBE_COOLDOWN_SECONDS) < PROVIDER_PROBE_COOLDOWN_SECONDS:
+            raise HTTPException(status_code=429, detail="This provider was tested a moment ago. Try again in a few seconds.")
         api_key = c.routing_service._api_keys.get(pid, "")
         if not api_key:
             return {
@@ -88,6 +95,7 @@ def register(ctx: ApiContext) -> APIRouter:
             return {"provider_id": pid.value, "status": "no_enabled_model"}
 
         t0 = time.monotonic()
+        probed[(workspace_id, pid)] = t0
         req = ModelRequest(
             request_id=f"probe_{uuid.uuid4().hex[:8]}",
             run_id="synthetic_probe",

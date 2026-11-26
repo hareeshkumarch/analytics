@@ -84,6 +84,45 @@ class TestRoutingRepairAndEndpoints(unittest.TestCase):
         self.assertEqual(resp.structured_output, {"answer": "fixed"})
         self.assertEqual(calls["n"], 2)
 
+    def test_non_retryable_error_falls_back_to_the_next_model(self) -> None:
+        import json as _json
+
+        seen: list[str] = []
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            model = _json.loads(req.content)["model"]
+            seen.append(model)
+            if model == "gpt-a":
+                return httpx.Response(400, json={"error": {"message": "model not available for this key"}})
+            return httpx.Response(200, json={"status": "completed", "output": [{"type": "message", "content": [{"type": "output_text", "text": "ok"}]}], "usage": {"input_tokens": 5, "output_tokens": 2}})
+
+        reg = ProviderRegistry()
+        reg.register(OpenAiResponsesAdapter(transport=httpx.MockTransport(handler)))
+        caps = ModelCapabilities(True, True, True, True, False)
+        models = {
+            name: ModelProfile(name, ProviderId.OPENAI, ApiProfile.OPENAI_RESPONSES, (AgentRole.PLANNER,), 128000, 4096, caps, Decimal("1"), Decimal("1"), "2026-11-17")
+            for name in ("gpt-a", "gpt-b")
+        }
+        ledger = AtomicBudgetLedger()
+        ledger.configure_run("run1", max_attempts=6)
+        routing = RoutingService(
+            providers=reg,
+            provider_profiles={ProviderId.OPENAI: ProviderProfile(ProviderId.OPENAI, ApiProfile.OPENAI_RESPONSES, "oa", "https://api.openai.com/v1")},
+            model_profiles=models,
+            circuit_breakers=CircuitBreakerManager(SystemClock()),
+            budget_ledger=ledger,
+            api_keys={ProviderId.OPENAI: "sk-test"},
+            semaphores=CredentialSemaphorePool(),
+        )
+        req = ModelRequest("r1", "run1", AgentRole.PLANNER, "gpt-a", ({"role": "user", "content": "hi"},))
+        with_fallback = RoutingPolicy(1, RoutingPreset.BALANCED, True, {AgentRole.PLANNER: ("gpt-a", "gpt-b")}, (ProviderId.OPENAI,))
+        self.assertEqual(routing.execute_step(request=req, policy=with_fallback, estimated_input_tokens=50).text, "ok")
+        self.assertEqual(seen, ["gpt-a", "gpt-b"])
+        without = RoutingPolicy(1, RoutingPreset.BALANCED, False, {AgentRole.PLANNER: ("gpt-a", "gpt-b")}, (ProviderId.OPENAI,))
+        with self.assertRaises(Exception):
+            routing.execute_step(request=req, policy=without, estimated_input_tokens=50)
+        self.assertEqual(seen, ["gpt-a", "gpt-b", "gpt-a"])
+
     def test_provider_test_routing_version_and_clarify_endpoints(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             c = build_container(artifact_root=td)
@@ -94,6 +133,11 @@ class TestRoutingRepairAndEndpoints(unittest.TestCase):
             r_test = client.post("/api/v1/workspaces/ws1/providers/openai/test")
             self.assertEqual(r_test.status_code, 200)
             self.assertEqual(r_test.json()["status"], "setup_required")
+            self.assertEqual(client.post("/api/v1/workspaces/ws1/providers/opnai/test").status_code, 404)
+            import time as _time
+
+            app.state.provider_probes[("ws1", ProviderId.OPENAI)] = _time.monotonic()
+            self.assertEqual(client.post("/api/v1/workspaces/ws1/providers/openai/test").status_code, 429)
 
             r_bad_route = client.put("/api/v1/workspaces/ws1/routing", json={"expected_version": 99, "preset": "cost"})
             self.assertEqual(r_bad_route.status_code, 409)

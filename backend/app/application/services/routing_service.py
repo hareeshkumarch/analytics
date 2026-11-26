@@ -400,10 +400,7 @@ class RoutingService:
                         continue
                     if exc.retryable:
                         self._circuits.record_transient_failure(cb_key)
-                        break
-                    self._semaphores.release(sem_key)
-                    self._circuits.release_probe(cb_key)
-                    raise
+                    break
                 except Exception as exc:  # noqa: BLE001
                     last_error = exc
                     self._ledger.release_unresolved(reservation.reservation_id, str(exc))
