@@ -28,6 +28,8 @@ Top priorities from 12:
 | [10](10-solid-refactors.md) | Open: structural refactors, notably splitting `main.py` (12 I8) | All |
 | [11](11-open-fixes-and-audit.md) | Audit history and status table | All |
 | [12](12-open-issues-reasons-and-fixes.md) | **Current list of fixes and improvements** | All |
+| [13](13-deep-agent-guidelines-gap-analysis.md) | Gap analysis against the Deep Agent Engineering Guidelines v2 (tracker #15) | All |
+| [14](14-failure-matrix.md) | Failure-mode test matrix for guidelines §34 (#28) | Tests |
 
 ## Verification still required
 

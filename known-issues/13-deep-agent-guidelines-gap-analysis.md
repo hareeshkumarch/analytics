@@ -1,6 +1,6 @@
 # 13 - Gap analysis against the Deep Agent Engineering Guidelines v2
 
-Checked 2026-11-25 against `main` @ `da9b4a9`; updated 2026-11-26 @ `52671b1`. Tracker: hareeshkumarch/analytics#15. Each gap links to its issue.
+Checked 2026-11-25 against `main` @ `da9b4a9`; updated 2026-11-26 @ `5fc2232`. Tracker: hareeshkumarch/analytics#15. Each gap links to its issue.
 
 **Status:** Met = enforced in code and covered by tests. Partial = some of it. Gap = missing. N/A = does not apply to this product today (read-only analytics: agents have no write tools, no MCP, no code execution, no long-term memory), with the reason.
 
@@ -49,7 +49,7 @@ Checked 2026-11-25 against `main` @ `da9b4a9`; updated 2026-11-26 @ `52671b1`. T
 | 21.3 | Pools and limits | Partial | SQLAlchemy pools, `lock_timeout` 5 s, `statement_timeout` 30 s. Pool-exhaustion tests: #28 |
 | 21.4 | Tenant isolation / RLS | Gap (deferred) | #21 and the authentication work. |
 | 22.1–22.4 | Progressive schema discovery, typed intent, SQL gates, performance | Met | Staged `inspect_schema`, typed IR only, no free SQL, DuckDB external access off. |
-| 22.5 | Analytical correctness traps | Partial | Decimals, half-open compare periods, truncation flags, reconciliation aggregates before joining. Timezone and lineage: #22 |
+| 22.5 | Analytical correctness traps | Met | Decimals, half-open compare periods in the workspace business time zone, truncation flags, reconciliation aggregates before joining, metric lineage on evidence, figures checked against cited evidence. |
 | 22.6 | Typed writes only | N/A | No write tools. |
 | 23.1 | Cache levels | Gap | #23 |
 | 23.2 | Artifact lifecycle | Partial | Streamed staged publish with sha256, private directories, failed imports cleaned, uploads swept after 24 h, exports expire after `EXPORT_RETENTION_DAYS`. Export metadata/orphans: #31 |
@@ -62,18 +62,18 @@ Checked 2026-11-25 against `main` @ `da9b4a9`; updated 2026-11-26 @ `52671b1`. T
 | 28.1 | Task/run state machine and outcomes | Partial | Run outcomes done. Task rows: #32 |
 | 28.2–28.3 | Scheduler, incremental replanning | Partial | #32 |
 | 28.4 | Durable progress events, replay | Met | Sequenced events, replay, reconnect, stream cap in the browser. `budget.warning`: #26 |
-| 29 | Verification and evidence | Partial | Evidence reviewer in deep mode, deterministic figure/evidence check, per-criterion status. Lineage: #22 |
+| 29 | Verification and evidence | Met | Evidence reviewer in deep mode, deterministic figure/evidence check, per-criterion status, metric lineage on evidence. |
 | 30 | Security, sandboxing, governance | Partial | No code execution; credentials encrypted; egress policy; log redaction; adversarial tests. Auth: deferred |
 | 31 | Observability, SLOs, incidents | Partial | #30 |
 | 32 | Evaluation and gates | Gap | #27 |
-| 33 | Deployment and CI | Partial | CI runs lint, types, unit, Playwright, accessibility, OpenAPI contract; compose verified. Security scans/SBOM and readiness checks: #30 |
-| 34 | Failure-mode matrix | Partial | #28 |
+| 33 | Deployment and CI | Partial | CI runs lint, types, unit, Playwright, accessibility, OpenAPI contract, and applies/rolls back every migration on PostgreSQL 16 with PostgreSQL-only tests; compose verified. Security scans/SBOM and readiness checks: #30 |
+| 34 | Failure-mode matrix | Partial | Every row mapped in [14-failure-matrix.md](14-failure-matrix.md): 69 covered, 18 partial, 5 open (#21, #23, #27, #30), 14 N/A. |
 | 35 | Prompt library | Partial | Planner/specialist/reviewer/composer prompts exist; versioned templates: #25 |
 | 36 | Release checklist | — | Tracked by this file and #15. |
 
 ## Priority order
 
 1. **P0** #16 outbox for Celery runs (done).
-2. **P1** #17 fencing (done), #18 tool envelope and error codes (done), #19 tool ledger (done), #20 criteria-based completion (done), #21 workspace scoping, #22 analytical correctness, #28 failure-mode tests, #29 security tests (done).
+2. **P1** #17 fencing (done), #18 tool envelope and error codes (done), #19 tool ledger (done), #20 criteria-based completion (done), #21 workspace scoping, #22 analytical correctness (done), #28 failure-mode tests (done), #29 security tests (done).
 3. **P2** #23 query cache, #24 execution-path router, #25 prompt versioning and context compiler, #26 budget profiles, #31 artifact lifecycle.
 4. **P3** #27 evaluation harness, #30 operations, #32 durable task records and incremental replanning.
