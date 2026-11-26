@@ -2089,8 +2089,8 @@ export interface operations {
     };
     preview_snapshot_api_v1_workspaces__workspace_id__snapshots__snapshot_id__preview_get: {
         parameters: {
-            query: {
-                table: string;
+            query?: {
+                table?: string | null;
                 limit?: number;
             };
             header?: never;
@@ -2126,8 +2126,8 @@ export interface operations {
     };
     profile_snapshot_api_v1_workspaces__workspace_id__snapshots__snapshot_id__profile_get: {
         parameters: {
-            query: {
-                table: string;
+            query?: {
+                table?: string | null;
             };
             header?: never;
             path: {

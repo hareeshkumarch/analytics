@@ -24,6 +24,15 @@ from app.api.responses import SnapshotListOut
 logger = logging.getLogger(__name__)
 
 
+def _table_or_first(snap: dict[str, Any], table: str | None) -> str:
+    if table:
+        return table
+    tables = snap.get("tables") or []
+    if not tables:
+        raise HTTPException(status_code=404, detail="This dataset has no tables")
+    return str(tables[0])
+
+
 def register(ctx: ApiContext) -> APIRouter:
     router = APIRouter()
     app = ctx.app
@@ -54,8 +63,9 @@ def register(ctx: ApiContext) -> APIRouter:
         return {"snapshots": items}
 
     @router.get("/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}/profile")
-    def profile_snapshot(workspace_id: str, snapshot_id: str, table: str) -> dict[str, Any]:
+    def profile_snapshot(workspace_id: str, snapshot_id: str, table: str | None = None) -> dict[str, Any]:
         snap = _get_workspace_snapshot(workspace_id, snapshot_id)
+        table = _table_or_first(snap, table)
         arrow_table = _get_query_engine().load_table(snap, table)
         profiles = profile_arrow_table(arrow_table, is_sampled=bool(snap.get("is_sampled", False)))
         return {
@@ -79,10 +89,11 @@ def register(ctx: ApiContext) -> APIRouter:
     def preview_snapshot(
         workspace_id: str,
         snapshot_id: str,
-        table: str,
+        table: str | None = None,
         limit: int = Query(default=100, ge=1, le=DEFAULT_DATA_LIMITS.max_preview_rows),
     ) -> dict[str, Any]:
         snap = _get_workspace_snapshot(workspace_id, snapshot_id)
+        table = _table_or_first(snap, table)
         preview = _get_query_engine().preview(snap, table, limit)
         return {"snapshot_id": snapshot_id, "table": table, "limit": limit, **preview}
 

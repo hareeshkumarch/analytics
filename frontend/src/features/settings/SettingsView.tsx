@@ -102,6 +102,13 @@ export function SettingsView() {
     });
   }
 
+  function updateRoutingChoice(patch: Parameters<typeof routing.update>[0]) {
+    setRoutingMsg(null);
+    routing.update(patch, {
+      onError: (err) => setRoutingMsg({ text: errorMessage(err, "Couldn't save routing."), hint: errorHint(err), ok: false }),
+    });
+  }
+
   async function handleSaveKey(e: React.FormEvent) {
     e.preventDefault();
     if (!apiKey.trim() || !provider) return;
@@ -238,7 +245,7 @@ export function SettingsView() {
             placeholder={routing.isLoading ? "Loading…" : "Unavailable"}
             options={PRESET_OPTIONS}
             disabled={!routing.data || routing.updating}
-            onChange={(v) => routing.update({ preset: v as RoutingPreset })}
+            onChange={(v) => updateRoutingChoice({ preset: v as RoutingPreset })}
           />
           <RichSelect
             label="Fallback"
@@ -246,7 +253,7 @@ export function SettingsView() {
             placeholder={routing.isLoading ? "Loading…" : "Unavailable"}
             options={FALLBACK_OPTIONS}
             disabled={!routing.data || routing.updating}
-            onChange={(v) => routing.update({ fallback_enabled: v === "on" })}
+            onChange={(v) => updateRoutingChoice({ fallback_enabled: v === "on" })}
           />
 
           <form

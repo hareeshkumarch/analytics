@@ -3105,10 +3105,17 @@
           {
             "in": "query",
             "name": "table",
-            "required": true,
+            "required": false,
             "schema": {
-              "title": "Table",
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Table"
             }
           },
           {
@@ -3176,10 +3183,17 @@
           {
             "in": "query",
             "name": "table",
-            "required": true,
+            "required": false,
             "schema": {
-              "title": "Table",
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Table"
             }
           }
         ],

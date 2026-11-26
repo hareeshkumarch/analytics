@@ -12,6 +12,7 @@ import { RichSelect, RichOption } from "@/components/RichSelect";
 import { Badge, EmptyState, FilterChips, Notice, SearchInput, Skeleton, Spinner, btn, cardCls, cx } from "@/components/ui";
 import { SnapshotSummary, datasetLabel, relativeTime, useSnapshots, useWorkspace } from "@/lib/workspace";
 import type { PinOut, RunOut, UpdatePinRequest } from "@/lib/api/types";
+import { stripEvidenceIds } from "@/lib/text";
 
 type PinItem = PinOut;
 
@@ -33,8 +34,7 @@ const SORT_OPTIONS: RichOption[] = [
 /** Plain-text excerpt of an answer: no markdown syntax, no evidence ids. */
 function excerpt(markdown: string | undefined, max = 240): string {
   if (!markdown) return "";
-  const text = markdown
-    .replace(/\[ev_[0-9a-f]{12}(?:\s*,\s*ev_[0-9a-f]{12})*\]/g, "")
+  const text = stripEvidenceIds(markdown)
     .replace(/^#{1,6}\s+/gm, "")
     .replace(/^\s*[-*+]\s+/gm, "")
     .replace(/[*_`>|]/g, "")

@@ -29,6 +29,7 @@ import { ExportMenu } from "@/features/ask/ExportMenu";
 import { SampleDataButton } from "@/components/SampleDataButton";
 import { SAMPLE_QUESTIONS, isSampleDataset } from "@/lib/sample";
 import type { CreatePinRequest, RunOut, RunPageOut } from "@/lib/api/types";
+import { stripEvidenceIds } from "@/lib/text";
 
 interface Session {
   id: string;
@@ -172,6 +173,14 @@ function statusLabel(status: string): string {
   if (status === "running") return "Working";
   if (status === "awaiting_input") return "Needs your input";
   return humanize(status);
+}
+
+const SUMMARY_FIELDS = ["status", "task_id", "tool", "provider_id", "model_id", "revision", "row_count", "truncated", "code"];
+
+function eventSummary(payload: Record<string, unknown>): string {
+  return SUMMARY_FIELDS.filter((k) => ["string", "number", "boolean"].includes(typeof payload[k]))
+    .map((k) => `${k}=${String(payload[k])}`)
+    .join(" ");
 }
 
 function taskName(taskId: string): string {
@@ -668,7 +677,7 @@ export function AskView() {
   async function copyAnswer() {
     if (!active?.answer) return;
     try {
-      await navigator.clipboard.writeText(active.answer);
+      await navigator.clipboard.writeText(stripEvidenceIds(active.answer));
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -1165,7 +1174,7 @@ export function AskView() {
                           <div key={evt.event_id} className="flex gap-2.5 bg-panel px-2.5 py-[7px] font-mono text-[11.5px] leading-relaxed">
                             <span className="shrink-0 text-secondary">#{evt.sequence}</span>
                             <span className="shrink-0 text-ink">{evt.type}</span>
-                            <span className="min-w-0 break-all text-secondary">{JSON.stringify(evt.payload)}</span>
+                            <span className="min-w-0 break-all text-secondary">{eventSummary(evt.payload)}</span>
                           </div>
                         ))}
                       </div>
