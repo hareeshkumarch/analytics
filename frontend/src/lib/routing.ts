@@ -13,7 +13,7 @@ export const PRESET_OPTIONS: RichOption[] = [
   { value: "balanced", label: "Balanced", sublabel: "Default role-ordered routes", badge: "Default" },
   { value: "cost", label: "Cost-oriented", sublabel: "Ranks eligible models by $/1M tokens", badge: "Cost" },
   { value: "latency", label: "Latency-oriented", sublabel: "Prefers the fastest measured response", badge: "Fast" },
-  { value: "quality", label: "Quality-oriented", sublabel: "Prefers frontier reasoning models", badge: "Quality" },
+  { value: "quality", label: "Quality-oriented", sublabel: "Prefers reasoning models with the largest context window", badge: "Quality" },
 ];
 
 export function useRoutingPolicy(workspaceId: string) {

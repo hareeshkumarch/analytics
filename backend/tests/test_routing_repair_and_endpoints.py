@@ -123,6 +123,40 @@ class TestRoutingRepairAndEndpoints(unittest.TestCase):
             routing.execute_step(request=req, policy=without, estimated_input_tokens=50)
         self.assertEqual(seen, ["gpt-a", "gpt-b", "gpt-a"])
 
+    def test_latency_and_quality_presets_order_candidates(self) -> None:
+        def model(name: str, reasoning: bool, context: int) -> ModelProfile:
+            caps = ModelCapabilities(True, True, True, True, reasoning)
+            return ModelProfile(name, ProviderId.OPENAI, ApiProfile.OPENAI_RESPONSES, (AgentRole.PLANNER,), context, 4096, caps, Decimal("1"), Decimal("1"), "2026-11-17")
+
+        models = {m.model_id: m for m in (model("small", False, 32000), model("big", False, 200000), model("thinker", True, 128000))}
+        routing = RoutingService(
+            providers=ProviderRegistry(),
+            provider_profiles={ProviderId.OPENAI: ProviderProfile(ProviderId.OPENAI, ApiProfile.OPENAI_RESPONSES, "oa", "https://api.openai.com/v1")},
+            model_profiles=models,
+            circuit_breakers=CircuitBreakerManager(SystemClock()),
+            budget_ledger=AtomicBudgetLedger(),
+            api_keys={ProviderId.OPENAI: "sk-test"},
+        )
+        routes = {AgentRole.PLANNER: ("small", "big", "thinker")}
+
+        def order(preset: RoutingPreset) -> list[str]:
+            policy = RoutingPolicy(1, preset, True, routes, (ProviderId.OPENAI,))
+            picked = routing.select_candidates(
+                role=AgentRole.PLANNER, policy=policy, requires_structured=False, requires_tools=False,
+                requires_streaming=False, estimated_input_tokens=100,
+            )
+            return [m.model_id for m in picked]
+
+        self.assertEqual(order(RoutingPreset.BALANCED), ["small", "big", "thinker"])
+        self.assertEqual(order(RoutingPreset.QUALITY), ["thinker", "big", "small"])
+        self.assertEqual(order(RoutingPreset.LATENCY), ["small", "big", "thinker"])
+        routing.record_latency("thinker", 300)
+        routing.record_latency("big", 900)
+        self.assertEqual(order(RoutingPreset.LATENCY), ["thinker", "big", "small"])
+        for _ in range(10):
+            routing.record_latency("thinker", 5000)
+        self.assertEqual(order(RoutingPreset.LATENCY), ["big", "thinker", "small"])
+
     def test_provider_test_routing_version_and_clarify_endpoints(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             c = build_container(artifact_root=td)

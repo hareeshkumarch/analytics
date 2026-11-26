@@ -5,7 +5,7 @@ from typing import Any, Callable, Iterable
 import pyarrow as pa
 
 from app.adapters.connectors.destination_policy import DestinationPolicy, validate_and_resolve_host
-from app.adapters.connectors.tls import ca_pem_from
+from app.adapters.connectors.tls import ca_pem_from, tls_mode_for
 from app.adapters.parsers.registry import serialize_arrow_ipc_checked
 from app.application.ports.clock import Clock
 from app.application.ports.connectors import (
@@ -33,7 +33,7 @@ MYSQL_TLS_MODES = ("disable", "require", "verify-full")
 
 
 def _tls_context(mode: str, ca_pem: str | None = None) -> ssl.SSLContext | None:
-    """TLS for managed MySQL/MariaDB (Azure, Cloud SQL, RDS). Unset keeps the previous plaintext behaviour."""
+    """TLS for managed MySQL/MariaDB (Azure, Cloud SQL, RDS); disable is only accepted for local hosts."""
     if mode in ("", "disable"):
         return None
     if mode not in MYSQL_TLS_MODES:
@@ -70,7 +70,10 @@ class MySqlConnector:
         host = str(config.get("host", ""))
         port = int(config.get("port", 3306))
         database = str(config.get("database", ""))
-        validate_and_resolve_host(host, port, self._policy)
+        host_ip = validate_and_resolve_host(host, port, self._policy)
+        tls_mode = tls_mode_for(
+            host_ip, str(config.get("tls_mode", "") or ""), plaintext_modes=("disable",), local_default="disable"
+        )
 
         user = credentials.get("username", "")
         password = credentials.get("password", "")
@@ -78,7 +81,7 @@ class MySqlConnector:
             raise ValidationError("MySQL connector requires host, database, and read-only credentials")
 
         try:
-            tls = _tls_context(str(config.get("tls_mode", "") or ""), ca_pem_from(credentials))
+            tls = _tls_context(tls_mode, ca_pem_from(credentials))
         except ssl.SSLError as exc:
             raise ValidationError("The CA certificate could not be read.", remediation="Paste the full PEM certificate.") from exc
         return pymysql.connect(

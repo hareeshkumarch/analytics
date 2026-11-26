@@ -4,7 +4,7 @@ from typing import Any, Callable, Iterable
 import pyarrow as pa
 
 from app.adapters.connectors.destination_policy import DestinationPolicy, validate_and_resolve_host
-from app.adapters.connectors.tls import ca_file, ca_pem_from
+from app.adapters.connectors.tls import ca_file, ca_pem_from, tls_mode_for
 from app.adapters.parsers.registry import serialize_arrow_ipc_checked
 from app.application.ports.clock import Clock
 from app.application.ports.connectors import (
@@ -54,8 +54,10 @@ class PostgresConnector:
         host = str(config.get("host", ""))
         port = int(config.get("port", 5432))
         dbname = str(config.get("database", ""))
-        sslmode = str(config.get("sslmode", "prefer"))
-        validate_and_resolve_host(host, port, self._policy)
+        host_ip = validate_and_resolve_host(host, port, self._policy)
+        sslmode = tls_mode_for(
+            host_ip, str(config.get("sslmode", "") or ""), plaintext_modes=("disable", "allow", "prefer"), local_default="prefer"
+        )
 
         user = credentials.get("username", "")
         password = credentials.get("password", "")

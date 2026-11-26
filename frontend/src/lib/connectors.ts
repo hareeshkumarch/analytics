@@ -115,7 +115,7 @@ const SSL_OPTIONS: RichOption[] = [
   { value: "require", label: "require", sublabel: "Encrypt; don't verify the certificate" },
   { value: "verify-full", label: "verify-full", sublabel: "Encrypt and verify host + certificate" },
   { value: "verify-ca", label: "verify-ca", sublabel: "Encrypt and verify the certificate" },
-  { value: "prefer", label: "prefer", sublabel: "Encrypt if the server supports it" },
+  { value: "prefer", label: "prefer", sublabel: "Encrypt if the server supports it: local databases only" },
   { value: "disable", label: "disable", sublabel: "No TLS: local databases only" },
 ];
 

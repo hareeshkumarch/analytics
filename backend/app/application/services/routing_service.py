@@ -67,6 +67,8 @@ def routing_policy_from_saved(saved: dict[str, Any] | None, default: RoutingPoli
     )
 
 
+LATENCY_EWMA_WEIGHT = 0.3
+
 class CredentialSemaphorePool:
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -194,6 +196,11 @@ class RoutingService:
         self._ledger = budget_ledger
         self._api_keys = api_keys
         self._semaphores = semaphores or CredentialSemaphorePool()
+        self._latency_ms: dict[str, float] = {}
+
+    def record_latency(self, model_id: str, latency_ms: int) -> None:
+        previous = self._latency_ms.get(model_id)
+        self._latency_ms[model_id] = latency_ms if previous is None else previous * (1 - LATENCY_EWMA_WEIGHT) + latency_ms * LATENCY_EWMA_WEIGHT
 
     def set_budget_ledger(self, budget_ledger: BudgetLedger) -> None:
         self._ledger = budget_ledger
@@ -249,6 +256,10 @@ class RoutingService:
                 key=lambda m: (m.input_price_per_1m or Decimal("999999"))
                 + (m.output_price_per_1m or Decimal("999999"))
             )
+        elif policy.preset == RoutingPreset.LATENCY and not manual_model_id:
+            eligible.sort(key=lambda m: self._latency_ms.get(m.model_id, float("inf")))
+        elif policy.preset == RoutingPreset.QUALITY and not manual_model_id:
+            eligible.sort(key=lambda m: (not m.capabilities.reasoning_tokens, -m.context_window))
         return eligible
 
     def execute_step(
@@ -421,11 +432,13 @@ class RoutingService:
                                 Decimal(resp.input_tokens) * model.input_price_per_1m
                                 + Decimal(resp.output_tokens + resp.reasoning_tokens) * model.output_price_per_1m
                             ) / Decimal("1000000")
+                        latency_ms = int((time.monotonic() - started) * 1000)
+                        self.record_latency(model.model_id, latency_ms)
                         self._ledger.settle(
                             reservation.reservation_id,
                             actual_tokens,
                             actual_cost,
-                            latency_ms=int((time.monotonic() - started) * 1000),
+                            latency_ms=latency_ms,
                         )
                     finally:
                         self._semaphores.release(sem_key)

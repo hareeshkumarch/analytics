@@ -60,7 +60,7 @@ class TestCaCertificateInput(unittest.TestCase):
 
 
 class TestPostgresRootCertificate(unittest.TestCase):
-    def _connect_kwargs(self, sslmode: str, **creds: str) -> dict:
+    def _connect_kwargs(self, sslmode: str, host: str = "localhost", **creds: str) -> dict:
         seen: dict = {}
 
         def fake_connect(**kwargs):
@@ -69,7 +69,7 @@ class TestPostgresRootCertificate(unittest.TestCase):
             seen["file_existed"] = bool(root and root != "system" and os.path.exists(root))
             return SimpleNamespace()
 
-        config = {"host": "localhost", "port": 5432, "database": "db", "sslmode": sslmode}
+        config = {"host": host, "port": 5432, "database": "db", "sslmode": sslmode}
         with patch.dict(sys.modules, {"psycopg": SimpleNamespace(connect=fake_connect)}):
             PostgresConnector(SystemClock())._connect(config, {"username": "u", "password": "p", **creds})
         return seen
@@ -81,6 +81,28 @@ class TestPostgresRootCertificate(unittest.TestCase):
         pinned = self._connect_kwargs("verify-ca", ca_pem=_ca_pem())
         self.assertTrue(pinned["file_existed"])
         self.assertFalse(os.path.exists(pinned["sslrootcert"]))
+
+    def test_public_hosts_get_tls_by_default_and_refuse_plaintext(self) -> None:
+        with patch("app.adapters.connectors.postgres_connector.validate_and_resolve_host", return_value="93.184.216.34"):
+            self.assertEqual(self._connect_kwargs("", host="db.example.com")["sslmode"], "require")
+            for mode in ("disable", "allow", "prefer"):
+                with self.assertRaises(ValidationError):
+                    self._connect_kwargs(mode, host="db.example.com")
+        self.assertEqual(self._connect_kwargs("")["sslmode"], "prefer")
+        self.assertEqual(self._connect_kwargs("disable")["sslmode"], "disable")
+
+
+class TestTlsModeForHost(unittest.TestCase):
+    def test_mysql_rules(self) -> None:
+        from app.adapters.connectors.tls import tls_mode_for
+
+        rule = {"plaintext_modes": ("disable",), "local_default": "disable"}
+        self.assertEqual(tls_mode_for("10.0.0.5", "", **rule), "disable")
+        self.assertEqual(tls_mode_for("127.0.0.1", "disable", **rule), "disable")
+        self.assertEqual(tls_mode_for("93.184.216.34", "", **rule), "require")
+        self.assertEqual(tls_mode_for("93.184.216.34", "verify-full", **rule), "verify-full")
+        with self.assertRaises(ValidationError):
+            tls_mode_for("93.184.216.34", "disable", **rule)
 
 
 if __name__ == "__main__":
