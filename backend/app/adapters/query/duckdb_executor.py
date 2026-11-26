@@ -5,7 +5,7 @@ import time
 from typing import Any
 
 from app.application.ports.query import CompiledQuery, QueryResult
-from app.domain.errors import SecurityPolicyError
+from app.domain.errors import QueryTimeoutError
 from app.domain.limits import DEFAULT_DATA_LIMITS
 
 DEFAULT_MEMORY_LIMIT = "1GB"
@@ -75,13 +75,13 @@ class DuckDbQueryExecutor:
                 row_cap = min(self._max_rows, compiled.row_limit)
                 fetched = cur.fetchmany(row_cap + 1)
             except duckdb.InterruptException as exc:
-                raise SecurityPolicyError("Query exceeded execution deadline") from exc
+                raise QueryTimeoutError("Query exceeded execution deadline") from exc
             truncated = len(fetched) > row_cap
             rows = tuple(tuple(r) for r in fetched[:row_cap])
 
             elapsed_ms = int((time.monotonic() - start) * 1000)
             if elapsed_ms > timeout_seconds * 1000:
-                raise SecurityPolicyError("Query exceeded execution deadline")
+                raise QueryTimeoutError("Query exceeded execution deadline")
 
             result_hash = hashlib.sha256(
                 json.dumps({"columns": columns, "rows": rows}, default=str).encode("utf-8")

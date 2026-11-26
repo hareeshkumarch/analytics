@@ -1,19 +1,81 @@
 import hashlib
 import json
+import re
 import threading
 from dataclasses import dataclass, field
 from decimal import Decimal, DivisionByZero, InvalidOperation
+from enum import Enum
 from typing import Any
 
 from opentelemetry import trace
 
 from app.application.ports.providers import ToolCallResult, ToolDefinition
 from app.application.ports.query import SnapshotQueryPort
-from app.domain.errors import DomainError, QueryValidationError
+from app.domain.errors import (
+    BudgetExhaustedError,
+    DomainError,
+    LimitExceededError,
+    NotFoundError,
+    QueryTimeoutError,
+    QueryValidationError,
+    SecurityPolicyError,
+)
 from app.domain.limits import DEFAULT_GLOBAL_LIMITS
 from app.domain.query_ir import AggregateFunction, FilterOperator, QueryIRParseError, parse_query_ir
 
 _tracer = trace.get_tracer("ledgerline.query")
+
+
+class ToolErrorCode(str, Enum):
+    INVALID_ARGUMENT = "INVALID_ARGUMENT"
+    NOT_FOUND = "NOT_FOUND"
+    UNKNOWN_TOOL = "UNKNOWN_TOOL"
+    UNAVAILABLE = "UNAVAILABLE"
+    BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED"
+    LIMIT_EXCEEDED = "LIMIT_EXCEEDED"
+    TIMEOUT = "TIMEOUT"
+    POLICY_DENIED = "POLICY_DENIED"
+    DUPLICATE_FAILED_CALL = "DUPLICATE_FAILED_CALL"
+    CANCELLED = "CANCELLED"
+    INTERNAL = "INTERNAL"
+
+
+_DENIED_CODES = frozenset(
+    {
+        ToolErrorCode.BUDGET_EXHAUSTED,
+        ToolErrorCode.LIMIT_EXCEEDED,
+        ToolErrorCode.POLICY_DENIED,
+        ToolErrorCode.DUPLICATE_FAILED_CALL,
+        ToolErrorCode.CANCELLED,
+    }
+)
+_FIELD_IN_MESSAGE = re.compile(r"'([A-Za-z_][A-Za-z0-9_]*)'")
+
+
+def _code_for(exc: DomainError) -> ToolErrorCode:
+    if isinstance(exc, QueryValidationError):
+        return ToolErrorCode.INVALID_ARGUMENT
+    if isinstance(exc, QueryTimeoutError):
+        return ToolErrorCode.TIMEOUT
+    if isinstance(exc, NotFoundError):
+        return ToolErrorCode.NOT_FOUND
+    if isinstance(exc, BudgetExhaustedError):
+        return ToolErrorCode.BUDGET_EXHAUSTED
+    if isinstance(exc, LimitExceededError):
+        return ToolErrorCode.LIMIT_EXCEEDED
+    if isinstance(exc, SecurityPolicyError):
+        return ToolErrorCode.POLICY_DENIED
+    return ToolErrorCode.INTERNAL
+
+
+def _success(summary: str, snapshot_id: Any, evidence_refs: list[str], data: dict[str, Any], *, status: str = "success") -> dict[str, Any]:
+    return {
+        "status": status,
+        "summary": summary,
+        "evidence_refs": evidence_refs,
+        "freshness": {"snapshot_id": snapshot_id},
+        **data,
+    }
 
 MAX_ROWS_TO_MODEL = 50
 MAX_QUERY_ROWS = 1000
@@ -271,10 +333,13 @@ def _cap(payload: dict[str, Any]) -> str:
         return raw
     return json.dumps(
         {
-            "evidence_id": payload.get("evidence_id"),
-            "row_count": payload.get("row_count"),
-            "error": "Result too large to show. Narrow the query with filters, fewer columns or a lower limit.",
-        }
+            **{k: payload.get(k) for k in ("summary", "evidence_refs", "freshness", "evidence_id", "row_count")},
+            "status": "partial",
+            "rows": [],
+            "coverage": {**payload.get("coverage", {}), "rows_returned": 0},
+            "note": "Result too large to show. Narrow the query with filters, fewer columns or a lower limit.",
+        },
+        default=str,
     )
 
 
@@ -296,6 +361,7 @@ def _cap_schema(payload: dict[str, Any]) -> str:
     listed = [{"table_id": t["table_id"], "row_count": t["row_count"], "column_count": len(t["columns"])} for t in payload["tables"]]
     return json.dumps(
         {
+            **{k: payload.get(k) for k in ("status", "summary", "evidence_refs", "freshness")},
             "snapshot_id": payload.get("snapshot_id"),
             "definitions_approved": payload.get("definitions_approved"),
             "tables": listed,
@@ -321,23 +387,36 @@ class AnalyticsToolbox:
     def available(self) -> bool:
         return bool(self.snapshot and self.snapshot.get("table_details"))
 
-    def failure(self, tool: str, message: str) -> ToolOutcome:
-        return self._error(tool, message)
+    def failure(self, tool: str, message: str, code: ToolErrorCode = ToolErrorCode.INTERNAL) -> ToolOutcome:
+        return self._error(tool, message, code)
 
-    def _error(self, tool: str, message: str) -> ToolOutcome:
+    def _error(
+        self, tool: str, message: str, code: ToolErrorCode, *, retryable: bool = False, failed_fields: tuple[str, ...] = ()
+    ) -> ToolOutcome:
+        status = "denied" if code in _DENIED_CODES else "failed"
+        envelope = {
+            "status": status,
+            "code": code.value,
+            "retryable": retryable,
+            "safe_message": message,
+            "failed_fields": list(failed_fields),
+        }
         return ToolOutcome(
-            content=json.dumps({"error": message}),
+            content=json.dumps(envelope),
             is_error=True,
-            summary={"tool": tool, "ok": False, "error": message[:300]},
+            summary={"tool": tool, "ok": False, "status": status, "code": code.value, "error": message[:300]},
         )
+
+    def _invalid(self, tool: str, message: str) -> ToolOutcome:
+        return self._error(tool, message, ToolErrorCode.INVALID_ARGUMENT, failed_fields=tuple(dict.fromkeys(_FIELD_IN_MESSAGE.findall(message))))
 
     def execute(self, call: ToolCallResult) -> ToolOutcome:
         name = call.tool_name
         names = [d.name for d in self.definitions]
         if name not in names:
-            return self._error(name, f"Unknown tool {name!r}. Available: {', '.join(names)}.")
+            return self._error(name, f"Unknown tool {name!r}. Available: {', '.join(names)}.", ToolErrorCode.UNKNOWN_TOOL)
         if not self.available:
-            return self._error(name, "No dataset snapshot is bound to this run.")
+            return self._error(name, "No dataset snapshot is bound to this run.", ToolErrorCode.UNAVAILABLE)
         arguments = call.arguments if isinstance(call.arguments, dict) else {}
         fingerprint = name + json.dumps(arguments, sort_keys=True, default=str)
         earlier = self._failed_calls.get(fingerprint)
@@ -345,9 +424,12 @@ class AnalyticsToolbox:
             return self._error(
                 name,
                 f"This exact call already failed ({earlier[:200]}). It was not run again; change the arguments or answer with the evidence you have.",
+                ToolErrorCode.DUPLICATE_FAILED_CALL,
             )
         if not self.budget.take(analytical=name == RUN_QUERY_TOOL.name):
-            return self._error(name, "Tool budget for this run is used up. Answer with the results you already have.")
+            return self._error(
+                name, "Tool budget for this run is used up. Answer with the results you already have.", ToolErrorCode.BUDGET_EXHAUSTED
+            )
         if name == INSPECT_SCHEMA_TOOL.name:
             outcome = self._inspect_schema(arguments.get("table_id"))
         elif name == CALCULATE_TOOL.name:
@@ -364,7 +446,12 @@ class AnalyticsToolbox:
         if isinstance(table_id, str) and table_id:
             details = [t for t in details if t["name"] == table_id]
             if not details:
-                return self._error(INSPECT_SCHEMA_TOOL.name, f"Unknown table_id {table_id!r}. Call inspect_schema without it to list tables.")
+                return self._error(
+                    INSPECT_SCHEMA_TOOL.name,
+                    f"Unknown table_id {table_id!r}. Call inspect_schema without it to list tables.",
+                    ToolErrorCode.NOT_FOUND,
+                    failed_fields=("table_id",),
+                )
         tables = [
             {
                 "table_id": t["name"],
@@ -384,6 +471,7 @@ class AnalyticsToolbox:
         ]
         semantics = self.semantics or {}
         payload = {
+            **_success(f"{len(tables)} table(s)", self.snapshot.get("snapshot_id"), [], {}),
             "snapshot_id": self.snapshot.get("snapshot_id"),
             "definitions_approved": bool(semantics.get("approved")),
             "metric_definitions": [
@@ -403,9 +491,9 @@ class AnalyticsToolbox:
         operation = arguments.get("operation")
         refs = arguments.get("values")
         if operation not in ("sum", *_PAIRWISE_OPERATIONS) or not isinstance(refs, list) or not 1 <= len(refs) <= 50:
-            return self._error(CALCULATE_TOOL.name, "Give an operation (sum, difference, ratio, percent_change) and 1-50 values.")
+            return self._invalid(CALCULATE_TOOL.name, "Give an operation (sum, difference, ratio, percent_change) and 1-50 values.")
         if operation in _PAIRWISE_OPERATIONS and len(refs) != 2:
-            return self._error(CALCULATE_TOOL.name, f"{operation} takes exactly two values: current first, then baseline.")
+            return self._invalid(CALCULATE_TOOL.name, f"{operation} takes exactly two values: current first, then baseline.")
         inputs: list[dict[str, Any]] = []
         for ref in refs:
             source = self._calculable.get(str(ref.get("evidence_id"))) if isinstance(ref, dict) else None
@@ -413,18 +501,22 @@ class AnalyticsToolbox:
                 return self._error(
                     CALCULATE_TOOL.name,
                     "Each value must reference an evidence_id returned by run_query_ir in this run whose rows you saw.",
+                    ToolErrorCode.NOT_FOUND,
+                    failed_fields=("values",),
                 )
             row, column = ref.get("row"), ref.get("column")
             if column not in source["columns"] or not isinstance(row, int) or not 0 <= row < len(source["rows"]):
-                return self._error(CALCULATE_TOOL.name, f"No row {row!r} / column {column!r} in {ref['evidence_id']}.")
+                return self._error(
+                    CALCULATE_TOOL.name, f"No row {row!r} / column {column!r} in {ref['evidence_id']}.", ToolErrorCode.NOT_FOUND, failed_fields=("values",)
+                )
             number = _number(source["rows"][row][source["columns"].index(column)])
             if number is None:
-                return self._error(CALCULATE_TOOL.name, f"{ref['evidence_id']} row {row} column {column!r} is not a number.")
+                return self._invalid(CALCULATE_TOOL.name, f"{ref['evidence_id']} row {row} column {column!r} is not a number.")
             inputs.append({"evidence_id": ref["evidence_id"], "row": row, "column": column, "value": str(number)})
         try:
             result = _apply(operation, [Decimal(item["value"]) for item in inputs])
         except (DivisionByZero, InvalidOperation):
-            return self._error(CALCULATE_TOOL.name, "The baseline value is zero, so this can't be computed.")
+            return self._invalid(CALCULATE_TOOL.name, "The baseline value is zero, so this can't be computed.")
         formula = f"{operation}(" + ", ".join(f"{i['evidence_id']}[{i['row']}].{i['column']}" for i in inputs) + ")"
         inputs_hash = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode("utf-8")).hexdigest()
         result_text = _plain(result)
@@ -446,7 +538,14 @@ class AnalyticsToolbox:
         }
         self._calculable[evidence_id] = {"columns": ["result"], "rows": [[result_text]]}
         return ToolOutcome(
-            content=json.dumps({"evidence_id": evidence_id, "result": result_text, "formula": formula}),
+            content=json.dumps(
+                _success(
+                    f"{operation} = {result_text}",
+                    self.snapshot.get("snapshot_id"),
+                    [evidence_id, *dict.fromkeys(i["evidence_id"] for i in inputs)],
+                    {"evidence_id": evidence_id, "result": result_text, "formula": formula},
+                )
+            ),
             is_error=False,
             summary={"tool": CALCULATE_TOOL.name, "ok": True, "operation": operation, "evidence_id": evidence_id},
             evidence=evidence,
@@ -456,12 +555,12 @@ class AnalyticsToolbox:
         assert self.snapshot is not None
         if "_invalid_arguments" in arguments:
             self.budget.refund(analytical=True)
-            return self._error(RUN_QUERY_TOOL.name, "Tool arguments were not valid JSON. Send a JSON object.")
+            return self._invalid(RUN_QUERY_TOOL.name, "Tool arguments were not valid JSON. Send a JSON object.")
         try:
             ir = parse_query_ir(arguments)
         except QueryIRParseError as exc:
             self.budget.refund(analytical=True)
-            return self._error(RUN_QUERY_TOOL.name, f"Invalid query (not counted against the budget): {exc}")
+            return self._invalid(RUN_QUERY_TOOL.name, f"Invalid query (not counted against the budget): {exc}")
         semantic_version_id = str((self.semantics or {}).get("semantic_version_id") or "")
         try:
             with _tracer.start_as_current_span(
@@ -472,11 +571,11 @@ class AnalyticsToolbox:
                 span.set_attribute("query.truncated", result.truncated)
         except QueryValidationError as exc:
             self.budget.refund(analytical=True)
-            return self._error(RUN_QUERY_TOOL.name, f"Invalid query (not counted against the budget): {exc}")
+            return self._invalid(RUN_QUERY_TOOL.name, f"Invalid query (not counted against the budget): {exc}")
         except DomainError as exc:
-            return self._error(RUN_QUERY_TOOL.name, f"{exc}")
+            return self._error(RUN_QUERY_TOOL.name, f"{exc}", _code_for(exc), retryable=exc.retryable)
         except Exception as exc:  # noqa: BLE001
-            return self._error(RUN_QUERY_TOOL.name, f"Query failed: {exc}"[:500])
+            return self._error(RUN_QUERY_TOOL.name, f"Query failed: {exc}"[:500], ToolErrorCode.INTERNAL)
         evidence_id = "ev_" + hashlib.sha256(f"{result.query_ir_hash}:{result.result_hash}".encode("utf-8")).hexdigest()[:12]
         evidence = {
             "evidence_id": evidence_id,
@@ -496,14 +595,24 @@ class AnalyticsToolbox:
         withheld = ir.operation == "detail" and not self.raw_record_egress
         if not withheld:
             self._calculable[evidence_id] = {"columns": evidence["columns"], "rows": evidence["rows"]}
-        payload = {
-            "evidence_id": evidence_id,
-            "columns": list(result.columns),
-            "rows": [] if withheld else [list(r) for r in shown],
-            "row_count": result.row_count,
-            "rows_shown": 0 if withheld else len(shown),
-            "truncated": result.truncated or len(shown) < result.row_count,
-        }
+        rows_shown = 0 if withheld else len(shown)
+        truncated = result.truncated or len(shown) < result.row_count
+        status = "empty" if result.row_count == 0 else "partial" if truncated else "success"
+        payload = _success(
+            f"{result.row_count} row(s) from {ir.operation}" + (" (truncated)" if truncated else ""),
+            result.snapshot_id,
+            [evidence_id],
+            {
+                "evidence_id": evidence_id,
+                "columns": list(result.columns),
+                "rows": [] if withheld else [list(r) for r in shown],
+                "row_count": result.row_count,
+                "rows_shown": rows_shown,
+                "truncated": truncated,
+                "coverage": {"rows_returned": rows_shown, "total_rows_known": not result.truncated, "truncated": truncated},
+            },
+            status=status,
+        )
         notes: list[str] = []
         if withheld:
             payload["rows_withheld"] = True
@@ -524,6 +633,7 @@ class AnalyticsToolbox:
             summary={
                 "tool": RUN_QUERY_TOOL.name,
                 "ok": True,
+                "status": status,
                 "operation": ir.operation,
                 "row_count": result.row_count,
                 "evidence_id": evidence_id,

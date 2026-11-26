@@ -101,6 +101,10 @@ class QueryValidationError(DomainError):
     http_status = 400
 
 
+class QueryTimeoutError(DomainError):
+    code = "query_timeout"
+
+
 class BudgetExhaustedError(DomainError):
     code = "budget_exhausted"
     http_status = 429
