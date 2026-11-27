@@ -237,10 +237,30 @@ class ToolUsageOut(ApiResponse):
     calls_per_task: float
 
 
+class ModeUsageOut(ApiResponse):
+    mode: str
+    runs: int
+    tokens: int
+    cost_usd: str
+
+
+class UsageSummaryOut(ApiResponse):
+    runs: int
+    attempts: int
+    tokens: int
+    cost_usd: str
+    incomplete: int
+    finished: int
+    completed: int
+    by_mode: list[ModeUsageOut]
+
+
 class UsageOut(ApiResponse):
     workspace_id: str
     run_count: int
     runs: list[RunUsageOut]
+    runs_truncated: bool = False
+    summary: UsageSummaryOut | None = None
     models: list[ModelUsageOut]
     tools: list[ToolUsageOut] = []
 

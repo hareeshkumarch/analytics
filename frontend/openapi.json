@@ -527,6 +527,35 @@
         "title": "ImportForm",
         "type": "object"
       },
+      "ModeUsageOut": {
+        "additionalProperties": true,
+        "properties": {
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "string"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "tokens": {
+            "title": "Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mode",
+          "runs",
+          "tokens",
+          "cost_usd"
+        ],
+        "title": "ModeUsageOut",
+        "type": "object"
+      },
       "ModelCallListOut": {
         "additionalProperties": true,
         "properties": {
@@ -2111,6 +2140,21 @@
             "title": "Runs",
             "type": "array"
           },
+          "runs_truncated": {
+            "default": false,
+            "title": "Runs Truncated",
+            "type": "boolean"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsageSummaryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "tools": {
             "default": [],
             "items": {
@@ -2131,6 +2175,58 @@
           "models"
         ],
         "title": "UsageOut",
+        "type": "object"
+      },
+      "UsageSummaryOut": {
+        "additionalProperties": true,
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "by_mode": {
+            "items": {
+              "$ref": "#/components/schemas/ModeUsageOut"
+            },
+            "title": "By Mode",
+            "type": "array"
+          },
+          "completed": {
+            "title": "Completed",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "string"
+          },
+          "finished": {
+            "title": "Finished",
+            "type": "integer"
+          },
+          "incomplete": {
+            "title": "Incomplete",
+            "type": "integer"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "tokens": {
+            "title": "Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runs",
+          "attempts",
+          "tokens",
+          "cost_usd",
+          "incomplete",
+          "finished",
+          "completed",
+          "by_mode"
+        ],
+        "title": "UsageSummaryOut",
         "type": "object"
       },
       "ValidationError": {

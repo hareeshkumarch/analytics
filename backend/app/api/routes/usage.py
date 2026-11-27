@@ -12,6 +12,7 @@ from app.bootstrap.container import AppContainer
 
 from app.api.support import RUN_PAGE_MAX
 from app.api.context import ApiContext
+from app.application.services.usage_summary import summarize_usage
 from app.api.responses import ModelCallListOut, PromptTemplateListOut, TaskRecordListOut, ToolExecutionListOut, UsageOut
 
 logger = logging.getLogger(__name__)
@@ -26,17 +27,18 @@ def register(ctx: ApiContext) -> APIRouter:
     def get_usage(workspace_id: str, since: datetime | None = None) -> dict[str, Any]:
         c: AppContainer = app.state.container
         try:
+            window = app.state.repo_runs.window_runs(workspace_id, since)
+            all_ids = [run_id for run_id, _, _ in window]
+            all_totals = c.budget_ledger.get_runs_totals(all_ids)
+            models = c.budget_ledger.get_model_usage(all_ids)
+            tools = summarize_tool_executions(c.tool_executions.list_for_runs(all_ids))
             ws_runs = app.state.repo_runs.list_runs(workspace_id, limit=RUN_PAGE_MAX, since=since)
-            run_ids = [r["run_id"] for r in ws_runs]
-            run_totals = c.budget_ledger.get_runs_totals(run_ids)
-            models = c.budget_ledger.get_model_usage(run_ids)
-            tools = summarize_tool_executions(c.tool_executions.list_for_runs(run_ids))
         except SQLAlchemyError as exc:
             logger.exception("Failed to query runs for usage from DB")
             raise _db_unavailable("load usage") from exc
         totals = [
             {
-                **run_totals[r["run_id"]],
+                **all_totals[r["run_id"]],
                 "mode": r.get("mode", "quick"),
                 "status": r.get("status", "queued"),
                 "created_at": r.get("created_at", ""),
@@ -44,8 +46,17 @@ def register(ctx: ApiContext) -> APIRouter:
                 "error": r.get("error"),
             }
             for r in ws_runs
+            if r["run_id"] in all_totals
         ]
-        return {"workspace_id": workspace_id, "run_count": len(ws_runs), "runs": totals, "models": models, "tools": tools}
+        return {
+            "workspace_id": workspace_id,
+            "run_count": len(window),
+            "runs": totals,
+            "runs_truncated": len(window) > len(totals),
+            "summary": summarize_usage(window, all_totals),
+            "models": models,
+            "tools": tools,
+        }
 
     @router.get(
         "/api/v1/workspaces/{workspace_id}/runs/{run_id}/tool-executions",

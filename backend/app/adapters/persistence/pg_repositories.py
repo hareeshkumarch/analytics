@@ -493,6 +493,13 @@ class PgRunRepository:
                     _add_run_job(db, run_id)
         return self.get_run(run_id), event
 
+    def window_runs(self, workspace_id: str, since: datetime | None = None) -> list[tuple[str, str, str]]:
+        with self._sf() as db:
+            stmt = select(RunRow.run_id, RunRow.mode, RunRow.status).where(RunRow.workspace_id == workspace_id)
+            if since is not None:
+                stmt = stmt.where(RunRow.created_at >= since)
+            return [(str(r), str(m), str(s)) for r, m, s in db.execute(stmt).all()]
+
     def run_ids_since(self, workspace_id: str, since: datetime) -> list[str]:
         with self._sf() as db:
             return list(

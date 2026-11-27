@@ -32,6 +32,7 @@ const WINDOW_OPTIONS: { value: WindowKey; label: string }[] = [
 ];
 
 const HOUR_MS = 3600 * 1000;
+const RUN_TABLE_ROWS = 100;
 const WINDOW_HOURS: Record<WindowKey, number | null> = { "24h": 24, "7d": 168, "30d": 720, "90d": 2160, all: null };
 
 const STATUS_OPTIONS: RichOption[] = [
@@ -310,7 +311,20 @@ export function UsageView() {
       .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
   }, [data, windowFilter, modeFilter, statusFilter, search]);
 
+  const filtered = modeFilter !== "all" || statusFilter !== "all" || search.trim() !== "";
   const totals = useMemo(() => {
+    const summary = data?.summary;
+    if (!filtered && summary) {
+      return {
+        runs: summary.runs,
+        attempts: summary.attempts,
+        tokens: summary.tokens,
+        cost: Number(summary.cost_usd) || 0,
+        incomplete: summary.incomplete,
+        successRate: summary.finished ? Math.round((summary.completed / summary.finished) * 100) : null,
+        byMode: summary.by_mode.map((m) => ({ mode: m.mode, runs: m.runs, tokens: m.tokens, cost: Number(m.cost_usd) || 0 })),
+      };
+    }
     const finished = runs.filter((r) => ["completed", "failed", "cancelled"].includes(r.status ?? ""));
     const completed = runs.filter((r) => r.status === "completed").length;
     return {
@@ -320,7 +334,7 @@ export function UsageView() {
       cost: runs.reduce((s, r) => s + (Number(r.total_cost_usd) || 0), 0),
       incomplete: runs.filter((r) => r.incomplete).length,
       successRate: finished.length ? Math.round((completed / finished.length) * 100) : null,
-      byMode: (["quick", "deep"] as const).map((mode) => {
+      byMode: Array.from(new Set(["quick", "deep", ...runs.map((r) => r.mode ?? "quick")])).map((mode) => {
         const subset = runs.filter((r) => (r.mode ?? "quick") === mode);
         return {
           mode,
@@ -330,7 +344,7 @@ export function UsageView() {
         };
       }),
     };
-  }, [runs]);
+  }, [runs, data, filtered]);
 
   const chartData = useMemo(() => bucketRuns(runs, windowFilter), [runs, windowFilter]);
   const modeMetricVal = (m: (typeof totals.byMode)[number]) => (metric === "cost" ? m.cost : metric === "runs" ? m.runs : m.tokens);
@@ -407,7 +421,7 @@ export function UsageView() {
           "grid grid-cols-2 divide-border overflow-hidden max-lg:last:col-span-2 max-lg:[&>*:last-child]:col-span-2 max-lg:[&>*:nth-child(-n+4)]:border-b max-lg:[&>*:nth-child(odd):not(:last-child)]:border-r lg:grid-cols-5 lg:divide-x"
         )}
       >
-        <Stat label="Questions" value={totals.runs.toLocaleString()} hint={`${totals.byMode[0].runs} quick · ${totals.byMode[1].runs} deep`} loading={isLoading} />
+        <Stat label="Questions" value={totals.runs.toLocaleString()} hint={totals.byMode.map((m) => `${m.runs} ${m.mode}`).join(" · ")} loading={isLoading} />
         <Stat label="Success rate" value={totals.successRate === null ? "—" : `${totals.successRate}%`} hint="Of finished runs" loading={isLoading} />
         <Stat label="Model calls" value={totals.attempts.toLocaleString()} hint="Including retries" loading={isLoading} />
         <Stat label="Tokens" value={compact.format(totals.tokens)} hint={`${totals.tokens.toLocaleString()} total`} loading={isLoading} />
@@ -450,6 +464,9 @@ export function UsageView() {
                   ]}
                 />
               </div>
+              {data?.runs_truncated && (
+                <p className="text-xs text-secondary">The chart shows the newest {data.runs.length.toLocaleString()} of {data.run_count.toLocaleString()} runs.</p>
+              )}
               {chartData.length === 0 ? (
                 <div className="flex h-56 items-center justify-center bg-panel text-[13.5px] text-secondary">
                   {isLoading ? "Loading…" : "No runs in this view."}
@@ -553,7 +570,7 @@ export function UsageView() {
                     </tr>
                   </thead>
                   <tbody>
-                    {runs.slice(0, 100).map((r) => {
+                    {runs.slice(0, RUN_TABLE_ROWS).map((r) => {
                       const status = r.status ?? "queued";
                       const cost = formatCost(Number(r.total_cost_usd) || 0);
                       return (
@@ -592,7 +609,12 @@ export function UsageView() {
                 </table>
               </HScroll>
             )}
-            {runs.length > 100 && <p className="text-xs text-secondary">Showing the 100 most recent of {runs.length.toLocaleString()} runs.</p>}
+            {(runs.length > RUN_TABLE_ROWS || data?.runs_truncated) && (
+              <p className="text-xs text-secondary">
+                Showing the {Math.min(runs.length, RUN_TABLE_ROWS).toLocaleString()} most recent of {(filtered ? runs.length : data?.run_count ?? runs.length).toLocaleString()} runs
+                {filtered && data?.runs_truncated ? `, filtered from the newest ${data.runs.length.toLocaleString()}` : ""}.
+              </p>
+            )}
           </section>
         </>
       )}

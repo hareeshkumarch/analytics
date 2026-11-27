@@ -878,6 +878,19 @@ export interface components {
                 [key: string]: string | boolean | number;
             };
         };
+        /** ModeUsageOut */
+        ModeUsageOut: {
+            /** Cost Usd */
+            cost_usd: string;
+            /** Mode */
+            mode: string;
+            /** Runs */
+            runs: number;
+            /** Tokens */
+            tokens: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** ModelCallListOut */
         ModelCallListOut: {
             /** Calls */
@@ -1393,12 +1406,39 @@ export interface components {
             /** Runs */
             runs: components["schemas"]["RunUsageOut"][];
             /**
+             * Runs Truncated
+             * @default false
+             */
+            runs_truncated?: boolean;
+            summary?: components["schemas"]["UsageSummaryOut"] | null;
+            /**
              * Tools
              * @default []
              */
             tools?: components["schemas"]["ToolUsageOut"][];
             /** Workspace Id */
             workspace_id: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** UsageSummaryOut */
+        UsageSummaryOut: {
+            /** Attempts */
+            attempts: number;
+            /** By Mode */
+            by_mode: components["schemas"]["ModeUsageOut"][];
+            /** Completed */
+            completed: number;
+            /** Cost Usd */
+            cost_usd: string;
+            /** Finished */
+            finished: number;
+            /** Incomplete */
+            incomplete: number;
+            /** Runs */
+            runs: number;
+            /** Tokens */
+            tokens: number;
         } & {
             [key: string]: unknown;
         };
