@@ -34,7 +34,16 @@ from app.adapters.orchestration.supervisor import ReviewVerdict, SpecialistOutco
 from app.adapters.providers.http_utils import parse_strict_json
 from app.adapters.providers.langchain_gateway import GatewayChatModel
 from app.application.ports.providers import ModelRequest, ModelResponse, ToolCallResult, ToolDefinition
-from app.application.services.context_compiler import specialist_context
+from app.application.services.context_compiler import (
+    CLAIM_STATEMENT_CHARS,
+    MAX_REVIEW_ITEM_CHARS,
+    MAX_REVIEW_ITEMS,
+    REPAIR_INPUT_TOKENS,
+    bounded_items,
+    clip_statement,
+    fit_text,
+    specialist_context,
+)
 from app.application.services.analytics_tools import AnalyticsToolbox, ToolErrorCode, ToolOutcome
 from app.application.services.routing_service import RoutingService
 from app.application.services.text_utils import (
@@ -165,8 +174,8 @@ def _review_verdict(result: Any) -> tuple[ReviewVerdict, str]:
         or any(not isinstance(item, str) for item in contradictions)
     ):
         raise ValueError("The evidence reviewer returned invalid gaps")
-    bounded_gaps = tuple(gap.strip()[:200] for gap in gaps[:5] if gap.strip())
-    bounded_contradictions = tuple(item.strip()[:200] for item in contradictions[:5] if item.strip())
+    bounded_gaps = bounded_items(gaps, MAX_REVIEW_ITEMS, MAX_REVIEW_ITEM_CHARS)
+    bounded_contradictions = bounded_items(contradictions, MAX_REVIEW_ITEMS, MAX_REVIEW_ITEM_CHARS)
     verdict = ReviewVerdict(
         approved=result["approved"] and not bounded_gaps and not bounded_contradictions,
         gaps=bounded_gaps,
@@ -540,7 +549,7 @@ class DeepAgentTaskRunner:
                             repaired, _, _ = self.run_structured(
                                 role=role,
                                 system_prompt=prompts.REVIEW_REPAIR.text,
-                                user_prompt=text[:8000],
+                                user_prompt=fit_text(text, REPAIR_INPUT_TOKENS),
                                 schema=REVIEW_SCHEMA,
                                 run_id=run_id,
                                 policy=policy,
@@ -613,7 +622,7 @@ class DeepAgentTaskRunner:
         claim = None if error else Claim(
             claim_id=f"clm_{task.task_id}",
             label="observation" if evidence and not stopped_early else "unverified_observation",
-            statement=text[:240] or "Completed bounded step",
+            statement=clip_statement(text, CLAIM_STATEMENT_CHARS) or "Completed bounded step",
             value=None,
             unit=None,
             currency=None,

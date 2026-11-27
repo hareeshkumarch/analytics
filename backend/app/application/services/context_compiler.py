@@ -7,6 +7,14 @@ SPECIALIST_CONTEXT_TOKENS = 6_000
 COMPOSER_FINDINGS_TOKENS = 6_000
 FINDING_FLOOR_CHARS = 400
 REQUIRED = 0
+REPLAN_FINDINGS_TOKENS = 4_000
+REPAIR_INPUT_TOKENS = 2_700
+MAX_REVIEW_ITEMS = 5
+MAX_REVIEW_ITEM_CHARS = 200
+MAX_COMPLETION_CRITERIA = 5
+MAX_CRITERION_CHARS = 200
+CLAIM_STATEMENT_CHARS = 240
+ELLIPSIS = "…"
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,3 +98,27 @@ def composer_findings(findings: list[str], budget_tokens: int = COMPOSER_FINDING
         for i, text in enumerate(findings)
     ]
     return compile_context(sections, budget_tokens)
+
+
+def clip_statement(text: str, limit: int) -> str:
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    head = text[: limit - len(ELLIPSIS)]
+    cut = max(head.rfind(". "), head.rfind("! "), head.rfind("? "))
+    if cut >= limit // 2:
+        return head[: cut + 1]
+    space = head.rfind(" ")
+    return (head[:space] if space > 0 else head).rstrip() + ELLIPSIS
+
+
+def bounded_items(items: list[str] | tuple[str, ...], limit: int, chars: int) -> tuple[str, ...]:
+    cleaned = [clip_statement(str(item), chars) for item in items if str(item).strip()]
+    if len(cleaned) <= limit:
+        return tuple(cleaned)
+    return (*cleaned[:limit], f"{len(cleaned) - limit} more not listed")
+
+
+def fit_text(text: str, budget_tokens: int) -> str:
+    room = budget_tokens * CONTEXT_CHARS_PER_TOKEN
+    return text if len(text) <= room else text[: max(0, room - len(TRIM_MARK))].rstrip() + TRIM_MARK

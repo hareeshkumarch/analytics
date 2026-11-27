@@ -24,7 +24,20 @@ from app.adapters.orchestration.deep_agent_runtime import DeepAgentTaskRunner
 from app.adapters.persistence.langgraph_checkpointer import open_langgraph_checkpointer
 from app.adapters.orchestration.structured_schemas import PLAN_SCHEMA, REPLAN_SCHEMA
 from app.application.runtime_settings import AgentRuntime, agent_runtime
-from app.application.services.context_compiler import composer_findings, specialist_context
+from app.application.services.context_compiler import (
+    CLAIM_STATEMENT_CHARS,
+    MAX_COMPLETION_CRITERIA,
+    MAX_CRITERION_CHARS,
+    MAX_REVIEW_ITEM_CHARS,
+    MAX_REVIEW_ITEMS,
+    REPAIR_INPUT_TOKENS,
+    REPLAN_FINDINGS_TOKENS,
+    bounded_items,
+    clip_statement,
+    composer_findings,
+    fit_text,
+    specialist_context,
+)
 from app.application.services.task_records import (
     TaskLedger,
     budget_slice,
@@ -276,13 +289,14 @@ def _plan_from_agent(
     revision: int,
     max_tasks: int,
     clarification_answered: bool,
-) -> tuple[PlanDAG, bool]:
+) -> tuple[PlanDAG, bool, list[str]]:
     try:
         draft = _parse_json_object(text)
         if draft.get("needs_clarification") is True and not clarification_answered:
             prompt = str(draft.get("clarification_question") or "").strip()
             if prompt:
                 raise ClarificationRequired(prompt[:1000])
+        notes: list[str] = []
         raw_tasks = draft.get("tasks")
         if not isinstance(raw_tasks, list) or not 1 <= len(raw_tasks) <= max_tasks:
             raise ValueError("Planner returned an invalid number of tasks")
@@ -301,9 +315,10 @@ def _plan_from_agent(
             dependencies = item.get("dependencies", [])
             required_inputs = item.get("required_inputs", dependencies)
             raw_criteria = item.get("acceptance_criteria")
-            task_criteria = tuple(
-                clean for clean in (_clean_objective(c)[:200] for c in raw_criteria[:MAX_TASK_CRITERIA] if isinstance(c, str)) if clean
-            ) if isinstance(raw_criteria, list) else ()
+            listed = [c for c in raw_criteria if isinstance(c, str) and _clean_objective(c)] if isinstance(raw_criteria, list) else []
+            task_criteria = tuple(clip_statement(_clean_objective(c), MAX_CRITERION_CHARS) for c in listed[:MAX_TASK_CRITERIA])
+            if len(listed) > MAX_TASK_CRITERIA:
+                notes.append(f"Step {task_id} listed {len(listed)} acceptance criteria; only the first {MAX_TASK_CRITERIA} were used.")
             if (
                 not _TASK_ID_RE.fullmatch(task_id)
                 or kind not in _RESULT_SCHEMAS
@@ -345,15 +360,17 @@ def _plan_from_agent(
         plan = PlanDAG(
             revision=revision,
             goal=str(draft.get("goal") or question)[:1000],
-            completion_criteria=tuple(str(value)[:200] for value in criteria[:5]),
+            completion_criteria=tuple(clip_statement(str(value), MAX_CRITERION_CHARS) for value in criteria[:MAX_COMPLETION_CRITERIA]),
             tasks=tuple(tasks),
         )
         plan.validate_dag()
-        return plan, False
+        if len(criteria) > MAX_COMPLETION_CRITERIA:
+            notes.append(f"The plan listed {len(criteria)} completion criteria; only the first {MAX_COMPLETION_CRITERIA} were checked.")
+        return plan, False, notes
     except ClarificationRequired:
         raise
     except (TypeError, ValueError, json.JSONDecodeError):
-        return _default_plan(question, mode, snapshot_id, semantic_version_id, revision), True
+        return _default_plan(question, mode, snapshot_id, semantic_version_id, revision), True, []
 
 
 def _remediation_from_draft(draft: dict[str, Any]) -> tuple[str, str] | str | None:
@@ -603,7 +620,7 @@ class InvestigationOrchestrator:
         claim = None if error else Claim(
             claim_id=f"clm_{task.task_id}",
             label="observation" if evidence and not stopped_early else "unverified_observation",
-            statement=text[:240] or "Completed bounded step",
+            statement=clip_statement(text, CLAIM_STATEMENT_CHARS) or "Completed bounded step",
             value=None,
             unit=None,
             currency=None,
@@ -819,6 +836,7 @@ class InvestigationOrchestrator:
 
         plan = initial_plan if isinstance(initial_plan, PlanDAG) else _deserialize_plan(initial_plan)
         plan_fell_back = False
+        plan_notes: list[str] = []
         plan_limitations: list[str] = []
         if plan is None:
             if use_deep_agents and not direct:
@@ -857,26 +875,27 @@ class InvestigationOrchestrator:
                     "max_tasks": planner_task_limit,
                     "clarification_answered": bool(clarification_answer),
                 }
-                plan, plan_fell_back = _plan_from_agent(planner_text, **plan_kwargs)
+                plan, plan_fell_back, plan_notes = _plan_from_agent(planner_text, **plan_kwargs)
                 if plan_fell_back and _remaining_attempts() > attempt_reserve + MIN_ATTEMPTS_PER_TASK:
                     try:
                         with using_prompt(prompts.PLAN_REPAIR):
                             repaired, _, _ = self._deep_agent_runner.run_structured(
                                 role=AgentRole.PLANNER,
                                 system_prompt=prompts.PLAN_REPAIR.with_context(f"Use at most {planner_task_limit} tasks. Mode is {mode.value}."),
-                                user_prompt=planner_text[:8000],
+                                user_prompt=fit_text(planner_text, REPAIR_INPUT_TOKENS),
                                 schema=PLAN_SCHEMA,
                                 run_id=run_id,
                                 policy=policy,
                                 deadline=deadline,
                             )
-                        plan, plan_fell_back = _plan_from_agent(json.dumps(repaired), **plan_kwargs)
+                        plan, plan_fell_back, plan_notes = _plan_from_agent(json.dumps(repaired), **plan_kwargs)
                     except ClarificationRequired:
                         raise
                     except Exception:  # noqa: BLE001
                         logger.warning("Plan repair failed for run %s", run_id, exc_info=True)
             else:
                 plan = _default_plan(question, mode, snapshot_id, semantic_version_id)
+        plan_limitations.extend(plan_notes)
         if plan_fell_back:
             plan_limitations.append("The planner's reply couldn't be used, so the standard plan ran instead.")
         plan.validate_dag()
@@ -1142,7 +1161,7 @@ class InvestigationOrchestrator:
             ):
                 return {"action": "finish"}
 
-            bounded_gaps = [str(gap).strip()[:200] for gap in verdict.gaps[:5] if str(gap).strip()]
+            bounded_gaps = list(bounded_items(verdict.gaps, MAX_REVIEW_ITEMS, MAX_REVIEW_ITEM_CHARS))
             if not bounded_gaps:
                 bounded_gaps = ["additional evidence is required"]
             remediation_kind = "data_specialist"
@@ -1152,8 +1171,8 @@ class InvestigationOrchestrator:
                 replan_input = {
                     "question": question_for_agents,
                     "gaps": bounded_gaps,
-                    "contradictions": [str(c)[:200] for c in verdict.contradictions[:5]],
-                    "findings": {task_id: text[:600] for task_id, text in findings.items()},
+                    "contradictions": list(bounded_items(verdict.contradictions, MAX_REVIEW_ITEMS, MAX_REVIEW_ITEM_CHARS)),
+                    "findings": dict(zip(findings, (s.text for s in composer_findings(list(findings.values()), REPLAN_FINDINGS_TOKENS).sections))),
                 }
                 try:
                     with using_prompt(prompts.REPLAN):
