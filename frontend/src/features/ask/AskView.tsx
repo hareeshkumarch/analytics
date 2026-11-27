@@ -275,6 +275,7 @@ export function AskView() {
   const snapshotById = useMemo(() => new Map(snapshots.map((s) => [s.snapshot_id, s])), [snapshots]);
 
   const budget = budgetCopy(health.data?.run_limits?.[runMode]);
+  const inputLimits = health.data?.input_limits;
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pendingRunParam, setPendingRunParam] = useState<string | null>(null);
@@ -788,6 +789,7 @@ export function AskView() {
           ref={textareaRef}
           aria-label="Your question"
           rows={2}
+          maxLength={inputLimits?.max_question_chars}
           value={draftQuestion}
           onChange={(e) => setDraftQuestion(e.target.value)}
           onKeyDown={(e) => {
@@ -1194,7 +1196,7 @@ export function AskView() {
                       }
                     }}
                     rows={3}
-                    maxLength={5000}
+                    maxLength={inputLimits?.max_clarification_chars}
                     className={cx(inputBaseCls, "min-h-[84px] resize-y py-2.5")}
                     placeholder="Add the missing detail"
                   />
@@ -1241,7 +1243,7 @@ export function AskView() {
                     value={followUpDraft}
                     onChange={(e) => setFollowUpDraft(e.target.value)}
                     placeholder="Ask a follow-up about this answer"
-                    maxLength={4000}
+                    maxLength={inputLimits?.max_question_chars}
                     className={cx(inputCls, "min-h-[40px] flex-1")}
                   />
                   <button type="submit" disabled={submitting || !followUpDraft.trim()} className={btn.secondary}>

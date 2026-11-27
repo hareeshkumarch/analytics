@@ -761,10 +761,7 @@ class InvestigationOrchestrator:
 
             return _on_tool
 
-        MAX_QUESTION_CHARS = 4000
-        MAX_CLARIFICATION_CHARS = 2000
-
-        clean_question = _clean_text(question, MAX_QUESTION_CHARS)
+        clean_question = _clean_text(question, DEFAULT_GLOBAL_LIMITS.max_question_chars)
         question_for_agents = clean_question
         recent_turns = [
             {"question": _clean_text(turn.get("question"), 500), "answer": _clean_text(turn.get("answer"), PRIOR_ANSWER_CHARS)}
@@ -775,7 +772,7 @@ class InvestigationOrchestrator:
             question_for_agents = f"{clean_question}\n\n<previous_turns>\n{turns}\n</previous_turns>"
         clean_clarification: str | None = None
         if clarification_answer:
-            clean_clarification = _clean_text(clarification_answer, MAX_CLARIFICATION_CHARS)
+            clean_clarification = _clean_text(clarification_answer, DEFAULT_GLOBAL_LIMITS.max_clarification_chars)
             question_for_agents = (
                 f"{question_for_agents}\n\n"
                 f"<user_clarification>\n{clean_clarification}\n</user_clarification>"

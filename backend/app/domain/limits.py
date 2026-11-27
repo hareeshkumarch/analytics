@@ -125,6 +125,8 @@ class GlobalLimits:
     clarification_expiry_days: int = 7
     sse_event_retention_days: int = 7
     idempotency_key_retention_hours: int = 24
+    max_question_chars: int = 4_000
+    max_clarification_chars: int = 2_000
     workspace_daily_runs: int | None = None
     workspace_daily_cost_usd: Decimal | None = None
 

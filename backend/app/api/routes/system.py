@@ -16,6 +16,7 @@ from app.bootstrap.container import AppContainer
 from app.domain.limits import (
     DEEP_BUDGET_LIMITS,
     DEFAULT_DATA_LIMITS,
+    DEFAULT_GLOBAL_LIMITS,
     QUICK_BUDGET_LIMITS,
 )
 from app.domain.providers import ProviderId
@@ -52,6 +53,10 @@ def register(ctx: ApiContext) -> APIRouter:
             "connectors": [f.value for f in c.connectors.supported_families()],
             "providers": [p.value for p in c.providers.supported_providers()],
             "limits": DEFAULT_DATA_LIMITS.to_safe_dict(),
+            "input_limits": {
+                "max_question_chars": DEFAULT_GLOBAL_LIMITS.max_question_chars,
+                "max_clarification_chars": DEFAULT_GLOBAL_LIMITS.max_clarification_chars,
+            },
             "run_limits": {
                 lim.mode: {
                     "total_model_attempts": lim.total_model_attempts,

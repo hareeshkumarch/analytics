@@ -2,6 +2,7 @@ from typing import Any, Literal, Union
 from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.domain.limits import DEFAULT_GLOBAL_LIMITS
 from app.domain.models import ConnectorFamily, RunMode
 from app.domain.providers import ProviderId, RoutingPreset
 from app.domain.query_ir import (
@@ -251,7 +252,7 @@ class UpdateRoutingRequest(StrictApiModel):
 
 
 class CreateRunRequest(StrictApiModel):
-    question: str = Field(..., min_length=1, max_length=10000)
+    question: str = Field(..., min_length=1, max_length=DEFAULT_GLOBAL_LIMITS.max_question_chars)
     mode: RunMode = RunMode.QUICK
     snapshot_id: str | None = None
     semantic_version_id: str | None = None
@@ -262,12 +263,12 @@ class CreateRunRequest(StrictApiModel):
 
 class ClarifyRunRequest(StrictApiModel):
     revision: int = Field(..., ge=0)
-    answer: str = Field(..., min_length=1, max_length=5000)
+    answer: str = Field(..., min_length=1, max_length=DEFAULT_GLOBAL_LIMITS.max_clarification_chars)
 
 
 class CreatePinRequest(StrictApiModel):
     title: str = Field(..., min_length=1, max_length=255)
-    question_text: str = Field(..., min_length=1, max_length=10000)
+    question_text: str = Field(..., min_length=1, max_length=DEFAULT_GLOBAL_LIMITS.max_question_chars)
     run_id: str = Field(..., min_length=1, max_length=64)
 
 
