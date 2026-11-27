@@ -9,6 +9,8 @@ from app.application.ports.query import CompiledQuery
 from app.domain.errors import QueryValidationError, SecurityPolicyError
 from app.domain.models import TableSchema
 from app.domain.query_ir import (
+    MAX_BUCKETS,
+    MAX_QUERY_ROWS,
     AggregateFunction,
     AggregateQueryIR,
     ComparePeriodsQueryIR,
@@ -251,7 +253,7 @@ class SqlGlotQueryCompiler:
         self,
         ir: QueryIR,
         schemas: dict[str, TableSchema],
-        max_rows: int = 1000,
+        max_rows: int = MAX_QUERY_ROWS,
     ) -> CompiledQuery:
         params: list[Any] = []
         row_limit = min(max(1, getattr(ir, "limit", max_rows)), max_rows)
@@ -347,7 +349,7 @@ class SqlGlotQueryCompiler:
             col_sql = self._validate_field(ir.table_id, ir.field_id, schemas)
             where_sql = self._compile_filters(ir.table_id, ir.filters, schemas, params)
             if _is_numeric(schemas[ir.table_id], ir.field_id):
-                k = max(1, min(int(ir.buckets), 100))
+                k = max(1, min(int(ir.buckets), MAX_BUCKETS))
                 base_where = f"{where_sql} AND {col_sql} IS NOT NULL" if where_sql else f" WHERE {col_sql} IS NOT NULL"
                 sql = (
                     f"WITH __dist_base AS (SELECT CAST({col_sql} AS DOUBLE) AS v FROM {tbl_sql}{base_where}), "

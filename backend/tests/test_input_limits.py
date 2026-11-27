@@ -55,7 +55,14 @@ class TestInputLimits(unittest.TestCase):
 
     def test_health_publishes_the_limits(self) -> None:
         limits = self.client.get("/api/v1/health").json()["input_limits"]
-        self.assertEqual(limits, {"max_question_chars": DEFAULT_GLOBAL_LIMITS.max_question_chars, "max_clarification_chars": DEFAULT_GLOBAL_LIMITS.max_clarification_chars})
+        self.assertEqual(
+            limits,
+            {
+                "max_question_chars": DEFAULT_GLOBAL_LIMITS.max_question_chars,
+                "max_clarification_chars": DEFAULT_GLOBAL_LIMITS.max_clarification_chars,
+                "max_pin_title_chars": DEFAULT_GLOBAL_LIMITS.max_pin_title_chars,
+            },
+        )
 
 
 if __name__ == "__main__":

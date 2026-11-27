@@ -30,7 +30,7 @@ from app.application.ports.connectors import (
     ProbeResult,
 )
 from app.domain.errors import ConnectorError, LimitExceededError, SecurityPolicyError, ValidationError
-from app.domain.limits import DEFAULT_DATA_LIMITS, DataLimits
+from app.domain.limits import DEFAULT_DATA_LIMITS, IDENTIFIER_CHARS, DataLimits
 from app.domain.models import (
     ConnectorFamily,
     ConsistencyLevel,
@@ -74,6 +74,7 @@ _CONTENT_TYPE_FORMATS = {
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 MAX_REDIRECTS = 5
 HTML_SNIFF_BYTES = 4096
+MAX_URL_CHARS = 4096
 _PROBE_BYTES = 64 * 1024
 RECENT_DOWNLOADS_MAX = 4
 RECENT_DOWNLOAD_TTL_SECONDS = 600
@@ -109,7 +110,7 @@ def default_table_name(url: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9_]+", "_", stem).strip("_").lower()
     if not cleaned or cleaned in ("export", "pub", "download", "file"):
         return "remote_file"
-    return cleaned[:64]
+    return cleaned[:IDENTIFIER_CHARS]
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,8 +169,8 @@ class RemoteFileConnector:
         url = str(config.get("url", "")).strip()
         if not url:
             raise ValidationError("A file URL is required.", field_errors={"url": "Required"})
-        if len(url) > 4096:
-            raise ValidationError("The file URL is too long.", field_errors={"url": "At most 4096 characters"})
+        if len(url) > MAX_URL_CHARS:
+            raise ValidationError("The file URL is too long.", field_errors={"url": f"At most {MAX_URL_CHARS} characters"})
         return url
 
     def _download(

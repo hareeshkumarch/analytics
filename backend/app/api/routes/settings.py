@@ -24,6 +24,8 @@ from app.api.context import ApiContext
 from app.api.responses import ProvidersOut, RoutingPolicyOut, WorkspaceSettingsOut
 
 PROVIDER_PROBE_COOLDOWN_SECONDS = 10.0
+PROBE_MAX_OUTPUT_TOKENS = 16
+PROBE_TIMEOUT_SECONDS = 10
 
 logger = logging.getLogger(__name__)
 
@@ -103,8 +105,8 @@ def register(ctx: ApiContext) -> APIRouter:
             role=AgentRole.DATA_SPECIALIST,
             model_id=model.model_id,
             messages=({"role": "user", "content": "Reply with OK."},),
-            max_output_tokens=16,
-            timeout_seconds=10,
+            max_output_tokens=PROBE_MAX_OUTPUT_TOKENS,
+            timeout_seconds=PROBE_TIMEOUT_SECONDS,
         )
         resp = await asyncio.to_thread(
             c.providers.get(pid).invoke, req, c.provider_profiles[pid], model, api_key

@@ -14,6 +14,7 @@ from app.api.support import RUN_PAGE_MAX
 from app.api.context import ApiContext
 from app.application.services.usage_summary import summarize_usage
 from app.api.responses import ModelCallListOut, PromptTemplateListOut, TaskRecordListOut, ToolExecutionListOut, UsageOut
+from app.domain.limits import PREVIEW_CHARS
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ def register(ctx: ApiContext) -> APIRouter:
                 "mode": r.get("mode", "quick"),
                 "status": r.get("status", "queued"),
                 "created_at": r.get("created_at", ""),
-                "question": str(r.get("question", ""))[:200],
+                "question": str(r.get("question", ""))[:PREVIEW_CHARS],
                 "error": r.get("error"),
             }
             for r in ws_runs

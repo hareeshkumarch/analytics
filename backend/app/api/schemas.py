@@ -2,10 +2,12 @@ from typing import Any, Literal, Union
 from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.domain.limits import DEFAULT_GLOBAL_LIMITS
+from app.domain.limits import DEFAULT_GLOBAL_LIMITS, IDENTIFIER_CHARS, MAX_CONNECTOR_FIELDS, MAX_CONNECTOR_VALUE_CHARS
 from app.domain.models import ConnectorFamily, RunMode
 from app.domain.providers import ProviderId, RoutingPreset
 from app.domain.query_ir import (
+    DEFAULT_BUCKETS,
+    MAX_BUCKETS,
     AggregateFunction,
     AggregateMetricSpec,
     AggregateQueryIR,
@@ -147,7 +149,7 @@ class DistributionQueryIRSchema(StrictApiModel):
     operation: Literal["distribution"] = "distribution"
     table_id: str = Field(..., min_length=1, max_length=128)
     field_id: str = Field(..., min_length=1, max_length=128)
-    buckets: int = Field(10, ge=1, le=100)
+    buckets: int = Field(DEFAULT_BUCKETS, ge=1, le=MAX_BUCKETS)
     filters: list[FilterPredicateSchema] = []
     limit: int = Field(100, ge=1, le=1000)
     purpose: str = ""
@@ -213,14 +215,14 @@ class ConnectorProbeRequest(StrictApiModel):
 
 
 class ImportForm(StrictApiModel):
-    connector_id: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-z0-9_-]+$")
-    values: dict[str, str | bool | int | float] = Field(default_factory=dict, max_length=60)
+    connector_id: str = Field(..., min_length=1, max_length=IDENTIFIER_CHARS, pattern=r"^[a-z0-9_-]+$")
+    values: dict[str, str | bool | int | float] = Field(default_factory=dict, max_length=MAX_CONNECTOR_FIELDS)
 
     @field_validator("values")
     @classmethod
     def _bounded(cls, values: dict[str, str | bool | int | float]) -> dict[str, str | bool | int | float]:
         for key, value in values.items():
-            if len(key) > 64 or (isinstance(value, str) and len(value) > 4000):
+            if len(key) > IDENTIFIER_CHARS or (isinstance(value, str) and len(value) > MAX_CONNECTOR_VALUE_CHARS):
                 raise ValueError("Form values are too long.")
         return values
 
@@ -267,7 +269,7 @@ class ClarifyRunRequest(StrictApiModel):
 
 
 class CreatePinRequest(StrictApiModel):
-    title: str = Field(..., min_length=1, max_length=255)
+    title: str = Field(..., min_length=1, max_length=DEFAULT_GLOBAL_LIMITS.max_pin_title_chars)
     question_text: str = Field(..., min_length=1, max_length=DEFAULT_GLOBAL_LIMITS.max_question_chars)
     run_id: str = Field(..., min_length=1, max_length=64)
 

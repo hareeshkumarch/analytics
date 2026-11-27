@@ -1,6 +1,7 @@
 import json
 import re
 from typing import Any
+from app.domain.limits import STORED_TEXT_CHARS
 
 Message = dict[str, Any]
 
@@ -29,8 +30,8 @@ def parse_arguments(raw: Any) -> dict[str, Any]:
     try:
         parsed = json.loads(raw)
     except (TypeError, ValueError):
-        return {"_invalid_arguments": str(raw)[:2000]}
-    return parsed if isinstance(parsed, dict) else {"_invalid_arguments": str(raw)[:2000]}
+        return {"_invalid_arguments": str(raw)[:STORED_TEXT_CHARS]}
+    return parsed if isinstance(parsed, dict) else {"_invalid_arguments": str(raw)[:STORED_TEXT_CHARS]}
 
 
 def _arguments_json(arguments: Any) -> str:

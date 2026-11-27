@@ -26,7 +26,7 @@ export interface HealthResponse {
   providers: string[];
   limits?: Record<string, number>;
   run_limits?: Record<string, RunLimits>;
-  input_limits?: { max_question_chars: number; max_clarification_chars: number };
+  input_limits?: { max_question_chars: number; max_clarification_chars: number; max_pin_title_chars: number };
 }
 
 export function useHealth() {

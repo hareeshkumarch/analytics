@@ -58,10 +58,10 @@ from app.application.prompts import using_prompt
 from app.domain.errors import public_message
 from app.domain.models import Claim, TaskNode
 from app.domain.providers import AgentRole, RoutingPolicy, role_for_kind
+from app.domain.limits import MAX_TOOL_ROUNDS, MODEL_CALL_TIMEOUT_SECONDS, STEP_MAX_OUTPUT_TOKENS, STRUCTURED_MAX_OUTPUT_TOKENS
 
 logger = logging.getLogger(__name__)
 
-MAX_TOOL_ROUNDS = 6
 _TOOL_EXCLUSIONS = frozenset(
     {
         *(FORBIDDEN_DEFAULT_TOOLS - {"task"}),
@@ -213,7 +213,7 @@ class DeepAgentTaskRunner:
                 model_id="",
                 messages=messages,
                 structured_schema=schema,
-                max_output_tokens=4096,
+                max_output_tokens=STRUCTURED_MAX_OUTPUT_TOKENS,
                 timeout_seconds=max(10, min(60, remaining)),
             ),
             policy=policy,
@@ -243,7 +243,7 @@ class DeepAgentTaskRunner:
                 role=role,
                 model_id="",
                 messages=messages,
-                max_output_tokens=12_000,
+                max_output_tokens=STEP_MAX_OUTPUT_TOKENS,
                 timeout_seconds=max(30, min(120, remaining)),
             ),
             policy=policy,
@@ -314,8 +314,8 @@ class DeepAgentTaskRunner:
             run_id=run_id,
             role=role,
             model_name="analytics-gateway",
-            max_output_tokens=12_000,
-            timeout_seconds=120,
+            max_output_tokens=STEP_MAX_OUTPUT_TOKENS,
+            timeout_seconds=MODEL_CALL_TIMEOUT_SECONDS,
             max_tool_rounds=2 if tools else 1,
             should_cancel=should_cancel,
             timeout_provider=timeout_provider,
@@ -462,8 +462,8 @@ class DeepAgentTaskRunner:
             run_id=run_id,
             role=role,
             model_name="analytics-gateway",
-            max_output_tokens=12_000,
-            timeout_seconds=120,
+            max_output_tokens=STEP_MAX_OUTPUT_TOKENS,
+            timeout_seconds=MODEL_CALL_TIMEOUT_SECONDS,
             max_tool_rounds=MAX_TOOL_ROUNDS,
             should_cancel=should_cancel,
             timeout_provider=timeout_provider,

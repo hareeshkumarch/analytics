@@ -6,6 +6,7 @@ from typing import Any, Callable, Generator
 import httpx
 
 from app.domain.errors import ProviderError
+from app.domain.limits import LOG_EXCERPT_CHARS
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ def parse_retry_after(value: str | None) -> float | None:
 
 
 def classify_http_error(status_code: int, body_text: str, provider_name: str) -> ProviderError:
-    logger.warning("%s returned HTTP %s: %s", provider_name, status_code, body_text[:300])
+    logger.warning("%s returned HTTP %s: %s", provider_name, status_code, body_text[:LOG_EXCERPT_CHARS])
     if status_code == 429 or status_code >= 500:
         return ProviderError(
             f"{provider_name} is temporarily unavailable (HTTP {status_code})",
@@ -55,14 +56,14 @@ def read_json_body(response: httpx.Response, provider_name: str) -> dict[str, An
     try:
         data = response.json()
     except ValueError as exc:
-        logger.warning("%s returned a non-JSON body: %s", provider_name, response.text[:300])
+        logger.warning("%s returned a non-JSON body: %s", provider_name, response.text[:LOG_EXCERPT_CHARS])
         raise ProviderError(
             f"{provider_name} returned a response that is not JSON", code="provider_malformed_response", retryable=True
         ) from exc
     if not isinstance(data, dict):
         raise ProviderError(f"{provider_name} returned an unexpected response shape", code="provider_malformed_response", retryable=True)
     if data.get("error") or data.get("type") == "error":
-        logger.warning("%s returned an error inside a successful response: %s", provider_name, json.dumps(data)[:300])
+        logger.warning("%s returned an error inside a successful response: %s", provider_name, json.dumps(data)[:LOG_EXCERPT_CHARS])
         raise ProviderError(f"{provider_name} reported an error", code="provider_error_body", retryable=True)
     status = str(data.get("status") or "").lower()
     if status in _FAILED_STATUSES:

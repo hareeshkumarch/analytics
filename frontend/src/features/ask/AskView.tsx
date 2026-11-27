@@ -703,7 +703,7 @@ export function AskView() {
       await apiFetch(workspacePath(activeWorkspaceId, "/pins"), {
         method: "POST",
         body: JSON.stringify({
-          title: active.question.trim().slice(0, 255) || "Pinned answer",
+          title: active.question.trim().slice(0, inputLimits?.max_pin_title_chars) || "Pinned answer",
           question_text: active.question,
           run_id: runId,
         } satisfies CreatePinRequest),

@@ -23,7 +23,7 @@ from app.application.ports.connectors import (
     ProbeResult,
 )
 from app.domain.errors import ConnectorError, LimitExceededError, ValidationError
-from app.domain.limits import DEFAULT_DATA_LIMITS
+from app.domain.limits import DEFAULT_DATA_LIMITS, ERROR_DETAIL_CHARS
 from app.domain.models import (
     ColumnSchema,
     ConnectorFamily,
@@ -90,7 +90,7 @@ class UploadedDuckDbConnector:
         if not path.exists() or not path.is_file():
             raise ConnectorError("DuckDB file not found")
         if path.stat().st_size > DEFAULT_DATA_LIMITS.max_uploaded_file_bytes:
-            raise LimitExceededError("DuckDB file exceeds the 40,000,000 bytes limit")
+            raise LimitExceededError(f"DuckDB file exceeds the {DEFAULT_DATA_LIMITS.max_uploaded_file_bytes:,} bytes limit")
         return path
 
     def _open(self, src: Path) -> tuple[Any, Path]:
@@ -104,7 +104,7 @@ class UploadedDuckDbConnector:
             con = duckdb.connect(str(quarantined), read_only=True, config=dict(_SAFE_CONFIG))
         except duckdb.Error as exc:
             shutil.rmtree(tmp_dir, ignore_errors=True)
-            raise ConnectorError(f"Could not open the DuckDB file: {str(exc)[:200]}", remediation=_REMEDIATION) from exc
+            raise ConnectorError(f"Could not open the DuckDB file: {str(exc)[:ERROR_DETAIL_CHARS]}", remediation=_REMEDIATION) from exc
         return con, tmp_dir
 
     @staticmethod
@@ -269,7 +269,7 @@ class UploadedDuckDbConnector:
             import duckdb
 
             if isinstance(exc, duckdb.Error):
-                raise ConnectorError(f"DuckDB read failed: {str(exc)[:200]}", remediation=_REMEDIATION) from exc
+                raise ConnectorError(f"DuckDB read failed: {str(exc)[:ERROR_DETAIL_CHARS]}", remediation=_REMEDIATION) from exc
             raise
         finally:
             con.close()

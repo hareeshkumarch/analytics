@@ -15,7 +15,7 @@ from app.application.ports.providers import BudgetLedger, ModelRequest, ModelRes
 from app.application.prompts import current_prompt
 from app.application.services.text_utils import clean_single_line
 from app.domain.errors import CircuitOpenError, ProviderError
-from app.domain.limits import DEFAULT_GLOBAL_LIMITS
+from app.domain.limits import CHARS_PER_TOKEN, DEFAULT_GLOBAL_LIMITS
 from app.domain.providers import (
     AgentRole,
     CircuitBreakerState,
@@ -71,7 +71,8 @@ def routing_policy_from_saved(saved: dict[str, Any] | None, default: RoutingPoli
 
 
 LATENCY_EWMA_WEIGHT = 0.3
-CONTEXT_CHARS_PER_TOKEN = 3
+CIRCUIT_WINDOW_SECONDS = 60.0
+CIRCUIT_OPEN_SECONDS = 30.0
 
 
 def context_token_sections(request: ModelRequest) -> dict[str, int]:
@@ -83,8 +84,8 @@ def context_token_sections(request: ModelRequest) -> dict[str, int]:
         if message.get("tool_calls"):
             sizes["assistant"] += len(json.dumps(message["tool_calls"], default=str))
     tools = sum(len(t.name) + len(t.description) + len(json.dumps(t.parameters_schema, default=str)) for t in request.tools)
-    sections = {f"context.tokens.{key}": value // CONTEXT_CHARS_PER_TOKEN for key, value in sizes.items()}
-    sections["context.tokens.tool_definitions"] = tools // CONTEXT_CHARS_PER_TOKEN
+    sections = {f"context.tokens.{key}": value // CHARS_PER_TOKEN for key, value in sizes.items()}
+    sections["context.tokens.tool_definitions"] = tools // CHARS_PER_TOKEN
     return sections
 
 class CredentialSemaphorePool:
@@ -115,8 +116,8 @@ class CircuitBreakerManager:
         self,
         clock: Clock,
         failure_threshold: int = 5,
-        window_seconds: float = 60.0,
-        open_seconds: float = 30.0,
+        window_seconds: float = CIRCUIT_WINDOW_SECONDS,
+        open_seconds: float = CIRCUIT_OPEN_SECONDS,
     ) -> None:
         self._clock = clock
         self._threshold = failure_threshold

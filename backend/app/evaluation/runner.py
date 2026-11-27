@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from app.application.prompts import ALL_TEMPLATES
 from app.application.services.verification import evidence_has_value, mentions_value
+from app.domain.limits import ERROR_DETAIL_CHARS
 
 REPORT_SCHEMA_VERSION = 1
 CORPUS_DIR = Path(__file__).parent / "corpus"
@@ -104,7 +105,7 @@ def run_question(client: TestClient, question: dict[str, Any], snapshot_id: str)
     )
     latency = time.perf_counter() - started
     if created.status_code != 202:
-        return QuestionResult(question["id"], question["kind"], question["mode"], False, [f"Run was refused: {created.text[:200]}"], "refused", None, None, round(latency, 3), 0, 0, "0", 0)
+        return QuestionResult(question["id"], question["kind"], question["mode"], False, [f"Run was refused: {created.text[:ERROR_DETAIL_CHARS]}"], "refused", None, None, round(latency, 3), 0, 0, "0", 0)
     run_id = created.json()["run_id"]
     run = client.get(f"{base}/runs/{run_id}").json()
     answer = run.get("answer") or {}
@@ -114,7 +115,7 @@ def run_question(client: TestClient, question: dict[str, Any], snapshot_id: str)
     totals: dict[str, Any] = next((r for r in client.get(f"{base}/usage").json()["runs"] if r["run_id"] == run_id), {})
     reasons = score(question, run["status"], answer.get("outcome"), str(answer.get("summary_markdown") or ""), evidence)
     if run.get("error"):
-        reasons.append(str(run["error"].get("message") if isinstance(run["error"], dict) else run["error"])[:200])
+        reasons.append(str(run["error"].get("message") if isinstance(run["error"], dict) else run["error"])[:ERROR_DETAIL_CHARS])
     return QuestionResult(
         question_id=question["id"],
         kind=question["kind"],

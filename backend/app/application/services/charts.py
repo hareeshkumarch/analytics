@@ -9,6 +9,7 @@ MAX_CHARTS = 3
 MAX_POINTS = 50
 MAX_SERIES = 3
 MAX_TITLE_CHARS = 120
+MIN_CHART_POINTS = 2
 CHARTABLE_OPERATIONS = frozenset(
     {"aggregate", "contribution_breakdown", "compare_periods", "distribution", "reconciliation_lookup"}
 )
@@ -79,7 +80,7 @@ def _reconciliation(columns: list[str], rows: list[list[Any]]) -> tuple[str, str
 
 
 def _grouped(columns: list[str], rows: list[list[Any]]) -> tuple[str, str, tuple[str, ...], list[Row]] | None:
-    if len(rows) < 2 or len(columns) < 2:
+    if len(rows) < MIN_CHART_POINTS or len(columns) < MIN_CHART_POINTS:
         return None
     numeric = [i for i in range(len(columns)) if _is_numeric_column(rows, i)]
     labels = [i for i in range(len(columns)) if i not in numeric]
@@ -112,7 +113,7 @@ def _chart_for(evidence: dict[str, Any]) -> ChartSpec | None:
         return None
     chart_type, x_field, y_fields, points = shape
     points = [p for p in points if any(v is not None for v in p[1:])]
-    if len(points) < 2:
+    if len(points) < MIN_CHART_POINTS:
         return None
     cut = len(points) > MAX_POINTS
     points = points[-MAX_POINTS:] if chart_type == "line" else points[:MAX_POINTS]

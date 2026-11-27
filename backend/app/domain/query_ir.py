@@ -2,6 +2,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal, Union
 
+from app.domain.limits import PUBLIC_ERROR_CHARS
+
+MAX_QUERY_ROWS = 1000
+DEFAULT_LIST_ROWS = 100
+DEFAULT_BUCKETS = 10
+MAX_BUCKETS = 100
+
 
 class FilterOperator(str, Enum):
     EQ = "eq"
@@ -52,7 +59,7 @@ class AggregateQueryIR:
     group_by: tuple[str, ...] = ()
     filters: tuple[FilterPredicate, ...] = ()
     order_by: tuple[SortSpec, ...] = ()
-    limit: int = 1000
+    limit: int = MAX_QUERY_ROWS
     purpose: str = ""
 
 
@@ -63,7 +70,7 @@ class DetailQueryIR:
     select_fields: tuple[str, ...] = ()
     filters: tuple[FilterPredicate, ...] = ()
     order_by: tuple[SortSpec, ...] = ()
-    limit: int = 1000
+    limit: int = MAX_QUERY_ROWS
     purpose: str = ""
 
 
@@ -81,7 +88,7 @@ class ComparePeriodsQueryIR:
     previous_end: str = ""
     group_by: tuple[str, ...] = ()
     filters: tuple[FilterPredicate, ...] = ()
-    limit: int = 1000
+    limit: int = MAX_QUERY_ROWS
     purpose: str = ""
 
 
@@ -94,7 +101,7 @@ class ContributionBreakdownQueryIR:
     )
     dimension_field: str = ""
     filters: tuple[FilterPredicate, ...] = ()
-    limit: int = 100
+    limit: int = DEFAULT_LIST_ROWS
     purpose: str = ""
 
 
@@ -103,9 +110,9 @@ class DistributionQueryIR:
     operation: Literal["distribution"] = "distribution"
     table_id: str = ""
     field_id: str = ""
-    buckets: int = 10
+    buckets: int = DEFAULT_BUCKETS
     filters: tuple[FilterPredicate, ...] = ()
-    limit: int = 100
+    limit: int = DEFAULT_LIST_ROWS
     purpose: str = ""
 
 
@@ -119,7 +126,7 @@ class ReconciliationLookupQueryIR:
     left_amount_field: str = ""
     right_amount_field: str = ""
     filters: tuple[FilterPredicate, ...] = ()
-    limit: int = 1000
+    limit: int = MAX_QUERY_ROWS
     purpose: str = ""
 
 
@@ -140,7 +147,6 @@ class QueryIRParseError(ValueError):
 
 
 _MAX_IDENT = 128
-_MAX_LIMIT = 1000
 
 
 def _ident(payload: dict[str, Any], key: str, required: bool = True, *, failed_key: str | None = None) -> str:
@@ -164,8 +170,8 @@ def _ident_list(payload: dict[str, Any], key: str) -> tuple[str, ...]:
 
 def _limit(payload: dict[str, Any], default: int) -> int:
     value = payload.get("limit", default)
-    if not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= _MAX_LIMIT:
-        raise QueryIRParseError(f"'limit' must be an integer between 1 and {_MAX_LIMIT}", failed_fields=("limit",))
+    if not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= MAX_QUERY_ROWS:
+        raise QueryIRParseError(f"'limit' must be an integer between 1 and {MAX_QUERY_ROWS}", failed_fields=("limit",))
     return value
 
 
@@ -243,7 +249,7 @@ def _order_by(payload: dict[str, Any]) -> tuple[SortSpec, ...]:
 
 def _purpose(payload: dict[str, Any]) -> str:
     value = payload.get("purpose", "")
-    return value[:500] if isinstance(value, str) else ""
+    return value[:PUBLIC_ERROR_CHARS] if isinstance(value, str) else ""
 
 
 def parse_query_ir(payload: dict[str, Any]) -> QueryIR:
@@ -260,7 +266,7 @@ def parse_query_ir(payload: dict[str, Any]) -> QueryIR:
             group_by=_ident_list(payload, "group_by"),
             filters=_filters(payload),
             order_by=_order_by(payload),
-            limit=_limit(payload, 1000),
+            limit=_limit(payload, MAX_QUERY_ROWS),
             purpose=_purpose(payload),
         )
     if operation == "detail":
@@ -269,7 +275,7 @@ def parse_query_ir(payload: dict[str, Any]) -> QueryIR:
             select_fields=_ident_list(payload, "select_fields"),
             filters=_filters(payload),
             order_by=_order_by(payload),
-            limit=_limit(payload, 100),
+            limit=_limit(payload, DEFAULT_LIST_ROWS),
             purpose=_purpose(payload),
         )
     if operation == "compare_periods":
@@ -283,7 +289,7 @@ def parse_query_ir(payload: dict[str, Any]) -> QueryIR:
             previous_end=_ident(payload, "previous_end"),
             group_by=_ident_list(payload, "group_by"),
             filters=_filters(payload),
-            limit=_limit(payload, 1000),
+            limit=_limit(payload, MAX_QUERY_ROWS),
             purpose=_purpose(payload),
         )
     if operation == "contribution_breakdown":
@@ -292,19 +298,19 @@ def parse_query_ir(payload: dict[str, Any]) -> QueryIR:
             metric=_metric(payload.get("metric"), "metric"),
             dimension_field=_ident(payload, "dimension_field"),
             filters=_filters(payload),
-            limit=_limit(payload, 100),
+            limit=_limit(payload, DEFAULT_LIST_ROWS),
             purpose=_purpose(payload),
         )
     if operation == "distribution":
-        buckets = payload.get("buckets", 10)
-        if not isinstance(buckets, int) or isinstance(buckets, bool) or not 1 <= buckets <= 100:
-            raise QueryIRParseError("'buckets' must be an integer between 1 and 100", failed_fields=("buckets",))
+        buckets = payload.get("buckets", DEFAULT_BUCKETS)
+        if not isinstance(buckets, int) or isinstance(buckets, bool) or not 1 <= buckets <= MAX_BUCKETS:
+            raise QueryIRParseError(f"'buckets' must be an integer between 1 and {MAX_BUCKETS}", failed_fields=("buckets",))
         return DistributionQueryIR(
             table_id=_ident(payload, "table_id"),
             field_id=_ident(payload, "field_id"),
             buckets=buckets,
             filters=_filters(payload),
-            limit=_limit(payload, 100),
+            limit=_limit(payload, DEFAULT_LIST_ROWS),
             purpose=_purpose(payload),
         )
     if operation == "reconciliation_lookup":
@@ -316,7 +322,7 @@ def parse_query_ir(payload: dict[str, Any]) -> QueryIR:
             left_amount_field=_ident(payload, "left_amount_field"),
             right_amount_field=_ident(payload, "right_amount_field"),
             filters=_filters(payload),
-            limit=_limit(payload, 1000),
+            limit=_limit(payload, MAX_QUERY_ROWS),
             purpose=_purpose(payload),
         )
     raise QueryIRParseError(

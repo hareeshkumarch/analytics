@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
 
+from app.domain.limits import PUBLIC_ERROR_CHARS
+
 
 @dataclass(frozen=True, slots=True)
 class ErrorEnvelope:
@@ -58,7 +60,7 @@ class DomainError(Exception):
 
 def public_message(exc: BaseException) -> str:
     if isinstance(exc, DomainError):
-        return str(exc)[:500]
+        return str(exc)[:PUBLIC_ERROR_CHARS]
     return f"The step failed with an unexpected {exc.__class__.__name__}; details are in the server log."
 
 

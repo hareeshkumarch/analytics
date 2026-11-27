@@ -25,6 +25,7 @@ from app.domain.errors import (
     ValidationError,
 )
 from app.domain.limits import (
+    CONNECTOR_ERROR_CHARS,
     DEFAULT_DATA_LIMITS,
     DEFAULT_GLOBAL_LIMITS,
 )
@@ -77,7 +78,7 @@ def _materialized_connector_config(
     if family in database_files and isinstance(raw, (bytes, bytearray)):
         label, filename = database_files[family]
         if len(raw) > DEFAULT_DATA_LIMITS.max_uploaded_file_bytes:
-            raise LimitExceededError(f"Uploaded {label} file exceeds the 40,000,000 bytes limit")
+            raise LimitExceededError(f"Uploaded {label} file exceeds the {DEFAULT_DATA_LIMITS.max_uploaded_file_bytes:,} bytes limit")
         tmp_dir = tempfile.mkdtemp(prefix="ledgerline_db_upload_")
         db_path = os.path.join(tmp_dir, filename)
         with open(db_path, "wb") as fh:
@@ -162,7 +163,7 @@ async def _call_connector(fn: Any, *args: Any) -> Any:
         raise
     except Exception as exc:  # noqa: BLE001
         logger.warning("Connector call failed: %s", exc.__class__.__name__)
-        raise ConnectorError(f"{exc.__class__.__name__}: {exc}"[:400]) from exc
+        raise ConnectorError(f"{exc.__class__.__name__}: {exc}"[:CONNECTOR_ERROR_CHARS]) from exc
 
 
 MAX_RUNS_WITH_EVIDENCE = 200

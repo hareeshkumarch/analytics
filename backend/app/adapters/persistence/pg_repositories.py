@@ -34,7 +34,7 @@ from app.domain.errors import BudgetExhaustedError, LimitExceededError, NotFound
 from app.domain.events import EventType, RunEvent
 from app.application.services.task_store import apply_transition
 from app.domain.models import Answer, RunStatus, TaskBudget, TaskRecord
-from app.domain.limits import DEEP_BUDGET_LIMITS, DEFAULT_DATA_LIMITS, DataLimits, limits_for
+from app.domain.limits import DEEP_BUDGET_LIMITS, DEFAULT_DATA_LIMITS, PREVIEW_CHARS, PUBLIC_ERROR_CHARS, STORED_TEXT_CHARS, DataLimits, limits_for
 from app.domain.providers import AgentRole, BudgetReservation
 from app.domain.timezone import DEFAULT_BUSINESS_TIMEZONE, normalize_timezone
 from app.domain.usage import summarize_model_usage
@@ -217,7 +217,7 @@ class PgRunRepository:
     ) -> dict[str, Any]:
         with self._sf() as db:
             with db.begin():
-                ensure_conversation(db, workspace_id, conversation_id, title=question[:200])
+                ensure_conversation(db, workspace_id, conversation_id, title=question[:PREVIEW_CHARS])
                 now = datetime.now(timezone.utc)
                 row = RunRow(
                     run_id=run_id,
@@ -1248,7 +1248,7 @@ class PgBudgetLedger:
             with db.begin():
                 row = db.get(BudgetReservationRow, reservation_id, with_for_update=True)
                 if row and not row.settled:
-                    row.unresolved_reason = reason[:500]
+                    row.unresolved_reason = reason[:PUBLIC_ERROR_CHARS]
                     row.actual_tokens = 0
                     row.actual_cost_usd = Decimal("0")
 
@@ -1600,7 +1600,7 @@ class PgTaskRepository:
                 row.input_fingerprint = updated.input_fingerprint
                 row.evidence_ids = list(updated.evidence_ids)
                 row.result_json = updated.result
-                row.error = updated.error[:2000] if updated.error else None
+                row.error = updated.error[:STORED_TEXT_CHARS] if updated.error else None
                 if updated.budget is not None:
                     row.budget_tokens = updated.budget.tokens
                     row.budget_tool_calls = updated.budget.tool_calls

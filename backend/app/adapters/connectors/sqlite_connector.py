@@ -49,7 +49,7 @@ class UploadedSqliteConnector:
         if not db_path.exists() or not db_path.is_file():
             raise ConnectorError(f"SQLite file not found: {db_path.name}")
         if db_path.stat().st_size > DEFAULT_DATA_LIMITS.max_uploaded_file_bytes:
-            raise LimitExceededError("SQLite file exceeds 40,000,000 bytes limit")
+            raise LimitExceededError(f"SQLite file exceeds the {DEFAULT_DATA_LIMITS.max_uploaded_file_bytes:,} bytes limit")
         wal_path = Path(f"{db_path}-wal")
         journal_path = Path(f"{db_path}-journal")
         if wal_path.exists() and wal_path.stat().st_size > 0:

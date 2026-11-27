@@ -8,7 +8,7 @@ from app.application.services.context_compiler import (
     composer_findings,
     specialist_context,
 )
-from app.application.services.routing_service import CONTEXT_CHARS_PER_TOKEN
+from app.domain.limits import CHARS_PER_TOKEN
 
 
 class TestCompileContext(unittest.TestCase):
@@ -30,7 +30,7 @@ class TestCompileContext(unittest.TestCase):
         self.assertEqual(by_name["recent"], "r" * 3000)
         self.assertTrue(by_name["old"].endswith(TRIM_MARK))
         self.assertEqual(compiled.trimmed, ("old",))
-        self.assertLessEqual(len(compiled.text) - 4, 2500 * CONTEXT_CHARS_PER_TOKEN)
+        self.assertLessEqual(len(compiled.text) - 4, 2500 * CHARS_PER_TOKEN)
 
     def test_floors_hold_and_sections_without_a_floor_can_be_dropped(self) -> None:
         sections = [
@@ -55,7 +55,7 @@ class TestPromptBuilders(unittest.TestCase):
         self.assertEqual(compiled.dropped, ())
         self.assertTrue(compiled.trimmed)
         self.assertTrue(all(f"Finding {i}" in compiled.text for i in range(4)))
-        self.assertLessEqual(len(compiled.text), 6_000 * CONTEXT_CHARS_PER_TOKEN + 4 * len(TRIM_MARK) + 100)
+        self.assertLessEqual(len(compiled.text), 6_000 * CHARS_PER_TOKEN + 4 * len(TRIM_MARK) + 100)
 
     def test_composer_trims_older_findings_before_newer_ones(self) -> None:
         compiled = composer_findings(["old " + "a" * 12_000, "new " + "b" * 12_000])

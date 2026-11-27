@@ -68,7 +68,7 @@ class UploadedFileConnector:
         self._parsers.get(fmt)
         size = sum(len(raw) for raw, _, _ in inputs)
         if size > DEFAULT_DATA_LIMITS.max_uploaded_file_bytes:
-            raise LimitExceededError("Uploaded file exceeds 40,000,000 bytes limit")
+            raise LimitExceededError(f"Uploaded file exceeds the {DEFAULT_DATA_LIMITS.max_uploaded_file_bytes:,} bytes limit")
         return ProbeResult(
             ok=True,
             family=self.family,

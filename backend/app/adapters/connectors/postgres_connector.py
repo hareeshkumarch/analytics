@@ -3,7 +3,7 @@ from typing import Any, Callable, Iterable
 
 import pyarrow as pa
 
-from app.domain.limits import DEFAULT_DATA_LIMITS
+from app.domain.limits import DEFAULT_DATA_LIMITS, VERSION_STRING_CHARS
 from app.adapters.connectors.destination_policy import DestinationPolicy, validate_and_resolve_host
 from app.adapters.connectors.tls import ca_file, ca_pem_from, tls_mode_for
 from app.adapters.parsers.registry import serialize_arrow_ipc_checked
@@ -93,7 +93,7 @@ class PostgresConnector:
             family=self.family,
             message="Connected to PostgreSQL read-only source",
             capabilities=self.capabilities(),
-            details={"server_version": str(ver)[:80]},
+            details={"server_version": str(ver)[:VERSION_STRING_CHARS]},
         )
 
     def discover(

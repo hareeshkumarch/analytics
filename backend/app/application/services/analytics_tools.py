@@ -20,9 +20,9 @@ from app.domain.errors import (
     QueryValidationError,
     SecurityPolicyError,
 )
-from app.domain.limits import DEFAULT_GLOBAL_LIMITS
+from app.domain.limits import DEFAULT_GLOBAL_LIMITS, ERROR_DETAIL_CHARS, LOG_EXCERPT_CHARS, PUBLIC_ERROR_CHARS
 from app.domain.timezone import DEFAULT_BUSINESS_TIMEZONE
-from app.domain.query_ir import AggregateFunction, FilterOperator, QueryIRParseError, parse_query_ir
+from app.domain.query_ir import MAX_BUCKETS, MAX_QUERY_ROWS, AggregateFunction, FilterOperator, QueryIRParseError, parse_query_ir
 
 _tracer = trace.get_tracer("ledgerline.query")
 
@@ -78,7 +78,6 @@ def _success(summary: str, snapshot_id: Any, evidence_refs: list[str], data: dic
     }
 
 MAX_ROWS_TO_MODEL = 50
-MAX_QUERY_ROWS = 1000
 
 _STRING_LIST = {"type": "array", "items": {"type": "string"}}
 _METRIC = {
@@ -156,7 +155,7 @@ RUN_QUERY_SCHEMA: dict[str, Any] = {
         "previous_end": {"type": "string", "description": "ISO date, compare_periods only."},
         "dimension_field": {"type": "string", "description": "contribution_breakdown only."},
         "field_id": {"type": "string", "description": "distribution only."},
-        "buckets": {"type": "integer", "description": "distribution only, 1-100."},
+        "buckets": {"type": "integer", "description": f"distribution only, 1-{MAX_BUCKETS}."},
         "left_table_id": {"type": "string", "description": "reconciliation_lookup only."},
         "right_table_id": {"type": "string", "description": "reconciliation_lookup only."},
         "left_key": {"type": "string", "description": "reconciliation_lookup only."},
@@ -227,6 +226,8 @@ CALCULATE_TOOL = ToolDefinition(
     strict=False,
 )
 _PAIRWISE_OPERATIONS = ("difference", "ratio", "percent_change")
+MAX_CALCULATE_REFS = 50
+PAIRWISE_REFS = 2
 
 
 class ToolEffect(str, Enum):
@@ -461,7 +462,7 @@ class AnalyticsToolbox:
         return ToolOutcome(
             content=json.dumps(envelope),
             is_error=True,
-            summary={"tool": tool, "ok": False, "status": status, "code": code.value, "error": message[:300]},
+            summary={"tool": tool, "ok": False, "status": status, "code": code.value, "error": message[:LOG_EXCERPT_CHARS]},
         )
 
     def _invalid(self, tool: str, message: str, *, failed_fields: tuple[str, ...] = ()) -> ToolOutcome:
@@ -499,7 +500,7 @@ class AnalyticsToolbox:
         if earlier is not None:
             return self._error(
                 name,
-                f"This exact call already failed ({earlier[:200]}). It was not run again; change the arguments or answer with the evidence you have.",
+                f"This exact call already failed ({earlier[:ERROR_DETAIL_CHARS]}). It was not run again; change the arguments or answer with the evidence you have.",
                 ToolErrorCode.DUPLICATE_FAILED_CALL,
             )
         if not self.budget.take(analytical=name == RUN_QUERY_TOOL.name):
@@ -567,13 +568,13 @@ class AnalyticsToolbox:
         assert self.snapshot is not None
         operation = arguments.get("operation")
         refs = arguments.get("values")
-        if operation not in ("sum", *_PAIRWISE_OPERATIONS) or not isinstance(refs, list) or not 1 <= len(refs) <= 50:
+        if operation not in ("sum", *_PAIRWISE_OPERATIONS) or not isinstance(refs, list) or not 1 <= len(refs) <= MAX_CALCULATE_REFS:
             return self._invalid(
                 CALCULATE_TOOL.name,
                 "Give an operation (sum, difference, ratio, percent_change) and 1-50 values.",
                 failed_fields=("operation", "values"),
             )
-        if operation in _PAIRWISE_OPERATIONS and len(refs) != 2:
+        if operation in _PAIRWISE_OPERATIONS and len(refs) != PAIRWISE_REFS:
             return self._invalid(
                 CALCULATE_TOOL.name,
                 f"{operation} takes exactly two values: current first, then baseline.",
@@ -617,7 +618,7 @@ class AnalyticsToolbox:
         evidence = {
             "evidence_id": evidence_id,
             "operation": f"calculate_{operation}",
-            "purpose": str(arguments.get("purpose") or "")[:500],
+            "purpose": str(arguments.get("purpose") or "")[:PUBLIC_ERROR_CHARS],
             "query_ir_hash": inputs_hash,
             "result_hash": hashlib.sha256(result_text.encode("utf-8")).hexdigest(),
             "sql": formula,
@@ -684,7 +685,7 @@ class AnalyticsToolbox:
         except DomainError as exc:
             return self._error(RUN_QUERY_TOOL.name, f"{exc}", _code_for(exc), retryable=exc.retryable)
         except Exception as exc:  # noqa: BLE001
-            return self._error(RUN_QUERY_TOOL.name, f"Query failed: {exc}"[:500], ToolErrorCode.INTERNAL)
+            return self._error(RUN_QUERY_TOOL.name, f"Query failed: {exc}"[:PUBLIC_ERROR_CHARS], ToolErrorCode.INTERNAL)
         evidence_id = "ev_" + hashlib.sha256(f"{result.query_ir_hash}:{result.result_hash}".encode("utf-8")).hexdigest()[:12]
         evidence = {
             "evidence_id": evidence_id,

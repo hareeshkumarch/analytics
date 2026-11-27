@@ -12,6 +12,9 @@ _CONTROL_CHAR_TABLE = str.maketrans(
 )
 _WHITESPACE_RUN_RE = re.compile(r"[\r\n\t]+")
 
+JSON_INFO_TAG = "json"
+MIN_FENCE_CHARS = 3
+
 
 def strip_unknown_citations(text: str, known_ids: set[str]) -> tuple[str, list[str]]:
     """Drop cited evidence ids that no tool call produced, so the UI never links to a missing record."""
@@ -42,8 +45,9 @@ def clean_single_line(raw: Any, limit: int = 300) -> str:
 
 def _strip_json_info_tag(text: str) -> str:
     stripped = text.lstrip()
-    if stripped[:4].lower() == "json" and (len(stripped) == 4 or stripped[4].isspace() or stripped[4] == "{"):
-        return stripped[4:].lstrip()
+    tag = len(JSON_INFO_TAG)
+    if stripped[:tag].lower() == JSON_INFO_TAG and (len(stripped) == tag or stripped[tag].isspace() or stripped[tag] == "{"):
+        return stripped[tag:].lstrip()
     return stripped
 
 
@@ -61,7 +65,7 @@ def _extract_fenced_blocks(text: str) -> list[str]:
                 continue
             ch = stripped[0]
             n = len(stripped) - len(stripped.lstrip(ch))
-            if n < 3:
+            if n < MIN_FENCE_CHARS:
                 continue
             after = stripped[n:].strip()
             closing = ch * n

@@ -50,7 +50,7 @@ def serialize_arrow_ipc_checked(
     if arrow_table.num_columns > limits.max_columns_per_dataset:
         raise LimitExceededError(
             f"Dataset exceeds max_columns_per_dataset ({arrow_table.num_columns} > {limits.max_columns_per_dataset})",
-            remediation="Select at most 200 columns.",
+            remediation=f"Select at most {limits.max_columns_per_dataset} columns.",
         )
 
     sink = io.BytesIO()

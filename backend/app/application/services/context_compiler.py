@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from app.application.services.routing_service import CONTEXT_CHARS_PER_TOKEN
+from app.domain.limits import CHARS_PER_TOKEN
 
 TRIM_MARK = "\n[…trimmed to fit the context budget]"
 SPECIALIST_CONTEXT_TOKENS = 6_000
@@ -38,12 +38,12 @@ class CompiledContext:
 
 
 def _tokens(chars: int) -> int:
-    return -(-chars // CONTEXT_CHARS_PER_TOKEN)
+    return -(-chars // CHARS_PER_TOKEN)
 
 
 def compile_context(sections: list[ContextSection], budget_tokens: int) -> CompiledContext:
     texts = {s.name: s.text for s in sections}
-    over = sum(len(t) for t in texts.values()) - budget_tokens * CONTEXT_CHARS_PER_TOKEN
+    over = sum(len(t) for t in texts.values()) - budget_tokens * CHARS_PER_TOKEN
     trimmed: list[str] = []
     dropped: list[str] = []
     for section in sorted((s for s in sections if s.priority != REQUIRED), key=lambda s: (-s.priority, s.name)):
@@ -120,5 +120,5 @@ def bounded_items(items: list[str] | tuple[str, ...], limit: int, chars: int) ->
 
 
 def fit_text(text: str, budget_tokens: int) -> str:
-    room = budget_tokens * CONTEXT_CHARS_PER_TOKEN
+    room = budget_tokens * CHARS_PER_TOKEN
     return text if len(text) <= room else text[: max(0, room - len(TRIM_MARK))].rstrip() + TRIM_MARK

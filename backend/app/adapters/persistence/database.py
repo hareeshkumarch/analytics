@@ -12,6 +12,8 @@ STATEMENT_TIMEOUT_MS = 30_000
 
 
 POOL_TIMEOUT_SECONDS = 5
+POOL_SIZE = 10
+POOL_MAX_OVERFLOW = 20
 
 
 def create_db_engine(database_url: str | None = None) -> Any:
@@ -44,8 +46,8 @@ def create_db_engine(database_url: str | None = None) -> Any:
         url,
         connect_args={"options": f"-c lock_timeout={LOCK_TIMEOUT_MS} -c statement_timeout={STATEMENT_TIMEOUT_MS}"},
         pool_pre_ping=True,
-        pool_size=10,
-        max_overflow=20,
+        pool_size=POOL_SIZE,
+        max_overflow=POOL_MAX_OVERFLOW,
         pool_timeout=POOL_TIMEOUT_SECONDS,
     )
 

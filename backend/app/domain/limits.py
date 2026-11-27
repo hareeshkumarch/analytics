@@ -58,6 +58,26 @@ class DataLimits:
 
 REPLAN_TASKS = 2
 
+MAX_TOOL_ROUNDS = 6
+CHARS_PER_TOKEN = 3
+TOKEN_HEADROOM_FACTOR = 2
+STEP_MAX_OUTPUT_TOKENS = 12_000
+STRUCTURED_MAX_OUTPUT_TOKENS = 4_096
+MODEL_CALL_TIMEOUT_SECONDS = 120
+MIN_CALL_TIMEOUT_SECONDS = 10
+
+LOG_EXCERPT_CHARS = 300
+PUBLIC_ERROR_CHARS = 500
+ERROR_DETAIL_CHARS = 200
+CONNECTOR_ERROR_CHARS = 400
+PREVIEW_CHARS = 200
+LONG_TEXT_CHARS = 1_000
+IDENTIFIER_CHARS = 64
+STORED_TEXT_CHARS = 2_000
+VERSION_STRING_CHARS = 80
+MAX_CONNECTOR_FIELDS = 60
+MAX_CONNECTOR_VALUE_CHARS = 4_000
+
 
 @dataclass(frozen=True, slots=True)
 class RunBudgetLimits:
@@ -133,6 +153,7 @@ class GlobalLimits:
     idempotency_key_retention_hours: int = 24
     max_question_chars: int = 4_000
     max_clarification_chars: int = 2_000
+    max_pin_title_chars: int = 255
     workspace_daily_runs: int | None = None
     workspace_daily_cost_usd: Decimal | None = None
 

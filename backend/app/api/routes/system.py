@@ -57,6 +57,7 @@ def register(ctx: ApiContext) -> APIRouter:
             "input_limits": {
                 "max_question_chars": DEFAULT_GLOBAL_LIMITS.max_question_chars,
                 "max_clarification_chars": DEFAULT_GLOBAL_LIMITS.max_clarification_chars,
+                "max_pin_title_chars": DEFAULT_GLOBAL_LIMITS.max_pin_title_chars,
             },
             "run_limits": {
                 lim.mode: {

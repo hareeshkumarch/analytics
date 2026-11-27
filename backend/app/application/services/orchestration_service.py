@@ -73,15 +73,12 @@ from app.application.services.verification import assess_answer
 from app.domain.errors import BudgetExhaustedError, ClarificationRequired, public_message
 from app.domain.events import EventType, RunEvent
 from app.domain.timezone import DEFAULT_BUSINESS_TIMEZONE
-from app.domain.limits import DEFAULT_GLOBAL_LIMITS, REPLAN_TASKS
+from app.domain.limits import DEFAULT_GLOBAL_LIMITS, IDENTIFIER_CHARS, LONG_TEXT_CHARS, MAX_TOOL_ROUNDS, MIN_CALL_TIMEOUT_SECONDS, MODEL_CALL_TIMEOUT_SECONDS, PUBLIC_ERROR_CHARS, REPLAN_TASKS, STEP_MAX_OUTPUT_TOKENS, TOKEN_HEADROOM_FACTOR
 from app.domain.models import Answer, Claim, PlanDAG, RunMode, RunStatus, TaskBudget, TaskKind, TaskNode, TaskStatus
 from app.domain.providers import AgentRole, RoutingPolicy, role_for_kind
 
 logger = logging.getLogger(__name__)
 
-MAX_TOOL_ROUNDS = 6
-TOOL_ROUND_MAX_OUTPUT_TOKENS = 12_000
-TOOL_ROUND_TIMEOUT_SECONDS = 120
 DEADLINE_MARGIN_SECONDS = 45
 FINAL_ROUND_MIN_TIMEOUT_SECONDS = 30
 OLDER_RESULT_MAX_CHARS = 4_000
@@ -130,9 +127,9 @@ _TASK_ID_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9_]{0,47}")
 
 def _call_timeout(deadline: float | None, final_round: bool = False) -> int:
     if deadline is None:
-        return TOOL_ROUND_TIMEOUT_SECONDS
-    floor = FINAL_ROUND_MIN_TIMEOUT_SECONDS if final_round else 10
-    return max(floor, min(TOOL_ROUND_TIMEOUT_SECONDS, int(deadline - time.monotonic())))
+        return MODEL_CALL_TIMEOUT_SECONDS
+    floor = FINAL_ROUND_MIN_TIMEOUT_SECONDS if final_round else MIN_CALL_TIMEOUT_SECONDS
+    return max(floor, min(MODEL_CALL_TIMEOUT_SECONDS, int(deadline - time.monotonic())))
 
 
 def _evidence_verdict(claims: list[Claim], flagged: set[str], remediation_claims: set[str]) -> ReviewVerdict:
@@ -295,7 +292,7 @@ def _plan_from_agent(
         if draft.get("needs_clarification") is True and not clarification_answered:
             prompt = str(draft.get("clarification_question") or "").strip()
             if prompt:
-                raise ClarificationRequired(prompt[:1000])
+                raise ClarificationRequired(prompt[:LONG_TEXT_CHARS])
         notes: list[str] = []
         raw_tasks = draft.get("tasks")
         if not isinstance(raw_tasks, list) or not 1 <= len(raw_tasks) <= max_tasks:
@@ -359,7 +356,7 @@ def _plan_from_agent(
             raise ValueError("Planner returned invalid completion criteria")
         plan = PlanDAG(
             revision=revision,
-            goal=str(draft.get("goal") or question)[:1000],
+            goal=str(draft.get("goal") or question)[:LONG_TEXT_CHARS],
             completion_criteria=tuple(clip_statement(str(value), MAX_CRITERION_CHARS) for value in criteria[:MAX_COMPLETION_CRITERIA]),
             tasks=tuple(tasks),
         )
@@ -478,7 +475,7 @@ class InvestigationOrchestrator:
                         or (token_budget is not None and tokens_used >= token_budget)
                         or self._attempts_left(run_id, max_model_attempts) <= 1
                         or self._container.routing_service.tokens_left(run_id)
-                        < 2 * (estimate_input_tokens(tuple(messages), tools) + TOOL_ROUND_MAX_OUTPUT_TOKENS)
+                        < TOKEN_HEADROOM_FACTOR * (estimate_input_tokens(tuple(messages), tools) + STEP_MAX_OUTPUT_TOKENS)
                         or (deadline is not None and time.monotonic() >= deadline - DEADLINE_MARGIN_SECONDS)
                     )
                 )
@@ -489,7 +486,7 @@ class InvestigationOrchestrator:
                 call_kwargs: dict[str, Any] = {
                     "messages": tuple(messages),
                     "tools": offer,
-                    "max_output_tokens": TOOL_ROUND_MAX_OUTPUT_TOKENS if offer else None,
+                    "max_output_tokens": STEP_MAX_OUTPUT_TOKENS if offer else None,
                     "timeout_seconds": _call_timeout(deadline, final_round) if offer else None,
                     "tool_choice": "none" if (offer and final_round) else None,
                 }
@@ -687,7 +684,7 @@ class InvestigationOrchestrator:
             execution_id=f"tex_{uuid.uuid4().hex[:16]}",
             run_id=run_id,
             task_id=task_id,
-            tool=str(entry.get("tool") or "")[:64],
+            tool=str(entry.get("tool") or "")[:IDENTIFIER_CHARS],
             tool_version=str(entry.get("tool_version") or ""),
             args_fingerprint=str(entry.get("args_fingerprint") or ""),
             status=str(entry.get("status") or ("success" if entry.get("ok") else "failed")),
@@ -1086,7 +1083,7 @@ class InvestigationOrchestrator:
                         )
                     _emit(
                         EventType.TASK_STATUS,
-                        {"task_id": task.task_id, "status": "failed", "error": outcome.error[:500]},
+                        {"task_id": task.task_id, "status": "failed", "error": outcome.error[:PUBLIC_ERROR_CHARS]},
                     )
                     continue
                 if task.kind == TaskKind.EVIDENCE_REVIEWER and outcome.review_verdict is not None:
@@ -1434,10 +1431,10 @@ class InvestigationOrchestrator:
             finished["error"] = f"Time budget exceeded ({limits.active_seconds}s)"
         elif not summary_parts and task_errors:
             finished["status"] = RunStatus.FAILED.value
-            finished["error"] = task_errors[0][:500]
+            finished["error"] = task_errors[0][:PUBLIC_ERROR_CHARS]
         elif not summary_parts and budget_limitations:
             finished["status"] = RunStatus.FAILED.value
-            finished["error"] = budget_limitations[0][:500]
+            finished["error"] = budget_limitations[0][:PUBLIC_ERROR_CHARS]
         else:
             finished["status"] = RunStatus.COMPLETED.value
             finished["outcome"] = outcome

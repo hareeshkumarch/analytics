@@ -21,8 +21,8 @@ from app.adapters.orchestration.deep_agents_bridge import estimate_input_tokens
 from app.application.ports.providers import ModelRequest, ModelResponse, ToolDefinition
 from app.application.services.routing_service import RoutingService
 from app.domain.providers import AgentRole, RoutingPolicy
+from app.domain.limits import STEP_MAX_OUTPUT_TOKENS, TOKEN_HEADROOM_FACTOR
 
-LOW_TOKEN_FACTOR = 2
 _FINAL_TOOL_ROUND_PROMPT = (
     "The specialist tool-round limit is used up. Give your final answer now using only the results "
     "already available, and do not call any more tools."
@@ -97,7 +97,7 @@ class GatewayChatModel(BaseChatModel):
     run_id: str
     role: AgentRole
     model_name: str = "analytics-gateway"
-    max_output_tokens: int = 12_000
+    max_output_tokens: int = STEP_MAX_OUTPUT_TOKENS
     timeout_seconds: int = 120
     max_tool_rounds: int = 6
     should_cancel: Callable[[], bool] | None = Field(default=None, exclude=True)
@@ -164,7 +164,7 @@ class GatewayChatModel(BaseChatModel):
                 )
             tool_rounds_exhausted = tool_rounds_exhausted or (
                 self.routing_service.tokens_left(self.run_id)
-                < LOW_TOKEN_FACTOR * (estimated_input_tokens + max_output_tokens)
+                < TOKEN_HEADROOM_FACTOR * (estimated_input_tokens + max_output_tokens)
             )
         if tool_rounds_exhausted:
             gateway_messages.append({"role": "user", "content": _FINAL_TOOL_ROUND_PROMPT})
