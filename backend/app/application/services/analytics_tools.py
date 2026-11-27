@@ -616,6 +616,10 @@ class AnalyticsToolbox:
             ],
             "tables": tables,
         }
+        notes = [str(n) for n in (self.snapshot.get("dataset_notes") or []) if str(n).strip()]
+        if notes:
+            # Definitions and corrections the user confirmed for this data source.
+            payload["notes_from_user"] = notes
         return ToolOutcome(
             content=_cap_schema(payload, TOOL_SPECS[INSPECT_SCHEMA_TOOL.name].max_inline_bytes),
             is_error=False,

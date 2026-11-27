@@ -280,8 +280,22 @@ class SetOpsSwitchRequest(StrictApiModel):
     reason: str = Field(..., min_length=1, max_length=500)
 
 
+class PinAlertRequest(StrictApiModel):
+    # Flag the pin when its headline figure is above or below this value.
+    direction: Literal["above", "below"]
+    value: float
+
+
 class UpdatePinRequest(StrictApiModel):
-    auto_refresh: bool
+    # Every field is optional: send only what should change.
+    auto_refresh: bool | None = None
+    schedule: Literal["off", "daily", "weekly"] | None = None
+    alert: PinAlertRequest | None = None
+    clear_alert: bool = False
+
+
+class CreateDatasetNoteRequest(StrictApiModel):
+    text: str = Field(..., min_length=3, max_length=300)
 
 
 class RefreshPinsRequest(StrictApiModel):

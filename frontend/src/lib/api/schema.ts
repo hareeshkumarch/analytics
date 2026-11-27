@@ -622,6 +622,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Dataset Notes */
+        get: operations["list_dataset_notes_api_v1_workspaces__workspace_id__snapshots__snapshot_id__notes_get"];
+        put?: never;
+        /** Add Dataset Note */
+        post: operations["add_dataset_note_api_v1_workspaces__workspace_id__snapshots__snapshot_id__notes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}/notes/{note_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Dataset Note */
+        delete: operations["delete_dataset_note_api_v1_workspaces__workspace_id__snapshots__snapshot_id__notes__note_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}/preview": {
         parameters: {
             query?: never;
@@ -789,6 +824,11 @@ export interface components {
             };
             family: components["schemas"]["ConnectorFamily"];
         };
+        /** CreateDatasetNoteRequest */
+        CreateDatasetNoteRequest: {
+            /** Text */
+            text: string;
+        };
         /** CreateExportRequest */
         CreateExportRequest: {
             /**
@@ -882,6 +922,26 @@ export interface components {
              * @enum {string}
              */
             status: "verified" | "failed" | "blocked" | "unreviewed" | "not_applicable";
+        } & {
+            [key: string]: unknown;
+        };
+        /** DatasetNoteListOut */
+        DatasetNoteListOut: {
+            /** Limit */
+            limit: number;
+            /** Notes */
+            notes: components["schemas"]["DatasetNoteOut"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** DatasetNoteOut */
+        DatasetNoteOut: {
+            /** Created At */
+            created_at: string;
+            /** Note Id */
+            note_id: string;
+            /** Text */
+            text: string;
         } & {
             [key: string]: unknown;
         };
@@ -1008,6 +1068,28 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** PinAlertOut */
+        PinAlertOut: {
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "above" | "below";
+            /** Value */
+            value: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PinAlertRequest */
+        PinAlertRequest: {
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "above" | "below";
+            /** Value */
+            value: number;
+        };
         /** PinListOut */
         PinListOut: {
             /** Pins */
@@ -1017,6 +1099,9 @@ export interface components {
         };
         /** PinOut */
         PinOut: {
+            alert?: components["schemas"]["PinAlertOut"] | null;
+            /** Alert Triggered */
+            alert_triggered?: boolean | null;
             /**
              * Auto Refresh
              * @default false
@@ -1024,18 +1109,28 @@ export interface components {
             auto_refresh?: boolean;
             /** Created At */
             created_at: string;
+            /** Headline Value */
+            headline_value?: number | null;
             /** Latest Run Id */
             latest_run_id?: string | null;
             /** Latest Run Status */
             latest_run_status?: string | null;
             /** Newer Version */
             newer_version?: number | null;
+            /** Next Run At */
+            next_run_at?: string | null;
             /** Pin Id */
             pin_id: string;
             /** Question Text */
             question_text: string;
             /** Run Id */
             run_id: string;
+            /**
+             * Schedule
+             * @default off
+             * @enum {string}
+             */
+            schedule?: "off" | "daily" | "weekly";
             shown_run?: components["schemas"]["RunOut"] | null;
             snapshot?: components["schemas"]["SnapshotOut"] | null;
             /** Title */
@@ -1448,8 +1543,16 @@ export interface components {
         };
         /** UpdatePinRequest */
         UpdatePinRequest: {
+            alert?: components["schemas"]["PinAlertRequest"] | null;
             /** Auto Refresh */
-            auto_refresh: boolean;
+            auto_refresh?: boolean | null;
+            /**
+             * Clear Alert
+             * @default false
+             */
+            clear_alert?: boolean;
+            /** Schedule */
+            schedule?: ("off" | "daily" | "weekly") | null;
         };
         /** UpdateRoutingRequest */
         UpdateRoutingRequest: {
@@ -2912,6 +3015,109 @@ export interface operations {
             path: {
                 workspace_id: string;
                 snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_dataset_notes_api_v1_workspaces__workspace_id__snapshots__snapshot_id__notes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetNoteListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_dataset_note_api_v1_workspaces__workspace_id__snapshots__snapshot_id__notes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDatasetNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetNoteOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_dataset_note_api_v1_workspaces__workspace_id__snapshots__snapshot_id__notes__note_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                snapshot_id: string;
+                note_id: string;
             };
             cookie?: never;
         };

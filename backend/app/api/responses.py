@@ -189,6 +189,22 @@ class SnapshotListOut(ApiResponse):
     snapshots: list[SnapshotOut]
 
 
+class DatasetNoteOut(ApiResponse):
+    note_id: str
+    text: str
+    created_at: str
+
+
+class DatasetNoteListOut(ApiResponse):
+    notes: list[DatasetNoteOut]
+    limit: int
+
+
+class PinAlertOut(ApiResponse):
+    direction: Literal["above", "below"]
+    value: float
+
+
 class PinOut(ApiResponse):
     pin_id: str
     title: str
@@ -203,6 +219,12 @@ class PinOut(ApiResponse):
     latest_run_status: str | None = None
     snapshot: SnapshotOut | None = None
     newer_version: int | None = None
+    # Scheduled re-runs, and a threshold on the answer's headline figure.
+    schedule: Literal["off", "daily", "weekly"] = "off"
+    next_run_at: str | None = None
+    alert: PinAlertOut | None = None
+    headline_value: float | None = None
+    alert_triggered: bool | None = None
 
 
 class PinListOut(ApiResponse):

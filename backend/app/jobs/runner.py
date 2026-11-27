@@ -118,6 +118,9 @@ def _execute_persisted_run(run_id: str) -> dict[str, str]:
     snapshot_id = str(run.get("snapshot_id") or "")
     semantic_version_id = str(run.get("semantic_version_id") or "")
     snapshot = snapshots.get_snapshot(snapshot_id) if snapshot_id else None
+    if snapshot is not None:
+        notes = snapshots.list_dataset_notes(workspace_id, str(snapshot.get("source_id") or ""))
+        snapshot = {**snapshot, "dataset_notes": [n["text"] for n in notes]}
     semantics = snapshots.get_semantics(snapshot_id) if snapshot_id else None
     policy = _policy_for_run(routing, container, workspace_id)
     _load_saved_credentials(container, credentials, workspace_id)

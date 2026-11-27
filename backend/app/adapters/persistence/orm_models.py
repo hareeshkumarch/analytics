@@ -249,6 +249,18 @@ class OutboxJobRow(Base):
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class DatasetNoteRow(Base):
+    """Something the user confirmed about a data source. Keyed by source, so it survives new versions."""
+
+    __tablename__ = "dataset_notes"
+    __table_args__ = (Index("ix_dataset_notes_ws_source", "workspace_id", "source_id", "created_at"),)
+    note_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.workspace_id"), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
 class PinRow(Base):
     __tablename__ = "pins"
     __table_args__ = (

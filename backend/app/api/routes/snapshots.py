@@ -1,11 +1,13 @@
 import asyncio
 import logging
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.schemas import (
+    CreateDatasetNoteRequest,
     ApproveSemanticsRequest,
 )
 from app.application.services.profiling import profile_arrow_table
@@ -19,9 +21,12 @@ from app.domain.limits import (
 )
 
 from app.api.context import ApiContext
-from app.api.responses import SnapshotListOut
+from app.api.responses import DatasetNoteListOut, DatasetNoteOut, SnapshotListOut
 
 logger = logging.getLogger(__name__)
+
+# Notes are handed to the agents with the schema, so a dataset keeps only a short, curated list.
+MAX_DATASET_NOTES = 20
 
 
 def _table_or_first(snap: dict[str, Any], table: str | None) -> str:
@@ -148,6 +153,45 @@ def register(ctx: ApiContext) -> APIRouter:
             raise _db_unavailable("approve the definitions") from exc
         app.state.semantics[snapshot_id] = res
         return res
+
+    @router.get("/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}/notes", response_model=DatasetNoteListOut)
+    def list_dataset_notes(workspace_id: str, snapshot_id: str) -> dict[str, Any]:
+        snapshot = _get_workspace_snapshot(workspace_id, snapshot_id)
+        try:
+            notes = app.state.repo_snapshots.list_dataset_notes(workspace_id, str(snapshot["source_id"]))
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to load dataset notes")
+            raise _db_unavailable("load the dataset notes") from exc
+        return {"notes": notes, "limit": MAX_DATASET_NOTES}
+
+    @router.post("/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}/notes", status_code=201, response_model=DatasetNoteOut)
+    def add_dataset_note(workspace_id: str, snapshot_id: str, payload: CreateDatasetNoteRequest) -> dict[str, Any]:
+        snapshot = _get_workspace_snapshot(workspace_id, snapshot_id)
+        text = " ".join(payload.text.split())
+        if len(text) < 3:
+            raise HTTPException(status_code=422, detail="A note needs a few words")
+        try:
+            note: dict[str, Any] | None = app.state.repo_snapshots.add_dataset_note(
+                workspace_id, str(snapshot["source_id"]), f"note_{uuid.uuid4().hex[:12]}", text, MAX_DATASET_NOTES
+            )
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to save a dataset note")
+            raise _db_unavailable("save the note") from exc
+        if note is None:
+            raise HTTPException(status_code=409, detail=f"A dataset can hold {MAX_DATASET_NOTES} notes; delete one first.")
+        return note
+
+    @router.delete("/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}/notes/{note_id}")
+    def delete_dataset_note(workspace_id: str, snapshot_id: str, note_id: str) -> dict[str, Any]:
+        snapshot = _get_workspace_snapshot(workspace_id, snapshot_id)
+        try:
+            removed = app.state.repo_snapshots.delete_dataset_note(workspace_id, str(snapshot["source_id"]), note_id)
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to delete a dataset note")
+            raise _db_unavailable("delete the note") from exc
+        if not removed:
+            raise HTTPException(status_code=404, detail="Note not found")
+        return {"note_id": note_id, "deleted": True}
 
     @router.delete("/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}")
     def delete_snapshot(workspace_id: str, snapshot_id: str, force: bool = False) -> dict[str, Any]:

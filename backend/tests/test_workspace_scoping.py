@@ -56,6 +56,7 @@ BODIES = {
     ("post", "/clarify"): {"revision": 0, "answer": "October"},
     ("post", "/approve"): {"expected_version": 1},
     ("patch", "/pins/{pin_id}"): {"auto_refresh": True},
+    ("post", "/notes"): {"text": "Revenue means paid orders only."},
 }
 
 
@@ -74,11 +75,14 @@ class TestEveryObjectRouteIsScoped(unittest.TestCase):
         self.export_id = self.client.post(f"{a}/exports", json={"run_id": self.run_id, "format": "html"}).json()["artifact_id"]
         self.upload_id = self.client.post(f"{a}/uploads", content=b"x,y\n1,2\n", headers={"Content-Type": "application/octet-stream"}).json()["upload_id"]
 
+        self.note_id = self.client.post(f"{a}/snapshots/{self.snapshot_id}/notes", json={"text": "Fees are gateway fees only."}).json()["note_id"]
+
     def tearDown(self) -> None:
         self._td.cleanup()
 
     def test_path_ids_from_another_workspace_are_not_found(self) -> None:
         ids = {
+            "note_id": self.note_id,
             "run_id": self.run_id,
             "snapshot_id": self.snapshot_id,
             "pin_id": self.pin_id,

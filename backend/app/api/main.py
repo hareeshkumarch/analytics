@@ -231,6 +231,7 @@ def create_app(
 
     instrument_app(app)
     ctx = ApiContext(app)
+    app.state.api_context = ctx
     run_service.register(ctx)
     for area in (system, connectors, snapshots, settings, runs, pins, exports, usage):
         app.include_router(area.register(ctx))

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.persistence.database import ensure_conversation, ensure_workspace
 from app.adapters.persistence.orm_models import (
+    DatasetNoteRow,
     BudgetReservationRow,
     CredentialRefRow,
     ExportArtifactRow,
@@ -909,6 +910,42 @@ class PgSnapshotRepository:
             )
             return res
 
+    def list_dataset_notes(self, workspace_id: str, source_id: str) -> list[dict[str, Any]]:
+        with self._sf() as db:
+            rows = db.scalars(
+                select(DatasetNoteRow)
+                .where(DatasetNoteRow.workspace_id == workspace_id, DatasetNoteRow.source_id == source_id)
+                .order_by(DatasetNoteRow.created_at, DatasetNoteRow.note_id)
+            ).all()
+            return [{"note_id": r.note_id, "text": r.text, "created_at": r.created_at.isoformat()} for r in rows]
+
+    def add_dataset_note(self, workspace_id: str, source_id: str, note_id: str, text: str, limit: int) -> dict[str, Any] | None:
+        """Save a note, or return None when the source already has `limit` of them."""
+        with self._sf() as db:
+            with db.begin():
+                ensure_workspace(db, workspace_id)
+                count = db.scalar(
+                    select(func.count())
+                    .select_from(DatasetNoteRow)
+                    .where(DatasetNoteRow.workspace_id == workspace_id, DatasetNoteRow.source_id == source_id)
+                )
+                if int(count or 0) >= limit:
+                    return None
+                row = DatasetNoteRow(note_id=note_id, workspace_id=workspace_id, source_id=source_id, text=text, created_at=datetime.now(timezone.utc))
+                db.add(row)
+                db.flush()
+                return {"note_id": row.note_id, "text": row.text, "created_at": row.created_at.isoformat()}
+
+    def delete_dataset_note(self, workspace_id: str, source_id: str, note_id: str) -> bool:
+        with self._sf() as db:
+            with db.begin():
+                res = db.execute(
+                    delete(DatasetNoteRow).where(
+                        DatasetNoteRow.workspace_id == workspace_id, DatasetNoteRow.source_id == source_id, DatasetNoteRow.note_id == note_id
+                    )
+                )
+                return bool(res.rowcount)
+
     def list_snapshots(self, workspace_id: str) -> list[dict[str, Any]]:
         with self._sf() as db:
             snaps = db.scalars(
@@ -1085,9 +1122,33 @@ class PgPinRepository:
                     "created_at": p.created_at.isoformat(),
                     "auto_refresh": bool((p.artifact_json or {}).get("auto_refresh")),
                     "latest_run_id": (p.artifact_json or {}).get("latest_run_id"),
+                    "schedule": (p.artifact_json or {}).get("schedule") or "off",
+                    "next_run_at": (p.artifact_json or {}).get("next_run_at"),
+                    "alert": (p.artifact_json or {}).get("alert"),
                 }
                 for p in pins
             ]
+
+    def due_pins(self, now: datetime) -> list[dict[str, Any]]:
+        """Pins on a schedule whose next run time has passed, across every workspace."""
+        with self._sf() as db:
+            rows = db.scalars(select(PinRow)).all()
+            due = []
+            for p in rows:
+                state = p.artifact_json or {}
+                if state.get("schedule") in ("daily", "weekly") and state.get("next_run_at") and str(state["next_run_at"]) <= now.isoformat():
+                    due.append({"pin_id": p.pin_id, "workspace_id": p.workspace_id, "schedule": state["schedule"], "next_run_at": state["next_run_at"]})
+            return due
+
+    def claim_due_pin(self, pin_id: str, expected_next_run_at: str, new_next_run_at: str) -> bool:
+        """Move a due pin to its next slot. False when another process already took this slot."""
+        with self._sf() as db:
+            with db.begin():
+                pin = db.get(PinRow, pin_id, with_for_update=True)
+                if pin is None or (pin.artifact_json or {}).get("next_run_at") != expected_next_run_at:
+                    return False
+                pin.artifact_json = {**(pin.artifact_json or {}), "next_run_at": new_next_run_at}
+                return True
 
     def update_pin_state(self, workspace_id: str, pin_id: str, changes: dict[str, Any]) -> bool:
         with self._sf() as db:

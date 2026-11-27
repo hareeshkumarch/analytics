@@ -16,6 +16,7 @@ import { familyLabel } from "@/lib/connectors";
 import { SnapshotSummary, datasetLabel, formatBytes, relativeTime, useWorkspace } from "@/lib/workspace";
 import { DefinitionsTab } from "@/features/data/DefinitionsTab";
 import { DiagnosticsTab } from "@/features/data/DiagnosticsTab";
+import { NotesTab } from "@/features/data/NotesTab";
 import { PreviewTab } from "@/features/data/PreviewTab";
 import { ProfileTab } from "@/features/data/ProfileTab";
 import { VersionsTab } from "@/features/data/VersionsTab";
@@ -24,6 +25,7 @@ const TABS = [
   { id: "definitions", label: "Definitions" },
   { id: "profile", label: "Profile" },
   { id: "preview", label: "Preview" },
+  { id: "notes", label: "Notes" },
   { id: "versions", label: "Versions" },
   { id: "diagnostics", label: "Diagnostics" },
 ] as const;
@@ -128,6 +130,8 @@ export function DatasetPanel({
         return <ProfileTab snapshot={snapshot} table={table} />;
       case "preview":
         return <PreviewTab snapshot={snapshot} table={table} />;
+      case "notes":
+        return <NotesTab snapshot={snapshot} />;
       case "versions":
         return <VersionsTab snapshot={snapshot} versions={versions} onOpen={onOpenVersion} />;
       case "diagnostics":

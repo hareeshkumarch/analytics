@@ -299,6 +299,22 @@
         "title": "ConnectorProbeRequest",
         "type": "object"
       },
+      "CreateDatasetNoteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "CreateDatasetNoteRequest",
+        "type": "object"
+      },
       "CreateExportRequest": {
         "additionalProperties": false,
         "properties": {
@@ -498,6 +514,52 @@
           "status"
         ],
         "title": "CriterionOut",
+        "type": "object"
+      },
+      "DatasetNoteListOut": {
+        "additionalProperties": true,
+        "properties": {
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "notes": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetNoteOut"
+            },
+            "title": "Notes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "notes",
+          "limit"
+        ],
+        "title": "DatasetNoteListOut",
+        "type": "object"
+      },
+      "DatasetNoteOut": {
+        "additionalProperties": true,
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "note_id": {
+            "title": "Note Id",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "note_id",
+          "text",
+          "created_at"
+        ],
+        "title": "DatasetNoteOut",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -842,6 +904,52 @@
         "title": "OpsSwitchOut",
         "type": "object"
       },
+      "PinAlertOut": {
+        "additionalProperties": true,
+        "properties": {
+          "direction": {
+            "enum": [
+              "above",
+              "below"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "direction",
+          "value"
+        ],
+        "title": "PinAlertOut",
+        "type": "object"
+      },
+      "PinAlertRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "enum": [
+              "above",
+              "below"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "direction",
+          "value"
+        ],
+        "title": "PinAlertRequest",
+        "type": "object"
+      },
       "PinListOut": {
         "additionalProperties": true,
         "properties": {
@@ -862,6 +970,27 @@
       "PinOut": {
         "additionalProperties": true,
         "properties": {
+          "alert": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PinAlertOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "alert_triggered": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert Triggered"
+          },
           "auto_refresh": {
             "default": false,
             "title": "Auto Refresh",
@@ -870,6 +999,17 @@
           "created_at": {
             "title": "Created At",
             "type": "string"
+          },
+          "headline_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headline Value"
           },
           "latest_run_id": {
             "anyOf": [
@@ -904,6 +1044,17 @@
             ],
             "title": "Newer Version"
           },
+          "next_run_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run At"
+          },
           "pin_id": {
             "title": "Pin Id",
             "type": "string"
@@ -914,6 +1065,16 @@
           },
           "run_id": {
             "title": "Run Id",
+            "type": "string"
+          },
+          "schedule": {
+            "default": "off",
+            "enum": [
+              "off",
+              "daily",
+              "weekly"
+            ],
+            "title": "Schedule",
             "type": "string"
           },
           "shown_run": {
@@ -2210,14 +2371,49 @@
       "UpdatePinRequest": {
         "additionalProperties": false,
         "properties": {
+          "alert": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PinAlertRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "auto_refresh": {
-            "title": "Auto Refresh",
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Refresh"
+          },
+          "clear_alert": {
+            "default": false,
+            "title": "Clear Alert",
             "type": "boolean"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "enum": [
+                  "off",
+                  "daily",
+                  "weekly"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule"
           }
         },
-        "required": [
-          "auto_refresh"
-        ],
         "title": "UpdatePinRequest",
         "type": "object"
       },
@@ -4493,6 +4689,169 @@
           }
         },
         "summary": "Snapshot Diagnostics"
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}/notes": {
+      "get": {
+        "operationId": "list_dataset_notes_api_v1_workspaces__workspace_id__snapshots__snapshot_id__notes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetNoteListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Dataset Notes"
+      },
+      "post": {
+        "operationId": "add_dataset_note_api_v1_workspaces__workspace_id__snapshots__snapshot_id__notes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDatasetNoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetNoteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Dataset Note"
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}/notes/{note_id}": {
+      "delete": {
+        "operationId": "delete_dataset_note_api_v1_workspaces__workspace_id__snapshots__snapshot_id__notes__note_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "title": "Note Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Dataset Note Api V1 Workspaces  Workspace Id  Snapshots  Snapshot Id  Notes  Note Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Dataset Note"
       }
     },
     "/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}/preview": {

@@ -12,7 +12,7 @@ import { AnswerCharts } from "@/components/AnswerCharts";
 import { ConnectorLogo, logoIdForFamily } from "@/components/ConnectorLogo";
 import { PageHeader } from "@/components/PageHeader";
 import { RichSelect, RichOption } from "@/components/RichSelect";
-import { Badge, EmptyState, FilterChips, Notice, SearchInput, Skeleton, Spinner, btn, cardCls, cx } from "@/components/ui";
+import { Badge, EmptyState, FilterChips, Notice, SearchInput, Skeleton, Spinner, btn, cardCls, cx, inputCls } from "@/components/ui";
 import { datasetLabel, relativeTime, useServerDown, useWorkspace } from "@/lib/workspace";
 import type { PinOut, UpdatePinRequest } from "@/lib/api/types";
 import { headlineFigure, stripEvidenceIds } from "@/lib/text";
@@ -27,6 +27,23 @@ interface PinRefreshBatch {
   failed: { pin_id: string; detail: string }[];
 }
 
+
+const DIRECTION_OPTIONS: RichOption[] = [
+  { value: "above", label: "Goes above", sublabel: "Flag the card when the headline figure is higher" },
+  { value: "below", label: "Goes below", sublabel: "Flag the card when the headline figure is lower" },
+];
+
+const formatNumber = (value: number): string => new Intl.NumberFormat(undefined, { maximumFractionDigits: 4 }).format(value);
+
+/** "in 5 h" for a time that has not come yet; "soon" once it is due. */
+function timeUntil(iso: string): string {
+  const minutes = Math.round((Date.parse(iso) - Date.now()) / 60000);
+  if (!Number.isFinite(minutes) || minutes < 1) return "soon";
+  if (minutes < 60) return `in ${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `in ${hours} h`;
+  return `in ${Math.round(hours / 24)} d`;
+}
 
 type WindowFilter = "any" | "7d" | "30d";
 const isWindowFilter = (value: string): value is WindowFilter => value === "any" || value === "7d" || value === "30d";
@@ -73,6 +90,9 @@ export function DashboardView() {
   const [confirmUnpin, setConfirmUnpin] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [rerunningAll, setRerunningAll] = useState(false);
+  const [alertPin, setAlertPin] = useState<string | null>(null);
+  const [alertDirection, setAlertDirection] = useState<"above" | "below">("above");
+  const [alertValue, setAlertValue] = useState("");
 
   const pins = useMemo(() => pinsQuery.data?.pins ?? [], [pinsQuery.data]);
   async function setAutoRefresh(pin: PinItem, enabled: boolean) {
@@ -87,6 +107,32 @@ export function DashboardView() {
     } finally {
       setAutoRefreshPin(null);
     }
+  }
+  async function updatePin(pin: PinItem, body: UpdatePinRequest, message: string): Promise<boolean> {
+    setActionError(null);
+    setAutoRefreshPin(pin.pin_id);
+    try {
+      await apiFetch(ws.path(`/pins/${encodeURIComponent(pin.pin_id)}`), { method: "PATCH", body: JSON.stringify(body) });
+      await qc.invalidateQueries({ queryKey: ["pins", ws.id] });
+      toast(message);
+      return true;
+    } catch (err) {
+      setActionError(errorMessage(err, "Couldn't change this pin."));
+      return false;
+    } finally {
+      setAutoRefreshPin(null);
+    }
+  }
+  function openAlertForm(pin: PinItem) {
+    setAlertDirection(pin.alert?.direction === "below" ? "below" : "above");
+    setAlertValue(pin.alert ? String(pin.alert.value) : "");
+    setAlertPin(pin.pin_id);
+  }
+  async function saveAlert(pin: PinItem) {
+    const value = Number(alertValue);
+    if (alertValue.trim() === "" || !Number.isFinite(value)) return;
+    const saved = await updatePin(pin, { alert: { direction: alertDirection, value } }, "Alert saved. The card is flagged whenever the figure crosses it.");
+    if (saved) setAlertPin(null);
   }
   const datasetOptions: RichOption[] = useMemo(() => {
     const seen = new Map<string, RichOption>();
@@ -318,6 +364,20 @@ export function DashboardView() {
             const headline = run?.answer?.summary_markdown ? headlineFigure(run.answer.summary_markdown) : null;
             const busy = busyPin === pin.pin_id;
             const canRefresh = Boolean(snap);
+            const schedule = pin.schedule === "daily" || pin.schedule === "weekly" ? pin.schedule : null;
+            const saving = autoRefreshPin === pin.pin_id;
+            const menuActions = [
+              ...(canRefresh && schedule !== "daily"
+                ? [{ label: "Re-run every day", onSelect: () => void updatePin(pin, { schedule: "daily" }, "This answer will re-run every day.") }]
+                : []),
+              ...(canRefresh && schedule !== "weekly"
+                ? [{ label: "Re-run every week", onSelect: () => void updatePin(pin, { schedule: "weekly" }, "This answer will re-run every week.") }]
+                : []),
+              ...(schedule ? [{ label: "Stop scheduled re-runs", onSelect: () => void updatePin(pin, { schedule: "off" }, "Scheduled re-runs turned off.") }] : []),
+              { label: pin.alert ? "Change alert…" : "Set alert…", onSelect: () => openAlertForm(pin) },
+              ...(pin.alert ? [{ label: "Remove alert", onSelect: () => void updatePin(pin, { clear_alert: true }, "Alert removed.") }] : []),
+              { label: "Unpin", danger: true, onSelect: () => setConfirmUnpin(pin.pin_id) },
+            ];
             return (
               <li key={pin.pin_id} className={cx(cardCls, "flex flex-col gap-3 p-5")}>
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -351,6 +411,23 @@ export function DashboardView() {
                   {text || "The saved answer isn't available."}
                 </p>
                 {latestFailed && <p className="text-xs text-err">The latest re-run failed; showing the earlier answer.</p>}
+                {(schedule || pin.alert) && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {schedule && (
+                      <Badge tone="neutral">
+                        Re-runs {schedule}
+                        {pin.next_run_at ? ` · next ${timeUntil(pin.next_run_at)}` : ""}
+                      </Badge>
+                    )}
+                    {pin.alert && (
+                      <Badge tone={pin.alert_triggered ? "err" : "neutral"} dot={Boolean(pin.alert_triggered)}>
+                        {pin.alert_triggered ? "Alert: " : "Alert when "}
+                        {pin.alert.direction} {formatNumber(pin.alert.value)}
+                        {pin.alert_triggered == null ? " · no figure to compare" : ""}
+                      </Badge>
+                    )}
+                  </div>
+                )}
                 <p className="mt-auto text-xs text-secondary">
                   {snap ? `${datasetLabel(snap)} v${snap.version} · ` : run ? "Removed dataset · " : ""}
                   {run && run.run_id !== pin.run_id && run.created_at ? `updated ${relativeTime(run.created_at)} · ` : ""}
@@ -406,12 +483,56 @@ export function DashboardView() {
                       </button>
                       <ActionMenu
                         menuLabel={`More actions for ${pin.title}`}
-                        disabled={busy}
-                        actions={[{ label: "Unpin", danger: true, onSelect: () => setConfirmUnpin(pin.pin_id) }]}
+                        disabled={busy || saving}
+                        actions={menuActions}
                       />
                     </span>
                   )}
                 </div>
+                {alertPin === pin.pin_id && (
+                  <form
+                    className="flex flex-wrap items-end gap-2 border-t border-border pt-3"
+                    aria-label={`Alert for ${pin.title}`}
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void saveAlert(pin);
+                    }}
+                  >
+                    <div className="w-40">
+                      <RichSelect
+                        label="Flag this card when it"
+                        value={alertDirection}
+                        options={DIRECTION_OPTIONS}
+                        onChange={(v) => setAlertDirection(v === "below" ? "below" : "above")}
+                      />
+                    </div>
+                    <label className="flex min-w-[8rem] flex-1 flex-col gap-1 text-sm text-body">
+                      Value
+                      <input
+                        type="number"
+                        step="any"
+                        inputMode="decimal"
+                        required
+                        value={alertValue}
+                        onChange={(e) => setAlertValue(e.target.value)}
+                        placeholder={pin.headline_value != null ? `Now ${formatNumber(pin.headline_value)}` : "For example 5000"}
+                        className={cx(inputCls, "w-full min-w-0")}
+                      />
+                    </label>
+                    <button type="submit" className={btn.primary} disabled={saving || alertValue.trim() === ""}>
+                      {saving && <Spinner />}
+                      Save alert
+                    </button>
+                    <button type="button" className={btn.ghost} onClick={() => setAlertPin(null)}>
+                      Cancel
+                    </button>
+                    <p className="basis-full text-xs text-secondary">
+                      {pin.headline_value != null
+                        ? "Compared with the headline figure each time this answer re-runs."
+                        : "This answer has no headline figure yet, so the alert can't be checked until a re-run produces one."}
+                    </p>
+                  </form>
+                )}
               </li>
             );
           })}

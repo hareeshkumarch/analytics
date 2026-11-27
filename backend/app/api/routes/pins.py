@@ -2,6 +2,8 @@ import asyncio
 import json
 import logging
 import uuid
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -18,8 +20,11 @@ from app.domain.models import RunMode, RunStatus
 from app.api.context import ApiContext
 from app.api.responses import PinListOut, PinOut, PinRefreshBatchOut
 from app.api.support import RUN_LIST_ANSWER_KEYS
+from app.application.services.verification import headline_value
 
 logger = logging.getLogger(__name__)
+
+SCHEDULE_INTERVALS = {"daily": timedelta(days=1), "weekly": timedelta(days=7)}
 
 ACTIVE_STATUSES = {RunStatus.QUEUED.value, RunStatus.RUNNING.value, RunStatus.AWAITING_INPUT.value}
 
@@ -42,6 +47,16 @@ def register(ctx: ApiContext) -> APIRouter:
     _db_unavailable = ctx.db_unavailable
     _snapshot_record = ctx.snapshot_record
     _newest_approved_in_source = ctx.newest_approved_in_source
+
+    def _alert_state(pin: dict[str, Any], shown: dict[str, Any] | None) -> dict[str, Any]:
+        """The answer's headline figure, and whether it crosses the pin's threshold."""
+        figure = headline_value(str(((shown or {}).get("answer") or {}).get("summary_markdown") or ""))
+        alert = pin.get("alert") if isinstance(pin.get("alert"), dict) else None
+        triggered: bool | None = None
+        if alert and figure is not None:
+            threshold = Decimal(str(alert["value"]))
+            triggered = figure > threshold if alert["direction"] == "above" else figure < threshold
+        return {"alert": alert, "headline_value": float(figure) if figure is not None else None, "alert_triggered": triggered}
 
     def _describe_pins(workspace_id: str, pins: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Add what a dashboard card shows: the answer on display, its dataset, and whether newer data exists."""
@@ -66,6 +81,7 @@ def register(ctx: ApiContext) -> APIRouter:
                     "latest_run_status": latest["status"] if latest else None,
                     "snapshot": snapshot,
                     "newer_version": newer_approved_version(snapshots, snapshot),
+                    **_alert_state(pin, shown),
                 }
             )
         return described
@@ -124,10 +140,24 @@ def register(ctx: ApiContext) -> APIRouter:
 
     @router.patch("/api/v1/workspaces/{workspace_id}/pins/{pin_id}", response_model=PinOut, response_model_exclude_unset=True)
     def update_pin(workspace_id: str, pin_id: str, payload: UpdatePinRequest) -> dict[str, Any]:
+        changes: dict[str, Any] = {}
+        if payload.auto_refresh is not None:
+            changes["auto_refresh"] = payload.auto_refresh
+        if payload.schedule is not None:
+            changes["schedule"] = payload.schedule
+            # The first scheduled run is one full interval away; "off" clears the slot.
+            changes["next_run_at"] = (
+                (datetime.now(timezone.utc) + SCHEDULE_INTERVALS[payload.schedule]).isoformat() if payload.schedule in SCHEDULE_INTERVALS else None
+            )
+        if payload.alert is not None:
+            changes["alert"] = {"direction": payload.alert.direction, "value": payload.alert.value}
+        elif payload.clear_alert:
+            changes["alert"] = None
         try:
-            if not app.state.repo_pins.update_pin_state(workspace_id, pin_id, {"auto_refresh": payload.auto_refresh}):
+            if not app.state.repo_pins.update_pin_state(workspace_id, pin_id, changes):
                 raise HTTPException(status_code=404, detail="Pin not found")
-            return next(p for p in app.state.repo_pins.list_pins(workspace_id) if p["pin_id"] == pin_id)
+            pins = [p for p in app.state.repo_pins.list_pins(workspace_id) if p["pin_id"] == pin_id]
+            return _describe_pins(workspace_id, pins)[0]
         except SQLAlchemyError as exc:
             logger.exception("Failed to update pin")
             raise _db_unavailable("update the pin") from exc
@@ -215,5 +245,22 @@ def register(ctx: ApiContext) -> APIRouter:
                 logger.exception("Automatic refresh of pin %s failed", pin["pin_id"])
         return refreshed
 
+    async def _run_due_pins() -> list[str]:
+        """Re-run every scheduled pin whose time has come. Safe to call from several processes at once."""
+        now = datetime.now(timezone.utc)
+        started: list[str] = []
+        for due in await asyncio.to_thread(app.state.repo_pins.due_pins, now):
+            following = (now + SCHEDULE_INTERVALS[due["schedule"]]).isoformat()
+            # Claim the slot first: only the process that moves next_run_at forward starts the run.
+            if not await asyncio.to_thread(app.state.repo_pins.claim_due_pin, due["pin_id"], due["next_run_at"], following):
+                continue
+            try:
+                await refresh_pin(due["workspace_id"], due["pin_id"])
+                started.append(due["pin_id"])
+            except Exception:  # noqa: BLE001
+                logger.exception("Scheduled re-run of pin %s failed", due["pin_id"])
+        return started
+
+    ctx.run_due_pins = _run_due_pins
     ctx.auto_refresh_pins = _auto_refresh_pins
     return router

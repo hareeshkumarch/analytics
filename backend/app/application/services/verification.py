@@ -178,3 +178,15 @@ def mentions_value(markdown: str, value: Decimal) -> bool:
 
 def evidence_has_value(evidence: list[dict[str, Any]], value: Decimal) -> bool:
     return any(abs(number - value) < Decimal("0.005") for e in evidence for number in _numbers(e.get("rows") or []))
+
+
+_BOLD = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
+
+
+def headline_value(markdown: str) -> Decimal | None:
+    """The figure an answer leads with: the first number in bold. The dashboard shows it large, and alerts compare it."""
+    for bold in _BOLD.findall(_CITATION.sub(" ", _DATE.sub(" ", markdown or ""))):
+        figures = _figures(bold)
+        if figures:
+            return figures[0].mantissa * figures[0].scale
+    return None
