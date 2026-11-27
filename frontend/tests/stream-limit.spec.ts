@@ -42,8 +42,10 @@ test("Ask keeps at most three live run streams open", async ({ page }) => {
   const box = page.getByLabel("Your question");
   for (let i = 1; i <= 5; i++) {
     await box.fill(`Question ${i}`);
+    await expect(page.getByRole("button", { name: "Ask (quick)" })).toBeEnabled();
     await box.press("Control+Enter");
     await expect.poll(() => created).toBe(i);
+    await expect(page).toHaveURL(new RegExp(`run=run_${i}\\b`));
   }
   await expect.poll(() => page.evaluate(() => (window as unknown as { openStreams: number }).openStreams)).toBe(3);
   expect(await page.evaluate(() => (window as unknown as { maxStreams: number }).maxStreams)).toBeLessThanOrEqual(4);
