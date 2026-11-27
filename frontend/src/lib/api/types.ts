@@ -37,5 +37,7 @@ export type ToolUsageOut = Schemas["ToolUsageOut"];
 export type UsageOut = Schemas["UsageOut"];
 export type WorkspaceSettingsOut = Schemas["WorkspaceSettingsOut"];
 export type OpsSwitchListOut = Schemas["OpsSwitchListOut"];
+export type TaskRecordListOut = Schemas["TaskRecordListOut"];
+export type TaskRecordOut = Schemas["TaskRecordOut"];
 export type OpsSwitchOut = Schemas["OpsSwitchOut"];
 export type SetOpsSwitchRequest = Schemas["SetOpsSwitchRequest"];

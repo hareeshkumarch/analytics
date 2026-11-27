@@ -29,7 +29,8 @@ import { AnswerVerification, type Criterion } from "@/components/AnswerVerificat
 import { ExportMenu } from "@/features/ask/ExportMenu";
 import { SampleDataButton } from "@/components/SampleDataButton";
 import { SAMPLE_QUESTIONS, isSampleDataset } from "@/lib/sample";
-import type { CreatePinRequest, RunOut, RunPageOut } from "@/lib/api/types";
+import type { CreatePinRequest, RunOut, RunPageOut, TaskRecordListOut } from "@/lib/api/types";
+import { progressSteps } from "@/lib/progress";
 import { stripEvidenceIds } from "@/lib/text";
 
 interface Session {
@@ -202,23 +203,19 @@ function taskName(taskId: string): string {
   return humanize(taskId.replace(/^t\d+_/, ""));
 }
 
-function RunProgress({ events }: { events: SseEnvelope[] }) {
-  const plan = [...events].reverse().find((e) => e.type === "plan.updated");
-  const tasks = Array.isArray(plan?.payload.tasks) ? (plan!.payload.tasks as unknown[]).map(String) : [];
-  if (!tasks.length) return null;
-  const statusByTask = new Map<string, string>();
-  const queriesByTask = new Map<string, number>();
-  for (const e of events) {
-    const taskId = typeof e.payload.task_id === "string" ? e.payload.task_id : null;
-    if (!taskId) continue;
-    if (e.type === "task.status") statusByTask.set(taskId, String(e.payload.status ?? ""));
-    if (e.type === "tool.result" && e.payload.tool !== "inspect_schema") queriesByTask.set(taskId, (queriesByTask.get(taskId) ?? 0) + 1);
-  }
+function RunProgress({ events, workspaceId, runId }: { events: SseEnvelope[]; workspaceId: string; runId: string | null }) {
+  const changes = events.filter((e) => e.type === "task.status" || e.type === "plan.updated").length;
+  const records = useQuery({
+    queryKey: ["run-tasks", workspaceId, runId, changes],
+    queryFn: () => apiFetch<TaskRecordListOut>(workspacePath(workspaceId, `/runs/${encodeURIComponent(runId!)}/tasks`)),
+    enabled: Boolean(runId) && changes > 0,
+    placeholderData: (previous) => previous,
+  });
+  const steps = progressSteps(events, records.data?.tasks);
+  if (!steps.length) return null;
   return (
     <ol className="space-y-1.5" aria-label="Progress">
-      {tasks.map((t) => {
-        const st = statusByTask.get(t) ?? "pending";
-        const queries = queriesByTask.get(t) ?? 0;
+      {steps.map(({ taskId: t, status: st, queries }) => {
         return (
           <li key={t} className="flex items-center gap-2.5 text-[13px]">
             <span
@@ -230,7 +227,7 @@ function RunProgress({ events }: { events: SseEnvelope[] }) {
             />
             <span className={st === "pending" ? "text-secondary" : "text-ink"}>{taskName(t)}</span>
             <span className="text-xs text-secondary">
-              {st === "running" ? "working" : st === "completed" ? "done" : st === "failed" ? "failed" : "waiting"}
+              {st === "running" ? "working" : st === "completed" ? "done" : st === "failed" ? "failed" : st === "superseded" ? "replaced" : st === "cancelled" ? "skipped" : "waiting"}
               {queries ? ` · ${queries} quer${queries === 1 ? "y" : "ies"}` : ""}
             </span>
           </li>
@@ -1214,7 +1211,7 @@ export function AskView() {
                 </form>
               )}
 
-              {isWorking && <RunProgress events={active.events} />}
+              {isWorking && <RunProgress events={active.events} workspaceId={activeWorkspaceId} runId={active.runId ?? null} />}
 
               {active.answer ? (
                 <ErrorBoundary key={active.id} title="This answer couldn't be shown">
