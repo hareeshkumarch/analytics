@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { API_BASE, apiFetch, cancelRun, clarifyRun, createRun, deleteRun, errorHint, errorMessage, newId } from "@/lib/api/client";
 import { subscribeRunEvents, SseEnvelope } from "@/lib/sse";
 import { useUiStore } from "@/lib/store";
-import { PRESET_OPTIONS, useRoutingPolicy } from "@/lib/routing";
+import { PRESET_SUMMARY, useRoutingPolicy } from "@/lib/routing";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { EvidenceContext, SafeMarkdown } from "@/components/SafeMarkdown";
 import { EvidencePanel } from "@/features/ask/EvidencePanel";
@@ -32,7 +32,7 @@ import { SampleDataButton } from "@/components/SampleDataButton";
 import { SAMPLE_QUESTIONS, isSampleDataset } from "@/lib/sample";
 import type { CreatePinRequest, RunOut, RunPageOut, TaskRecordListOut } from "@/lib/api/types";
 import { progressSteps } from "@/lib/progress";
-import { headlineFigure, stripEvidenceIds } from "@/lib/text";
+import { citationNumbers, headlineFigure, stripEvidenceIds } from "@/lib/text";
 
 interface Session {
   id: string;
@@ -491,7 +491,12 @@ export function AskView() {
   const canCopy = active?.status === "completed" && Boolean(active.runId && active.answer);
   const canDelete = Boolean(active?.runId) && !isBusy && Boolean(active && isTerminal(active.status));
   const toolEvents = active ? active.events.filter((e) => e.type === "tool.result") : [];
-  const nonSchemaTools = toolEvents.filter((e) => e.payload.tool !== "inspect_schema");
+  const nonSchemaTools = toolEvents.filter(
+    (e, i, all) =>
+      e.payload.tool !== "inspect_schema" &&
+      (typeof e.payload.evidence_id !== "string" || all.findIndex((o) => o.payload.evidence_id === e.payload.evidence_id) === i)
+  );
+  const sourceNumbers = useMemo(() => citationNumbers(active?.answer ?? ""), [active?.answer]);
   const finishedEvent = active ? [...active.events].reverse().find((e) => e.type === "run.finished") : undefined;
   const timeLimited = Boolean(finishedEvent?.payload.time_budget_exceeded);
   const budgetWarnings = active ? active.events.filter((e) => e.type === "budget.warning") : [];
@@ -777,7 +782,7 @@ export function AskView() {
     thread.unshift(s);
   }
 
-  const presetLabel = PRESET_OPTIONS.find((o) => o.value === routing.data?.preset)?.label;
+  const presetSummary = routing.data ? PRESET_SUMMARY[routing.data.preset] : undefined;
   const activeDataset = active?.snapshotId ? snapshotById.get(active.snapshotId) : undefined;
   const errorInfo = active?.error ? friendlyError(active.error) : null;
 
@@ -812,8 +817,8 @@ export function AskView() {
           )}
         />
 
-        <div className="flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <div className="flex items-end justify-between gap-2.5">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <div role="group" aria-label="Run mode" className="inline-flex border border-border bg-sidebar p-[2px]">
               {(["quick", "deep"] as const).map((mode) => (
                 <button
@@ -835,7 +840,7 @@ export function AskView() {
             <div className="min-w-[140px] flex-1 basis-[140px] sm:flex-none sm:basis-auto">
               <RichSelect
                 dense
-                triggerClassName="w-full sm:w-auto sm:min-w-[168px]"
+                triggerClassName="w-full sm:w-auto sm:min-w-[168px] sm:max-w-[320px]"
                 ariaLabel="Dataset"
                 value={snapshot?.snapshot_id ?? ""}
                 placeholder={snapshotsQuery.isLoading ? "Loading datasets…" : "No approved dataset"}
@@ -856,9 +861,9 @@ export function AskView() {
             <Link
               href="/settings"
               className="inline-flex h-9 shrink-0 items-center whitespace-nowrap px-1.5 text-[12.5px] text-secondary underline decoration-border underline-offset-4 hover:text-ink"
-              title="Routing applies to every run in this workspace. Change it in Settings."
+              title="Which models answer: applies to every question in this workspace. Change it in Settings."
             >
-              Routing: {presetLabel ?? (routing.isLoading ? "…" : "default")}
+              {presetSummary ?? (routing.isLoading ? "…" : PRESET_SUMMARY.balanced)}
             </Link>
           </div>
 
@@ -1269,7 +1274,8 @@ export function AskView() {
                         const p = evt.payload;
                         const evId = typeof p.evidence_id === "string" ? p.evidence_id : null;
                         const purpose = typeof p.purpose === "string" ? p.purpose.trim().replace(/\.$/, "") : "";
-                        const label = `${purpose || (OPERATION_LABELS[String(p.operation ?? "")] ?? "Query")}${
+                        const cited = evId ? sourceNumbers.get(evId) : undefined;
+                        const label = `${cited ? `${cited}. ` : ""}${purpose || (OPERATION_LABELS[String(p.operation ?? "")] ?? "Query")}${
                           p.row_count !== undefined ? ` · ${Number(p.row_count).toLocaleString()} rows` : ""
                         }`;
                         return (

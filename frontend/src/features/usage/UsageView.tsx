@@ -410,7 +410,12 @@ export function UsageView() {
             </button>
           )}
         </div>
-        <FilterChips label="Time window" options={WINDOW_OPTIONS} value={windowFilter} onChange={setWindowFilter} />
+        <div className="hidden sm:block">
+          <FilterChips label="Time window" options={WINDOW_OPTIONS} value={windowFilter} onChange={setWindowFilter} />
+        </div>
+        <div className="w-full sm:hidden">
+          <RichSelect dense ariaLabel="Time window" value={windowFilter} options={WINDOW_OPTIONS} onChange={(v) => setWindowFilter(v as WindowKey)} />
+        </div>
       </div>
 
       {error && <Notice tone="err" title="Couldn't load usage">{errorMessage(error)}</Notice>}

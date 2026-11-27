@@ -247,6 +247,7 @@ class ChartSpec:
     evidence_id: str
     rows: tuple[tuple[str | float | None, ...], ...]
     truncated: bool = False
+    currency: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -93,55 +93,57 @@ export function DataView() {
         />
       )}
 
-      <section aria-labelledby="datasets-title" className={`${cardCls} min-w-0 space-y-4 p-5 sm:p-6`}>
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 id="datasets-title" className="font-display text-lg font-semibold leading-snug tracking-[-0.01em] text-ink">
-            Datasets
-          </h2>
-          {hasData && (
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-xs text-secondary">
-                {approvedCount} of {snapshots.length} approved
-              </span>
-              {!showSources && (
-                <button type="button" className={btn.secondary} onClick={() => setAdding(true)}>
-                  Add data
-                </button>
-              )}
-            </div>
+      {(hasData || snapshotsQuery.isLoading || snapshotsQuery.error) && (
+        <section aria-labelledby="datasets-title" className={`${cardCls} min-w-0 space-y-4 p-5 sm:p-6`}>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 id="datasets-title" className="font-display text-lg font-semibold leading-snug tracking-[-0.01em] text-ink">
+              Datasets
+            </h2>
+            {hasData && (
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-xs text-secondary">
+                  {approvedCount} of {snapshots.length} approved
+                </span>
+                {!showSources && (
+                  <button type="button" className={btn.secondary} onClick={() => setAdding(true)}>
+                    Add data
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          {missing && (
+            <Notice tone="warn" title="That dataset isn't in this workspace">
+              It may have been imported into another workspace. Showing the newest dataset instead.
+            </Notice>
           )}
-        </div>
-        {missing && (
-          <Notice tone="warn" title="That dataset isn't in this workspace">
-            It may have been imported into another workspace. Showing the newest dataset instead.
-          </Notice>
-        )}
-        <DatasetList
-          snapshots={snapshots}
-          loading={snapshotsQuery.isLoading}
-          error={snapshotsQuery.error}
-          onRetry={() => void snapshotsQuery.refetch()}
-          selectedId={selected?.snapshot_id ?? null}
-          onSelect={(id) => select(id)}
-        />
-        {selected && (
-          <DatasetPanel
-            key={selected.snapshot_id}
-            snapshot={selected}
+          <DatasetList
             snapshots={snapshots}
-            tab={tab}
-            onTabChange={changeTab}
-            onOpenVersion={(id) => select(id, undefined, true)}
-            reveal={revealId === selected.snapshot_id}
-            onRevealed={clearReveal}
-            onReimport={reimportOf(selected)}
-            onDeleted={() => {
-              setChosenId(null);
-              setUrlParam("dataset", null);
-            }}
+            loading={snapshotsQuery.isLoading}
+            error={snapshotsQuery.error}
+            onRetry={() => void snapshotsQuery.refetch()}
+            selectedId={selected?.snapshot_id ?? null}
+            onSelect={(id) => select(id)}
           />
-        )}
-      </section>
+          {selected && (
+            <DatasetPanel
+              key={selected.snapshot_id}
+              snapshot={selected}
+              snapshots={snapshots}
+              tab={tab}
+              onTabChange={changeTab}
+              onOpenVersion={(id) => select(id, undefined, true)}
+              reveal={revealId === selected.snapshot_id}
+              onRevealed={clearReveal}
+              onReimport={reimportOf(selected)}
+              onDeleted={() => {
+                setChosenId(null);
+                setUrlParam("dataset", null);
+              }}
+            />
+          )}
+        </section>
+      )}
     </div>
   );
 }

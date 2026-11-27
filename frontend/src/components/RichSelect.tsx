@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { inputBaseCls } from "@/components/ui";
 import type { RichOption } from "@/lib/types";
 
 export type { RichOption };
@@ -245,7 +246,7 @@ export function RichSelect({
                 aria-controls={listId}
                 aria-activedescendant={activeIdx >= 0 ? optionId(activeIdx) : undefined}
                 placeholder="Search…"
-                className="h-9 w-full border border-border bg-surface px-2.5 text-[13.5px] text-ink outline-none placeholder:text-secondary focus:border-plum"
+                className={`${inputBaseCls} h-9`}
               />
             </div>
           )}

@@ -203,6 +203,22 @@ class TestToolLoop(unittest.TestCase):
         else:
             os.environ["AGENT_RUNTIME"] = self._agent_runtime
 
+    def test_evidence_records_the_currency_of_summed_money_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            c = build_container(artifact_root=td)
+            snapshot = _publish_orders(c)
+            snapshot["table_details"][0]["columns"][1]["currency"] = "INR"
+            box = AnalyticsToolbox(
+                engine=SnapshotQueryEngine(c.artifacts, SqlGlotQueryCompiler()), snapshot=snapshot, semantics=None, budget=ToolBudget(4, 2)
+            )
+            counted = {**QUERY, "metrics": [*QUERY["metrics"], {"alias": "orders", "func": "count", "field_id": "amount"}]}
+            out = box.execute(ToolCallResult("c", "run_query_ir", counted))
+            self.assertFalse(out.is_error, out.content)
+            self.assertEqual(out.evidence["currencies"], {"total": "INR"})
+            snapshot["table_details"][0]["columns"][1] = {"name": "amount", "type": "double", "nullable": True}
+            plain = box.execute(ToolCallResult("c", "run_query_ir", {**QUERY, "purpose": "Totals again"}))
+            self.assertEqual(plain.evidence["currencies"], {})
+
     def test_toolbox_runs_query_and_returns_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             c = build_container(artifact_root=td)
@@ -216,6 +232,7 @@ class TestToolLoop(unittest.TestCase):
             out = box.execute(ToolCallResult("c", "run_query_ir", QUERY))
             self.assertFalse(out.is_error, out.content)
             self.assertTrue(out.evidence["evidence_id"].startswith("ev_"))
+            self.assertEqual(out.evidence["currencies"], {})
             self.assertIn("north", out.content)
             bad = box.execute(ToolCallResult("c", "run_query_ir", {**QUERY, "table_id": "nope"}))
             self.assertTrue(bad.is_error)

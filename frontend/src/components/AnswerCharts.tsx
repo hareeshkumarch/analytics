@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useContext } from "react";
+import React, { useContext, useMemo } from "react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { ChartOut } from "@/lib/api/types";
 import { EvidenceContext } from "@/components/SafeMarkdown";
@@ -14,8 +14,21 @@ const compact = new Intl.NumberFormat(undefined, { notation: "compact", maximumF
 const full = new Intl.NumberFormat(undefined, { maximumFractionDigits: 4 });
 const humanize = (field: string) => field.replace(/_/g, " ");
 
+function numberFormats(currency: string | null | undefined): { axis: Intl.NumberFormat; value: Intl.NumberFormat } {
+  if (!currency) return { axis: compact, value: full };
+  try {
+    return {
+      axis: new Intl.NumberFormat(undefined, { style: "currency", currency, notation: "compact", maximumFractionDigits: 1 }),
+      value: new Intl.NumberFormat(undefined, { style: "currency", currency }),
+    };
+  } catch {
+    return { axis: compact, value: full };
+  }
+}
+
 function ChartCard({ chart, small, showTitle }: { chart: AnswerChart; small: boolean; showTitle: boolean }) {
   const openEvidence = useContext(EvidenceContext);
+  const formats = useMemo(() => numberFormats(chart.currency), [chart.currency]);
   const gridColor = useThemeColor("border", "#E4E4E7");
   const axisColor = useThemeColor("muted", "#696972");
   const surfaceColor = useThemeColor("surface", "#FFFFFF");
@@ -45,12 +58,12 @@ function ChartCard({ chart, small, showTitle }: { chart: AnswerChart; small: boo
       tickLine={false}
       axisLine={false}
       width={48}
-      tickFormatter={(v) => compact.format(Number(v))}
+      tickFormatter={(v) => formats.axis.format(Number(v))}
     />,
     <Tooltip
       key="tip"
       cursor={chart.chart_type === "line" ? { stroke: gridColor } : { fill: gridColor, fillOpacity: 0.45 }}
-      formatter={(value, key) => [value === null ? "—" : full.format(Number(value)), names[String(key)] ?? String(key)]}
+      formatter={(value, key) => [value === null ? "—" : formats.value.format(Number(value)), names[String(key)] ?? String(key)]}
       contentStyle={{ borderRadius: 0, border: `1px solid ${gridColor}`, background: surfaceColor, color: inkColor, fontSize: 12 }}
     />
   ];
@@ -111,7 +124,7 @@ function ChartCard({ chart, small, showTitle }: { chart: AnswerChart; small: boo
                   <tr key={r}>
                     {row.map((cell, c) => (
                       <td key={c} className="border-b border-border py-1 pr-3 tabular-nums">
-                        {typeof cell === "number" ? full.format(cell) : cell ?? "—"}
+                        {typeof cell === "number" ? (c > 0 ? formats.value : full).format(cell) : cell ?? "—"}
                       </td>
                     ))}
                   </tr>

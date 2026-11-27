@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api/client";
 import { workspacePath } from "@/lib/workspace";
 import type { RichOption } from "@/components/RichSelect";
-import type { RoutingPolicyOut, UpdateRoutingRequest } from "@/lib/api/types";
+import type { RoutingPolicyOut, RoutingPreset, UpdateRoutingRequest } from "@/lib/api/types";
 
 export type { RoutingPreset } from "@/lib/api/types";
 export type RoutingPolicy = RoutingPolicyOut;
@@ -15,6 +15,13 @@ export const PRESET_OPTIONS: RichOption[] = [
   { value: "latency", label: "Latency-oriented", sublabel: "Prefers the fastest measured response", badge: "Fast" },
   { value: "quality", label: "Quality-oriented", sublabel: "Prefers reasoning models with the largest context window", badge: "Quality" },
 ];
+
+export const PRESET_SUMMARY: Record<RoutingPreset, string> = {
+  balanced: "Balanced cost and speed",
+  cost: "Lowest cost models",
+  latency: "Fastest models",
+  quality: "Best-quality models",
+};
 
 export function useRoutingPolicy(workspaceId: string) {
   const qc = useQueryClient();

@@ -688,6 +688,8 @@ export interface components {
             chart_id: string;
             /** Chart Type */
             chart_type: string;
+            /** Currency */
+            currency?: string | null;
             /** Evidence Id */
             evidence_id: string;
             /** Rows */

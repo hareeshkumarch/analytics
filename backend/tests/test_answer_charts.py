@@ -25,6 +25,16 @@ class TestBuildAnswerCharts(unittest.TestCase):
         self.assertEqual((chart.chart_type, chart.title, chart.x_field, chart.y_fields), ("bar", "Sales by region", "region", ("total",)))
         self.assertEqual(chart.rows, (("north", 12.5), ("south", 5.0)))
 
+    def test_a_chart_takes_the_currency_its_series_share(self) -> None:
+        ev = _ev("ev_c", "aggregate", ["status", "paid", "fees", "orders"], [["a", 1, 2, 3], ["b", 4, 5, 6]],
+                 currencies={"paid": "INR", "fees": "INR"})
+        (chart,) = build_answer_charts([ev], {"ev_c"})
+        self.assertIsNone(chart.currency)
+        ev = _ev("ev_i", "aggregate", ["status", "paid", "fees"], [["a", 1, 2], ["b", 4, 5]], currencies={"paid": "INR", "fees": "INR"})
+        self.assertEqual(build_answer_charts([ev], {"ev_i"})[0].currency, "INR")
+        ev = _ev("ev_m", "aggregate", ["status", "paid", "fees"], [["a", 1, 2], ["b", 4, 5]], currencies={"paid": "INR", "fees": "USD"})
+        self.assertIsNone(build_answer_charts([ev], {"ev_m"})[0].currency)
+
     def test_dates_become_a_sorted_line(self) -> None:
         ev = _ev("ev_d", "aggregate", ["month", "total"], [["2026-10-01", 3], ["2026-09-01", 2]])
         (chart,) = build_answer_charts([ev], {"ev_d"})

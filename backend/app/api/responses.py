@@ -102,6 +102,7 @@ class ChartOut(ApiResponse):
     evidence_id: str
     rows: list[list[str | float | None]]
     truncated: bool = False
+    currency: str | None = None
 
 
 class CriterionOut(ApiResponse):

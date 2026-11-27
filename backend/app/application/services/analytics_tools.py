@@ -11,6 +11,7 @@ from opentelemetry import trace
 
 from app.application.ports.providers import ToolCallResult, ToolDefinition
 from app.application.ports.query import SnapshotQueryPort
+from app.application.services.profiling import detect_currency
 from app.domain.errors import (
     BudgetExhaustedError,
     DomainError,
@@ -22,9 +23,28 @@ from app.domain.errors import (
 )
 from app.domain.limits import DEFAULT_GLOBAL_LIMITS, ERROR_DETAIL_CHARS, LOG_EXCERPT_CHARS, PUBLIC_ERROR_CHARS
 from app.domain.timezone import DEFAULT_BUSINESS_TIMEZONE
-from app.domain.query_ir import MAX_BUCKETS, MAX_QUERY_ROWS, AggregateFunction, FilterOperator, QueryIRParseError, parse_query_ir
+from app.domain.query_ir import (
+    MAX_BUCKETS,
+    MAX_QUERY_ROWS,
+    AggregateFunction,
+    AggregateMetricSpec,
+    FilterOperator,
+    QueryIR,
+    QueryIRParseError,
+    parse_query_ir,
+)
 
 _tracer = trace.get_tracer("ledgerline.query")
+_COUNTING = frozenset({AggregateFunction.COUNT, AggregateFunction.COUNT_DISTINCT})
+
+
+def _metric_currencies(ir: QueryIR, snapshot: dict[str, Any]) -> dict[str, str]:
+    table = next((t for t in snapshot.get("table_details") or [] if t.get("name") == getattr(ir, "table_id", "")), None)
+    currency_of = {c.get("name"): c.get("currency") for c in (table or {}).get("columns") or []}
+    metric = getattr(ir, "metric", None)
+    specs = [*getattr(ir, "metrics", ()), *([metric] if isinstance(metric, AggregateMetricSpec) else [])]
+    found = {m.alias: detect_currency(m.field_id, currency_of[m.field_id]) for m in specs if m.func not in _COUNTING and m.field_id in currency_of}
+    return {alias: currency for alias, currency in found.items() if currency}
 
 
 class ToolErrorCode(str, Enum):
@@ -691,6 +711,7 @@ class AnalyticsToolbox:
             "evidence_id": evidence_id,
             "operation": ir.operation,
             "purpose": getattr(ir, "purpose", ""),
+            "currencies": _metric_currencies(ir, self.snapshot or {}),
             "query_ir_hash": result.query_ir_hash,
             "result_hash": result.result_hash,
             "sql": sql,

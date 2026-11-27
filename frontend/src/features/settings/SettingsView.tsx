@@ -4,7 +4,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, errorHint, errorMessage } from "@/lib/api/client";
 import { RichSelect, RichOption } from "@/components/RichSelect";
 import { PageHeader } from "@/components/PageHeader";
-import { HScroll } from "@/components/HScroll";
 import { Badge, Notice, Spinner, btn, cardCls, cx, inputCls } from "@/components/ui";
 import { ProviderLogo } from "@/components/ConnectorLogo";
 import { BusinessTimezone } from "@/features/settings/BusinessTimezone";
@@ -611,71 +610,64 @@ export function SettingsView() {
         {isLoading && <div className="h-24 animate-pulse bg-panel" aria-hidden="true" />}
         {error && <Notice tone="err" title="Couldn't load providers">{errorMessage(error)}</Notice>}
         {data && data.providers.length > 0 && (
-          <HScroll className="border border-border" label="Providers">
-            <table className="w-full min-w-[560px] border-collapse text-left text-[13px]">
-              <thead>
-                <tr className="bg-panel text-[11px] uppercase tracking-[0.05em] text-secondary">
-                  <th className="px-3.5 py-2.5 font-medium">Provider</th>
-                  <th className="px-3.5 py-2.5 font-medium">Models</th>
-                  <th className="px-3.5 py-2.5 text-right font-medium">Status</th>
-                  <th className="w-[1%] whitespace-nowrap px-3.5 py-2.5 text-right font-medium">
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.providers.map((p) => {
-                  const models = data.models.filter((m) => m.provider_id === p.provider_id && m.enabled);
-                  return (
-                    <tr key={p.provider_id} className="border-t border-border align-top">
-                      <td className="px-3.5 py-2.5 font-medium text-ink">
-                        <span className="inline-flex items-center gap-2.5">
-                          <ProviderLogo providerId={p.provider_id} />
-                          {providerLabel(p.provider_id)}
-                        </span>
-                      </td>
-                      <td className="px-3.5 py-2.5 text-secondary">
-                        {models.length ? (
-                          <Details models={models.map((m) => ({ id: m.model_id, roles: m.roles }))} />
-                        ) : (
-                          "None enabled"
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-3.5 py-2.5 text-right">
-                        {p.key_status === "needs_key" ? (
-                          <Badge tone="err" dot>
-                            Key unreadable
-                          </Badge>
-                        ) : p.configured ? (
-                          <Badge tone="ok" dot>
-                            Ready
-                          </Badge>
-                        ) : (
-                          <Badge tone="warn" dot>
-                            Needs a key
-                          </Badge>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-3.5 py-2 text-right">
-                        <span className="inline-flex items-start justify-end gap-2">
-                          {ops.data?.available.includes(providerSwitchId(p.provider_id)) && (
-                            <PauseControl switchId={providerSwitchId(p.provider_id)} data={ops.data} />
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => selectProviderForKey(p.provider_id)}
-                            className="inline-flex min-h-[32px] items-center border border-border-strong bg-surface px-3 text-[12px] font-medium text-ink transition-colors hover:border-ink hover:bg-panel"
-                          >
-                            {p.configured ? "Manage key" : "Add key"}
-                          </button>
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </HScroll>
+          <div className="border border-border text-[13px]">
+            <div
+              aria-hidden="true"
+              className="hidden gap-4 bg-panel px-3.5 py-2.5 text-[11px] font-medium uppercase tracking-[0.05em] text-secondary sm:flex"
+            >
+              <span className="w-[28%]">Provider</span>
+              <span className="flex-1">Models</span>
+              <span className="w-[120px] text-right">Status</span>
+              <span className="w-[208px]" />
+            </div>
+            <ul aria-label="Providers">
+              {data.providers.map((p) => {
+                const models = data.models.filter((m) => m.provider_id === p.provider_id && m.enabled);
+                return (
+                  <li
+                    key={p.provider_id}
+                    className="flex flex-wrap items-start gap-x-4 gap-y-2.5 border-t border-border px-3.5 py-3 first:border-t-0 sm:flex-nowrap sm:first:border-t"
+                  >
+                    <span className="order-1 inline-flex min-w-0 flex-1 items-center gap-2.5 font-medium text-ink sm:w-[28%] sm:flex-none">
+                      <ProviderLogo providerId={p.provider_id} />
+                      {providerLabel(p.provider_id)}
+                    </span>
+                    <span className="order-3 basis-full text-secondary sm:order-2 sm:flex-1 sm:basis-auto">
+                      {models.length ? <Details models={models.map((m) => ({ id: m.model_id, roles: m.roles }))} /> : "None enabled"}
+                    </span>
+                    <span className="order-2 shrink-0 sm:order-3 sm:w-[120px] sm:text-right">
+                      {p.key_status === "needs_key" ? (
+                        <Badge tone="err" dot>
+                          Key unreadable
+                        </Badge>
+                      ) : p.configured ? (
+                        <Badge tone="ok" dot>
+                          Ready
+                        </Badge>
+                      ) : (
+                        <Badge tone="warn" dot>
+                          Needs a key
+                        </Badge>
+                      )}
+                    </span>
+                    <span className="order-4 flex basis-full flex-wrap items-start gap-2 sm:w-[208px] sm:basis-auto sm:flex-nowrap sm:justify-end">
+                      {ops.data?.available.includes(providerSwitchId(p.provider_id)) && (
+                        <PauseControl switchId={providerSwitchId(p.provider_id)} data={ops.data} />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => selectProviderForKey(p.provider_id)}
+                        className="inline-flex min-h-[34px] items-center border border-border-strong bg-surface px-3 text-[12px] font-medium text-ink transition-colors hover:border-ink hover:bg-panel"
+                      >
+                        {p.configured ? "Manage key" : "Add key"}
+                        <span className="sr-only"> for {providerLabel(p.provider_id)}</span>
+                      </button>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         )}
       </section>
 

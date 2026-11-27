@@ -121,6 +121,8 @@ def _chart_for(evidence: dict[str, Any]) -> ChartSpec | None:
     purpose = _CONTROL.sub(" ", str(evidence.get("purpose") or "")).strip()
     title = (purpose or f"{', '.join(y_fields)} by {x_field}")[:MAX_TITLE_CHARS]
     row_count = evidence.get("row_count")
+    currencies = evidence.get("currencies") or {}
+    series_currencies = {currencies.get(y) for y in y_fields}
     return ChartSpec(
         chart_id=f"chart_{evidence_id.removeprefix('ev_')}",
         chart_type=chart_type,
@@ -132,6 +134,7 @@ def _chart_for(evidence: dict[str, Any]) -> ChartSpec | None:
         truncated=bool(
             cut or evidence.get("truncated") or (isinstance(row_count, int) and row_count > len(rows))
         ),
+        currency=series_currencies.pop() if len(series_currencies) == 1 else None,
     )
 
 
@@ -161,4 +164,5 @@ def chart_from_dict(data: dict[str, Any]) -> ChartSpec:
         evidence_id=str(data.get("evidence_id") or ""),
         rows=tuple(tuple(r) for r in data.get("rows") or ()),
         truncated=bool(data.get("truncated")),
+        currency=str(data["currency"]) if data.get("currency") else None,
     )

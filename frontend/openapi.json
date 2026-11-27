@@ -27,6 +27,17 @@
             "title": "Chart Type",
             "type": "string"
           },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
           "evidence_id": {
             "title": "Evidence Id",
             "type": "string"
