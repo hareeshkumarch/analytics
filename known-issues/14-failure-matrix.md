@@ -11,7 +11,7 @@ Tests marked (PG) run against real PostgreSQL. They run in CI, where the backend
 | Failure | Status | Test / reason |
 |---|---|---|
 | Model invents nonexistent tool | Covered | `test_tool_envelope::error_classes` (UNKNOWN_TOOL), `test_agent_tool_isolation::filesystem_and_shell_tools_are_refused` |
-| Wrong tool / overlapping definitions | N/A | Three disjoint read-only tools; a wrong pick costs one call and has no effect. Routing quality: #27 |
+| Wrong tool / overlapping definitions | N/A | Three disjoint read-only tools; a wrong pick costs one call and has no effect. Routing quality is measured with `make eval`. |
 | Missing/unknown field, wrong enum or type | Covered | `test_tool_envelope::error_classes` (INVALID_ARGUMENT + `failed_fields`), `test_tool_loop::rejects_unknown_operation`, `test_pydantic_and_async_api::pydantic_extra_fields_rejected_with_error_envelope` |
 | Optional field omitted vs null vs empty | Covered | `test_failure_matrix_extras::omitted_null_and_empty_lists_mean_the_same` |
 | Tool definition changed mid-run | Partial | Each call records `tool_version` (`test_tool_executions`); no version check on resume yet |

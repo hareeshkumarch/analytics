@@ -1,6 +1,6 @@
 # 13 - Gap analysis against the Deep Agent Engineering Guidelines v2
 
-Checked 2026-11-25 against `main` @ `da9b4a9`; updated 2026-11-26 @ `6033894` plus #32. Tracker: hareeshkumarch/analytics#15. Each gap links to its issue.
+Checked 2026-11-25 against `main` @ `da9b4a9`; updated 2026-11-27 @ `3c7d267`. Tracker: hareeshkumarch/analytics#15. Each gap links to its issue.
 
 **Status:** Met = enforced in code and covered by tests. Partial = some of it. Gap = missing. N/A = does not apply to this product today (read-only analytics: agents have no write tools, no MCP, no code execution, no long-term memory), with the reason.
 
@@ -40,13 +40,13 @@ Checked 2026-11-25 against `main` @ `da9b4a9`; updated 2026-11-26 @ `6033894` pl
 | 17.1 INV-12 | Final answer cites durable evidence | Met | Citations to evidence ids; unknown ids stripped; charts from cited evidence only. |
 | 17.1 INV-14 | Stale workers cannot overwrite | Met | `claim_run` bumps `owner_generation`; events, plan, clarification and answer writes are fenced. |
 | 17.1 INV-15 | Fail safely, no invented results | Met | Failures surface with limitations; unmatched figures mark the run needs_review. |
-| 17.2–17.3 | Smallest execution path; stop conditions | Partial | #24, #26 |
+| 17.2–17.3 | Smallest execution path; stop conditions | Met | Deterministic router sends simple questions down a 2-call direct path (#24); per-mode token, call and time budgets with a final-answer reserve, budget warnings and a stop before steps that cannot fit (#26). |
 | 18 | Tool registry metadata, envelope | Met | Tool specs (version, effect, timeout, inline limits, retry class) and one result envelope. |
 | 19.1–19.4 | Gateway lifecycle, concurrency, IDs, error taxonomy | Met | Budget reservation before dispatch, bounded tool calls per turn, parallel specialists, error taxonomy with retry flags, single-flight query cache. |
 | 19.5 | Mutation lifecycle | N/A | No write tools. |
 | 20 | MCP, webhooks | N/A | Not used. API clients: timeouts, SSRF policy, TLS with optional CA (done). |
-| 21.1–21.2 | Control-plane schema, short transactions, outbox, fencing | Partial | Unique constraints, atomic version/quota updates, lock/statement timeouts, no DB transaction held across model calls, outbox, fencing, durable idempotency keys. Task rows: #32 |
-| 21.3 | Pools and limits | Partial | SQLAlchemy pools, `lock_timeout` 5 s, `statement_timeout` 30 s. Pool-exhaustion tests: #28 |
+| 21.1–21.2 | Control-plane schema, short transactions, outbox, fencing | Met | Unique constraints, atomic version/quota updates, lock/statement timeouts, no DB transaction held across model calls, outbox, fencing, durable idempotency keys, task rows with optimistic versions. |
+| 21.3 | Pools and limits | Met | SQLAlchemy pools (10 + 20 overflow, 5 s wait), `lock_timeout` 5 s, `statement_timeout` 30 s; `test_fault_injection::requests_fail_fast_with_503_and_connections_are_returned`, `::production_pool_waits_a_bounded_time`. |
 | 21.4 | Tenant isolation / RLS | Gap (deferred) | Application-level scoping is done (#21); RLS waits on authentication. |
 | 22.1–22.4 | Progressive schema discovery, typed intent, SQL gates, performance | Met | Staged `inspect_schema`, typed IR only, no free SQL, DuckDB external access off. |
 | 22.5 | Analytical correctness traps | Met | Decimals, half-open compare periods in the workspace business time zone, truncation flags, reconciliation aggregates before joining, metric lineage on evidence, figures checked against cited evidence. |
