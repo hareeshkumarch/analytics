@@ -237,7 +237,7 @@ class RestJsonConnector:
         items = _extract_by_path(payload, collection_path)
         if not isinstance(items, list):
             raise ValidationError("collection_path did not resolve to a JSON array")
-        keys = list(dict.fromkeys(k for item in items[:50] if isinstance(item, dict) for k in item.keys()))
+        keys = list(dict.fromkeys(k for item in items if isinstance(item, dict) for k in item.keys()))
         cols = tuple(ColumnSchema(name=k, arrow_type="string", nullable=True) for k in keys)
         tname = str(config.get("table_name") or "rest_records")
         return (DiscoveredTable(name=tname, columns=cols, estimated_rows=len(items)),)
