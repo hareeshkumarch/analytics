@@ -12,7 +12,7 @@ import { RichSelect, RichOption } from "@/components/RichSelect";
 import { Badge, EmptyState, FilterChips, Notice, SearchInput, Skeleton, Spinner, btn, cardCls, cx } from "@/components/ui";
 import { SnapshotSummary, datasetLabel, relativeTime, useSnapshots, useWorkspace } from "@/lib/workspace";
 import type { PinOut, RunOut, UpdatePinRequest } from "@/lib/api/types";
-import { stripEvidenceIds } from "@/lib/text";
+import { headlineFigure, stripEvidenceIds } from "@/lib/text";
 
 type PinItem = PinOut;
 
@@ -31,7 +31,6 @@ const SORT_OPTIONS: RichOption[] = [
   { value: "title", label: "Title A–Z" },
 ];
 
-/** Plain-text excerpt of an answer: no markdown syntax, no evidence ids. */
 function excerpt(markdown: string | undefined, max = 240): string {
   if (!markdown) return "";
   const text = stripEvidenceIds(markdown)
@@ -40,7 +39,8 @@ function excerpt(markdown: string | undefined, max = 240): string {
     .replace(/[*_`>|]/g, "")
     .replace(/-{3,}/g, " ")
     .replace(/\s+/g, " ")
-    .trim();
+    .trim()
+    .split(/(?<=[.!?])\s/)[0];
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
 }
 
@@ -304,6 +304,7 @@ export function DashboardView() {
             const snap = run?.snapshot_id ? snapshotById.get(run.snapshot_id) : undefined;
             const newer = newerVersion(snap);
             const text = excerpt(run?.answer?.summary_markdown ?? undefined);
+            const headline = run?.answer?.summary_markdown ? headlineFigure(run.answer.summary_markdown) : null;
             const busy = busyPin === pin.pin_id;
             const missingIdx = missingRunIds.indexOf(pin.run_id);
             const loadingRun = runsQuery.isLoading || (missingIdx >= 0 && Boolean(extraRunQueries[missingIdx]?.isLoading));
@@ -335,11 +336,12 @@ export function DashboardView() {
                   ) : null}
                 </div>
                 {pin.question_text.trim() !== pin.title.trim() && <p className="text-[13px] leading-relaxed text-secondary">{pin.question_text}</p>}
+                {headline && <p className="font-display text-[26px] font-semibold leading-tight tracking-tight text-ink tabular-nums">{headline}</p>}
                 <p className={cx("text-[13.5px] leading-relaxed", text ? "text-body" : "text-secondary")}>
                   {text || (loadingRun ? "Loading the answer…" : "The saved answer isn't available.")}
                 </p>
                 {latestFailed && <p className="text-xs text-err">The latest re-run failed; showing the earlier answer.</p>}
-                <AnswerCharts charts={run?.answer?.charts} small />
+                <AnswerCharts charts={run?.answer?.charts} small contextTitle={pin.title} />
                 <label className={cx("flex min-h-[40px] cursor-pointer items-center gap-2 text-[12.5px]", canRefresh ? "text-body" : "cursor-not-allowed text-secondary opacity-60")}>
                   <input
                     type="checkbox"

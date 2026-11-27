@@ -8,7 +8,7 @@ import { HScroll } from "@/components/HScroll";
 import { Badge, Notice, Spinner, btn, cardCls, cx, inputCls } from "@/components/ui";
 import { ProviderLogo } from "@/components/ConnectorLogo";
 import { BusinessTimezone } from "@/features/settings/BusinessTimezone";
-import { OperatorSwitches } from "@/features/settings/OperatorSwitches";
+import { IncidentControls, PauseControl, providerSwitchId, useOpsSwitches } from "@/features/settings/IncidentControls";
 import { PRESET_OPTIONS, RoutingPreset, useRoutingPolicy } from "@/lib/routing";
 import { humanize, providerLabel, useProviders, useWorkspace } from "@/lib/workspace";
 import type { SaveProviderKeyRequest } from "@/lib/api/types";
@@ -99,6 +99,7 @@ export function SettingsView() {
   const ws = useWorkspace();
   const { data, isLoading, error, refetch } = useProviders();
   const routing = useRoutingPolicy(ws.id);
+  const ops = useOpsSwitches();
 
   const [chosenProvider, setChosenProvider] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
@@ -598,8 +599,6 @@ export function SettingsView() {
 
       <BusinessTimezone workspaceId={ws.id} />
 
-      <OperatorSwitches />
-
       <section className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="font-display text-lg font-semibold leading-snug tracking-[-0.01em] text-ink">Providers</h2>
@@ -658,13 +657,18 @@ export function SettingsView() {
                         )}
                       </td>
                       <td className="whitespace-nowrap px-3.5 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => selectProviderForKey(p.provider_id)}
-                          className="inline-flex min-h-[32px] items-center border border-border-strong bg-surface px-3 text-[12px] font-medium text-ink transition-colors hover:border-ink hover:bg-panel"
-                        >
-                          {p.configured ? "Manage key" : "Add key"}
-                        </button>
+                        <span className="inline-flex items-start justify-end gap-2">
+                          {ops.data?.available.includes(providerSwitchId(p.provider_id)) && (
+                            <PauseControl switchId={providerSwitchId(p.provider_id)} data={ops.data} />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => selectProviderForKey(p.provider_id)}
+                            className="inline-flex min-h-[32px] items-center border border-border-strong bg-surface px-3 text-[12px] font-medium text-ink transition-colors hover:border-ink hover:bg-panel"
+                          >
+                            {p.configured ? "Manage key" : "Add key"}
+                          </button>
+                        </span>
                       </td>
                     </tr>
                   );
@@ -674,6 +678,8 @@ export function SettingsView() {
           </HScroll>
         )}
       </section>
+
+      <IncidentControls />
     </div>
   );
 }

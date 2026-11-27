@@ -17,6 +17,7 @@ test("navigates the main views in journey order", async ({ page }) => {
 });
 
 test("connector catalog search, category filter and selection", async ({ page }) => {
+  await page.route("**/api/v1/workspaces/*/snapshots", (route) => route.fulfill({ json: { snapshots: [] } }));
   await page.goto("/data");
   const catalog = page.getByRole("list", { name: "Connectors" });
 

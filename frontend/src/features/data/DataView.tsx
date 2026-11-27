@@ -2,9 +2,10 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
-import { Notice, cardCls, cx } from "@/components/ui";
+import { Notice, btn, cardCls } from "@/components/ui";
 import { setUrlParam } from "@/lib/url";
 import { CONNECTOR_BY_ID, ConnectorId } from "@/lib/connectors";
+import { isSampleDataset } from "@/lib/sample";
 import { SnapshotSummary, datasetLabel, useSnapshots } from "@/lib/workspace";
 import { ConnectSource, ReimportTarget } from "@/features/data/ConnectSource";
 import { DatasetList } from "@/features/data/DatasetList";
@@ -18,6 +19,7 @@ export function DataView() {
   const [revealId, setRevealId] = useState<string | null>(null);
   const clearReveal = useCallback(() => setRevealId(null), []);
   const [reimport, setReimport] = useState<ReimportTarget | null>(null);
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -33,6 +35,13 @@ export function DataView() {
   const selected = snapshots.find((s) => s.snapshot_id === chosenId) ?? snapshots[0] ?? null;
   const missing = Boolean(chosenId && snapshotsQuery.data && !snapshots.some((s) => s.snapshot_id === chosenId));
   const approvedCount = snapshots.filter((s) => s.approved).length;
+  const hasData = snapshots.length > 0;
+  const showSources = !hasData || adding || Boolean(reimport);
+
+  function closeSources() {
+    setAdding(false);
+    setReimport(null);
+  }
 
   function select(id: string, nextTab?: DatasetTab, reveal = false) {
     setChosenId(id);
@@ -68,61 +77,71 @@ export function DataView() {
         description="Connect a source, import a read-only snapshot, then approve its metric definitions so Ask can answer from it."
       />
 
-      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        <div className={cx("min-w-0", snapshots.length > 0 && !reimport && "order-2 xl:order-1")}>
-          <ConnectSource
-            reimport={reimport}
-            onCancelReimport={() => setReimport(null)}
-            onImported={(id) => select(id, "definitions", true)}
-          />
-        </div>
+      {showSources && (
+        <ConnectSource
+          reimport={reimport}
+          onCancelReimport={() => {
+            setReimport(null);
+            setAdding(true);
+          }}
+          onImported={(id) => {
+            closeSources();
+            select(id, "definitions", true);
+          }}
+          offerSample={!snapshots.some(isSampleDataset)}
+          onClose={hasData ? closeSources : undefined}
+        />
+      )}
 
-        <section
-          aria-labelledby="datasets-title"
-          className={cx(cardCls, "min-w-0 space-y-4 p-5 sm:p-6", snapshots.length > 0 && !reimport && "order-1 xl:order-2")}
-        >
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 id="datasets-title" className="font-display text-lg font-semibold leading-snug tracking-[-0.01em] text-ink">
-              Datasets
-            </h2>
-            {snapshots.length > 0 && (
+      <section aria-labelledby="datasets-title" className={`${cardCls} min-w-0 space-y-4 p-5 sm:p-6`}>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="datasets-title" className="font-display text-lg font-semibold leading-snug tracking-[-0.01em] text-ink">
+            Datasets
+          </h2>
+          {hasData && (
+            <div className="flex flex-wrap items-center gap-3">
               <span className="text-xs text-secondary">
                 {approvedCount} of {snapshots.length} approved
               </span>
-            )}
-          </div>
-          {missing && (
-            <Notice tone="warn" title="That dataset isn't in this workspace">
-              It may have been imported into another workspace. Showing the newest dataset instead.
-            </Notice>
+              {!showSources && (
+                <button type="button" className={btn.primary} onClick={() => setAdding(true)}>
+                  Add data
+                </button>
+              )}
+            </div>
           )}
-          <DatasetList
+        </div>
+        {missing && (
+          <Notice tone="warn" title="That dataset isn't in this workspace">
+            It may have been imported into another workspace. Showing the newest dataset instead.
+          </Notice>
+        )}
+        <DatasetList
+          snapshots={snapshots}
+          loading={snapshotsQuery.isLoading}
+          error={snapshotsQuery.error}
+          onRetry={() => void snapshotsQuery.refetch()}
+          selectedId={selected?.snapshot_id ?? null}
+          onSelect={(id) => select(id)}
+        />
+        {selected && (
+          <DatasetPanel
+            key={selected.snapshot_id}
+            snapshot={selected}
             snapshots={snapshots}
-            loading={snapshotsQuery.isLoading}
-            error={snapshotsQuery.error}
-            onRetry={() => void snapshotsQuery.refetch()}
-            selectedId={selected?.snapshot_id ?? null}
-            onSelect={(id) => select(id)}
+            tab={tab}
+            onTabChange={changeTab}
+            onOpenVersion={(id) => select(id, undefined, true)}
+            reveal={revealId === selected.snapshot_id}
+            onRevealed={clearReveal}
+            onReimport={reimportOf(selected)}
+            onDeleted={() => {
+              setChosenId(null);
+              setUrlParam("dataset", null);
+            }}
           />
-          {selected && (
-            <DatasetPanel
-              key={selected.snapshot_id}
-              snapshot={selected}
-              snapshots={snapshots}
-              tab={tab}
-              onTabChange={changeTab}
-              onOpenVersion={(id) => select(id, undefined, true)}
-              reveal={revealId === selected.snapshot_id}
-              onRevealed={clearReveal}
-              onReimport={reimportOf(selected)}
-              onDeleted={() => {
-                setChosenId(null);
-                setUrlParam("dataset", null);
-              }}
-            />
-          )}
-        </section>
-      </div>
+        )}
+      </section>
     </div>
   );
 }

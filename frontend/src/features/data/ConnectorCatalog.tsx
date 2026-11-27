@@ -47,7 +47,7 @@ export function ConnectorCatalog({ onSelect }: { onSelect: (id: ConnectorId) => 
           }
         />
       ) : (
-        <ul role="list" aria-label="Connectors" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <ul role="list" aria-label="Connectors" className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {visible.map((c) => (
             <li key={c.id}>
               <button

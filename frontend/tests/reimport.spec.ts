@@ -33,6 +33,7 @@ test("a dataset can be imported again with its saved settings", async ({ page })
     return route.fulfill({ status: 404, json: { detail: "not mocked" } });
   });
   await page.goto("/data");
+  await expect(page.getByRole("region", { name: "Add data" })).toHaveCount(0);
   await page.getByRole("button", { name: "Import new version" }).click();
   const add = page.getByRole("region", { name: "Add data" });
   await expect(add.getByText(/New version of/)).toBeVisible();

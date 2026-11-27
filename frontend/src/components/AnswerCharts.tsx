@@ -14,7 +14,7 @@ const compact = new Intl.NumberFormat(undefined, { notation: "compact", maximumF
 const full = new Intl.NumberFormat(undefined, { maximumFractionDigits: 4 });
 const humanize = (field: string) => field.replace(/_/g, " ");
 
-function ChartCard({ chart, small }: { chart: AnswerChart; small: boolean }) {
+function ChartCard({ chart, small, showTitle }: { chart: AnswerChart; small: boolean; showTitle: boolean }) {
   const openEvidence = useContext(EvidenceContext);
   const gridColor = useThemeColor("border", "#E4E4E7");
   const axisColor = useThemeColor("muted", "#696972");
@@ -63,19 +63,21 @@ function ChartCard({ chart, small }: { chart: AnswerChart; small: boolean }) {
 
   return (
     <figure className="border border-border bg-surface p-3.5">
-      <figcaption className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <span className="text-[13px] font-medium text-ink">{chart.title}</span>
-        {keys.length > 1 && (
-          <span className="flex flex-wrap gap-3 text-[11.5px] text-secondary">
-            {keys.map((key, i) => (
-              <span key={key} className="inline-flex items-center gap-1.5">
-                <span aria-hidden="true" className="inline-block h-2 w-2" style={{ background: colorFor(i) }} />
-                {names[key]}
-              </span>
-            ))}
-          </span>
-        )}
-      </figcaption>
+      {(showTitle || keys.length > 1) && (
+        <figcaption className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          {showTitle && <span className="text-[13px] font-medium text-ink">{chart.title}</span>}
+          {keys.length > 1 && (
+            <span className="flex flex-wrap gap-3 text-[11.5px] text-secondary">
+              {keys.map((key, i) => (
+                <span key={key} className="inline-flex items-center gap-1.5">
+                  <span aria-hidden="true" className="inline-block h-2 w-2" style={{ background: colorFor(i) }} />
+                  {names[key]}
+                </span>
+              ))}
+            </span>
+          )}
+        </figcaption>
+      )}
       <div className={small ? "h-36 w-full" : "h-52 w-full"} role="img" aria-label={label}>
         <ResponsiveContainer width="100%" height="100%">
           {chart.chart_type === "line" ? (
@@ -142,13 +144,15 @@ function ChartCard({ chart, small }: { chart: AnswerChart; small: boolean }) {
   );
 }
 
-export function AnswerCharts({ charts, small = false }: { charts?: AnswerChart[] | null; small?: boolean }) {
+const sameTitle = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+export function AnswerCharts({ charts, small = false, contextTitle }: { charts?: AnswerChart[] | null; small?: boolean; contextTitle?: string }) {
   if (!charts?.length) return null;
   const shown = small ? charts.slice(0, 1) : charts;
   return (
     <div className={small ? undefined : "mt-4 grid gap-3 lg:grid-cols-2"}>
       {shown.map((chart) => (
-        <ChartCard key={chart.chart_id} chart={chart} small={small} />
+        <ChartCard key={chart.chart_id} chart={chart} small={small} showTitle={!contextTitle || !sameTitle(chart.title, contextTitle)} />
       ))}
     </div>
   );

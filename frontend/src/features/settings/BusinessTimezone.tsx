@@ -2,7 +2,8 @@
 
 import React, { useId, useState } from "react";
 import { errorMessage } from "@/lib/api/client";
-import { Badge, Notice, cardCls, cx, inputCls } from "@/components/ui";
+import { Badge, Notice, cardCls, cx } from "@/components/ui";
+import { RichSelect } from "@/components/RichSelect";
 import { timeZoneOptions, useWorkspaceSettings } from "@/lib/workspaceSettings";
 
 export function BusinessTimezone({ workspaceId }: { workspaceId: string }) {
@@ -24,27 +25,18 @@ export function BusinessTimezone({ workspaceId }: { workspaceId: string }) {
         </div>
         {settings.saving && <Badge>Saving…</Badge>}
       </div>
-      <label htmlFor={`${id}-select`} className="block text-[13px] font-medium text-ink">
-        Time zone
-      </label>
-      <select
-        id={`${id}-select`}
-        className={inputCls}
+      <RichSelect
+        label="Time zone"
+        searchable
         value={current ?? ""}
+        placeholder={settings.isLoading ? "Loading…" : "Unavailable"}
         disabled={!settings.data || settings.saving}
-        onChange={(e) => {
+        options={settings.data ? timeZoneOptions(current).map((zone) => ({ value: zone, label: zone.replaceAll("_", " ") })) : []}
+        onChange={(zone) => {
           setError(null);
-          settings.save({ business_timezone: e.target.value }, { onError: (err) => setError(errorMessage(err, "Couldn't save the time zone.")) });
+          settings.save({ business_timezone: zone }, { onError: (err) => setError(errorMessage(err, "Couldn't save the time zone.")) });
         }}
-      >
-        {!settings.data && <option value="">{settings.isLoading ? "Loading…" : "Unavailable"}</option>}
-        {settings.data &&
-          timeZoneOptions(current).map((zone) => (
-            <option key={zone} value={zone}>
-              {zone.replaceAll("_", " ")}
-            </option>
-          ))}
-      </select>
+      />
       {error && <Notice tone="err" title={error} />}
       {settings.error && <Notice tone="err" title="Couldn't load workspace settings">{errorMessage(settings.error)}</Notice>}
     </section>

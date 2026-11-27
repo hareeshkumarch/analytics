@@ -161,7 +161,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="flex-1 font-display text-[17px] font-bold tracking-[-0.01em]">Ledgerline</span>
             <ThemeToggle compact />
           </div>
-          <HScroll className="-mx-1 mt-2.5" fadeFrom="from-canvas">
+          <HScroll className="-mx-1 mt-2.5 hidden sm:block" fadeFrom="from-canvas">
           <nav aria-label="Primary Navigation" className="flex w-max gap-1 px-1 pb-0.5">
             {NAV.map((item) => {
               const active = isActive(item.href);
@@ -277,9 +277,37 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </aside>
 
-        <main id="main" tabIndex={-1} className="min-w-0 flex-1 px-4 py-6 focus:outline-none sm:px-5 md:px-6 md:py-8 lg:px-8">
+        <main
+          id="main"
+          tabIndex={-1}
+          className="min-w-0 flex-1 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-6 focus:outline-none sm:px-5 sm:pb-6 md:px-6 md:py-8 lg:px-8"
+        >
           <div className="mx-auto w-full max-w-[1480px]">{children}</div>
         </main>
+
+        <nav
+          aria-label="Primary Navigation"
+          className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-canvas/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md sm:hidden"
+        >
+          {NAV.map((item) => {
+            const active = isActive(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                className={`flex min-h-[56px] flex-col items-center justify-center gap-1 text-[11px] transition-colors ${
+                  active ? "font-semibold text-ink" : "text-secondary hover:text-ink"
+                }`}
+              >
+                <span className={`flex h-6 w-10 items-center justify-center ${active ? "bg-ink text-canvas" : ""}`}>
+                  <NavIcon name={item.icon} className="h-[17px] w-[17px]" />
+                </span>
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
       </div>
     </QueryClientProvider>
   );

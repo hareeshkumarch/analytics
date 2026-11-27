@@ -323,10 +323,14 @@ export function ConnectSource({
   reimport,
   onImported,
   onCancelReimport,
+  offerSample,
+  onClose,
 }: {
   reimport: ReimportTarget | null;
   onImported: (snapshotId: string) => void;
   onCancelReimport: () => void;
+  offerSample: boolean;
+  onClose?: () => void;
 }) {
   const [selectedId, setSelectedId] = useState<ConnectorId | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
@@ -354,16 +358,25 @@ export function ConnectSource({
         />
       ) : (
         <div className="space-y-4">
-          <div>
-            <h2 className="font-display text-lg font-semibold leading-snug tracking-[-0.01em] text-ink">Add data</h2>
-            <p className="mt-1 text-xs text-secondary">
-              Pick a source. Each import becomes a read-only snapshot, and credentials are only used for that import.
-            </p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="font-display text-lg font-semibold leading-snug tracking-[-0.01em] text-ink">Add data</h2>
+              <p className="mt-1 text-xs text-secondary">
+                Pick a source. Each import becomes a read-only snapshot, and credentials are only used for that import.
+              </p>
+            </div>
+            {onClose && (
+              <button type="button" className={btn.ghost} onClick={onClose}>
+                Close
+              </button>
+            )}
           </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-panel px-3.5 py-3">
-            <span className="min-w-0 flex-1 text-[13px] text-body">No data handy? Import a small shop dataset with orders, refunds, fees and payouts.</span>
-            <SampleDataButton onImported={(snap) => onImported(snap.snapshot_id)} />
-          </div>
+          {offerSample && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-panel px-3.5 py-3">
+              <span className="min-w-0 flex-1 text-[13px] text-body">No data handy? Import a small shop dataset with orders, refunds, fees and payouts.</span>
+              <SampleDataButton onImported={(snap) => onImported(snap.snapshot_id)} />
+            </div>
+          )}
           <ConnectorCatalog onSelect={setSelectedId} />
         </div>
       )}
