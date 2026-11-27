@@ -119,6 +119,7 @@ class RunAnswerOut(ApiResponse):
     outcome: str | None = None
     criteria: list[CriterionOut] | None = None
     route: str | None = None
+    follow_ups: list[str] | None = None
 
 
 class RunOut(ApiResponse):

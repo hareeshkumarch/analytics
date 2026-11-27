@@ -297,3 +297,48 @@ class TestPromptsAndRouting(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+QUESTION = "What is the total amount by region and how do the regions compare?"
+
+
+class _SuggestingGateway(ToolCallingGateway):
+    """Answers normally, and returns suggestions when asked for them with the follow-up schema."""
+
+    def invoke(self, request, provider_profile, model_profile, api_key):
+        if request.role == AgentRole.SEMANTIC_ASSISTANT:
+            self.requests.append(request)
+            suggestions = ["How does that split by month?", "How does that split by month?", "  ", QUESTION.upper(), "Which region grew fastest?", "A", "B"]
+            return ModelResponse(provider_id=self.provider_id, model_id=model_profile.model_id, text="", structured_output={"follow_ups": suggestions})
+        return super().invoke(request, provider_profile, model_profile, api_key)
+
+
+class TestFollowUpSuggestions(unittest.TestCase):
+    def _run(self, gateway, mode: RunMode, question: str = "q"):
+        with tempfile.TemporaryDirectory() as td:
+            c = _container(td, gateway)
+            return InvestigationOrchestrator(c).execute_local(
+                run_id="run_follow", workspace_id="ws1", question=question, mode=mode, snapshot_id="snap1", snapshot=_publish_orders(c),
+            )
+
+    def test_a_deep_answer_carries_up_to_three_distinct_suggestions(self) -> None:
+        gateway = _SuggestingGateway()
+        answer = self._run(gateway, RunMode.DEEP, QUESTION)
+        # Duplicates, blanks and the question already asked are dropped; three at most are kept.
+        self.assertEqual(answer.follow_ups, ("How does that split by month?", "Which region grew fastest?", "A"))
+        asked = [r for r in gateway.requests if r.role == AgentRole.SEMANTIC_ASSISTANT]
+        self.assertEqual(len(asked), 1)
+        payload = json.loads(str(asked[0].messages[-1]["content"]))
+        self.assertEqual(payload["tables"][0]["table"], "orders")
+
+    def test_a_gateway_that_cannot_suggest_still_answers(self) -> None:
+        answer = self._run(ToolCallingGateway(), RunMode.DEEP, "What is the total amount by region and how do the regions compare?")
+        self.assertEqual(answer.follow_ups, ())
+        self.assertTrue(answer.summary_markdown)
+
+    def test_suggestions_can_be_switched_off(self) -> None:
+        gateway = _SuggestingGateway()
+        with patch.dict("os.environ", {"FOLLOW_UP_SUGGESTIONS": "0"}):
+            answer = self._run(gateway, RunMode.DEEP, "What is the total amount by region and how do the regions compare?")
+        self.assertEqual(answer.follow_ups, ())
+        self.assertFalse([r for r in gateway.requests if r.role == AgentRole.SEMANTIC_ASSISTANT])

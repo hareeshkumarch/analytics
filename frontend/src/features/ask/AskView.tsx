@@ -48,6 +48,8 @@ interface Session {
   charts: AnswerChart[];
   outcome: string | null;
   criteria: Criterion[];
+  /** Suggested next questions, sent with the finished answer. */
+  followUps: string[];
   conversationId: string | null;
   /** The answer text came from the saved run; replayed answer.delta events must not be appended again. */
   answerFromServer: boolean;
@@ -106,6 +108,7 @@ function fromStored(run: StoredRun): Session {
     charts: run.answer?.charts ?? [],
     outcome: run.answer?.outcome ?? null,
     criteria: run.answer?.criteria ?? [],
+    followUps: run.answer?.follow_ups ?? [],
     conversationId: run.conversation_id ?? null,
     answerFromServer: Boolean(answer),
     events: [],
@@ -414,6 +417,7 @@ export function AskView() {
         const sameCharts = serverCharts.map((c) => c.chart_id).join() === s.charts.map((c) => c.chart_id).join();
         const nextError = r.error ?? s.error;
         const outcome = r.answer?.outcome ?? s.outcome;
+        const followUps = r.answer?.follow_ups ?? s.followUps;
         const prompt = r.clarification_prompt ?? null;
         const revision = r.clarification_revision ?? s.clarificationRevision;
         if (
@@ -423,6 +427,7 @@ export function AskView() {
           (r.conversation_id ?? null) === s.conversationId &&
           nextError === s.error &&
           outcome === s.outcome &&
+          followUps.join("\n") === s.followUps.join("\n") &&
           prompt === s.clarificationPrompt &&
           revision === s.clarificationRevision
         ) return s;
@@ -433,6 +438,7 @@ export function AskView() {
           charts: serverCharts,
           outcome,
           criteria: r.answer?.criteria ?? s.criteria,
+          followUps,
           conversationId: r.conversation_id ?? s.conversationId,
           answerFromServer: Boolean(serverAnswer) || s.answerFromServer,
           error: nextError,
@@ -653,6 +659,7 @@ export function AskView() {
         charts: [],
         outcome: null,
         criteria: [],
+        followUps: [],
         conversationId: target.followUpOf
           ? (sessions.find((s) => s.runId === target.followUpOf)?.conversationId ?? null)
           : null,
@@ -1385,8 +1392,28 @@ export function AskView() {
                 </div>
               )}
 
+              {active.status === "completed" && active.runId && active.snapshotId && active.followUps.length > 0 && (
+                <section aria-label="Suggested follow-up questions" className="space-y-2 border-t border-border pt-4">
+                  <p className="text-xs text-secondary">Ask next</p>
+                  <ul className="flex flex-wrap gap-2">
+                    {active.followUps.map((suggestion) => (
+                      <li key={suggestion}>
+                        <button
+                          type="button"
+                          disabled={submitting}
+                          onClick={() => void startRun(suggestion, { snapshotId: active.snapshotId!, followUpOf: active.runId! }, setFollowUpDraft)}
+                          className={cx(outlineCls, "min-h-[32px] rounded-md px-2.5 py-1.5 text-left text-base text-ink disabled:opacity-50")}
+                        >
+                          {suggestion}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
               {active.status === "completed" && active.runId && (
-                <form onSubmit={(e) => void handleFollowUp(e)} className="flex gap-2 border-t border-border pt-4">
+                <form onSubmit={(e) => void handleFollowUp(e)} className={cx("flex gap-2 pt-4", active.followUps.length === 0 && "border-t border-border")}>
                   <label htmlFor="follow-up" className="sr-only">
                     Ask a follow-up question
                   </label>

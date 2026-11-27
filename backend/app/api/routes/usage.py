@@ -1,4 +1,5 @@
 from dataclasses import asdict
+import time
 from datetime import datetime
 import logging
 from typing import Any, Literal
@@ -18,11 +19,42 @@ from app.domain.limits import PREVIEW_CHARS
 
 logger = logging.getLogger(__name__)
 
+# How long one workspace's usage window is reused. Short enough that a finished question shows up on the next poll.
+USAGE_CACHE_SECONDS = 3.0
+
 
 def register(ctx: ApiContext) -> APIRouter:
     router = APIRouter()
     app = ctx.app
     _db_unavailable = ctx.db_unavailable
+
+    window_cache: dict[tuple[str, str], tuple[float, Any]] = {}
+
+    def _window(workspace_id: str, since: datetime | None) -> Any:
+        """Everything the usage page needs for one workspace and time window.
+
+        The page polls every few seconds and re-asks on every sort or filter change, all of which work on
+        the same window. Keep the last answer for a moment so those requests share one set of queries.
+        """
+        key = (workspace_id, since.isoformat() if since else "")
+        now = time.monotonic()
+        hit = window_cache.get(key)
+        if hit and now - hit[0] < USAGE_CACHE_SECONDS:
+            return hit[1]
+        c: AppContainer = app.state.container
+        rows = app.state.repo_runs.usage_rows(workspace_id, since)
+        ledger: Any = c.budget_ledger
+        executions: Any = c.tool_executions
+        if hasattr(ledger, "usage_totals") and hasattr(executions, "usage_by_tool"):
+            # The database totals each table for the window in one grouped query.
+            loaded = (rows, ledger.usage_totals(workspace_id, since), ledger.usage_by_model(workspace_id, since), executions.usage_by_tool(workspace_id, since))
+        else:
+            ids = [r["run_id"] for r in rows]
+            loaded = (rows, ledger.get_runs_totals(ids), ledger.get_model_usage(ids), summarize_tool_executions(executions.list_for_runs(ids)))
+        for stale in [k for k, (stamp, _) in window_cache.items() if now - stamp >= USAGE_CACHE_SECONDS]:
+            window_cache.pop(stale, None)
+        window_cache[key] = (now, loaded)
+        return loaded
 
     @router.get("/api/v1/workspaces/{workspace_id}/usage", response_model=UsageOut, response_model_exclude_unset=True)
     def get_usage(
@@ -38,13 +70,8 @@ def register(ctx: ApiContext) -> APIRouter:
         bucket: Literal["hour", "day"] = "day",
         tz_offset_minutes: int = Query(0, ge=-840, le=840),
     ) -> dict[str, Any]:
-        c: AppContainer = app.state.container
         try:
-            rows = app.state.repo_runs.usage_rows(workspace_id, since)
-            all_ids = [r["run_id"] for r in rows]
-            all_totals = c.budget_ledger.get_runs_totals(all_ids)
-            models = c.budget_ledger.get_model_usage(all_ids)
-            tools = summarize_tool_executions(c.tool_executions.list_for_runs(all_ids))
+            rows, all_totals, models, tools = _window(workspace_id, since)
         except SQLAlchemyError as exc:
             logger.exception("Failed to query runs for usage from DB")
             raise _db_unavailable("load usage") from exc

@@ -22,8 +22,8 @@ from app.adapters.orchestration.deep_agents_bridge import (
 )
 from app.adapters.orchestration.deep_agent_runtime import DeepAgentTaskRunner
 from app.adapters.persistence.langgraph_checkpointer import open_langgraph_checkpointer
-from app.adapters.orchestration.structured_schemas import PLAN_SCHEMA, REPLAN_SCHEMA
-from app.application.runtime_settings import AgentRuntime, agent_runtime
+from app.adapters.orchestration.structured_schemas import FOLLOW_UP_SCHEMA, PLAN_SCHEMA, REPLAN_SCHEMA
+from app.application.runtime_settings import AgentRuntime, agent_runtime, follow_up_suggestions
 from app.application.services.context_compiler import (
     CLAIM_STATEMENT_CHARS,
     MAX_COMPLETION_CRITERIA,
@@ -94,6 +94,14 @@ TRIMMED_FINDINGS_LIMITATION = "Some step findings were shortened to fit the answ
 
 class _OrchestrationState(TypedDict):
     action: str
+
+FOLLOW_UP_LIMIT = 3
+FOLLOW_UP_CHARS = 140
+FOLLOW_UP_ANSWER_TOKENS = 1_200
+FOLLOW_UP_MAX_TABLES = 8
+FOLLOW_UP_MAX_COLUMNS = 30
+# Skip the suggestions when the run has this little time left.
+FOLLOW_UP_MIN_SECONDS = 20
 
 _TASK_TITLES = {
     "data_specialist": "Analysis",
@@ -1430,6 +1438,50 @@ class InvestigationOrchestrator:
         )
         if outcome == "needs_review":
             answer_limitations.append("Some figures could not be matched to the evidence they cite; check them before relying on this answer.")
+        follow_ups: tuple[str, ...] = ()
+        if (
+            follow_up_suggestions()
+            and use_deep_agents
+            # The direct route promises two model calls; suggestions are not worth slowing it down.
+            and not direct
+            and summary_parts
+            and run_evidence
+            and not cancelled
+            and not timed_out
+            and _remaining_attempts() >= 1
+            and deadline - time.monotonic() > FOLLOW_UP_MIN_SECONDS
+        ):
+            # A nicety, never a reason to fail or delay an answer: any problem here just means no suggestions.
+            try:
+                tables = [
+                    {"table": str(table.get("name")), "columns": [str(col.get("name")) for col in table.get("columns", [])][:FOLLOW_UP_MAX_COLUMNS]}
+                    for table in (snapshot or {}).get("table_details", [])[:FOLLOW_UP_MAX_TABLES]
+                ]
+                with using_prompt(prompts.FOLLOW_UPS):
+                    suggested, _, _ = self._deep_agent_runner.run_structured(
+                        # The assistant role routes to small, fast models; this call must stay cheap.
+                        role=AgentRole.SEMANTIC_ASSISTANT,
+                        system_prompt=prompts.FOLLOW_UPS.text,
+                        user_prompt=json.dumps(
+                            {"question": clean_question, "answer": fit_text(answer_markdown, FOLLOW_UP_ANSWER_TOKENS), "tables": tables},
+                            ensure_ascii=False,
+                        ),
+                        schema=FOLLOW_UP_SCHEMA,
+                        run_id=run_id,
+                        policy=policy,
+                        deadline=deadline,
+                        should_cancel=_cancelled,
+                    )
+                asked = clean_question.strip().lower()
+                follow_ups = tuple(
+                    dict.fromkeys(
+                        clip_statement(_clean_text(str(item)), FOLLOW_UP_CHARS)
+                        for item in (suggested.get("follow_ups") or [])
+                        if isinstance(item, str) and item.strip() and item.strip().lower() != asked
+                    )
+                )[:FOLLOW_UP_LIMIT]
+            except Exception:  # noqa: BLE001
+                logger.info("No follow-up suggestions for run %s", run_id, exc_info=True)
         answer = Answer(
             answer_id=f"ans_{uuid.uuid4().hex[:10]}",
             run_id=run_id,
@@ -1446,6 +1498,7 @@ class InvestigationOrchestrator:
             outcome=outcome,
             criteria=criteria,
             route=route.route.value,
+            follow_ups=follow_ups,
         )
         finished: dict[str, Any] = {"answer_id": answer.answer_id, "tool_calls": toolbox.budget.used, "route": route.route.value}
         if cancelled:

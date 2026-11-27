@@ -1321,6 +1321,20 @@
             ],
             "title": "Criteria"
           },
+          "follow_ups": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Follow Ups"
+          },
           "outcome": {
             "anyOf": [
               {

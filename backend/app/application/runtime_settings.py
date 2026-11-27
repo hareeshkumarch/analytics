@@ -30,3 +30,8 @@ def uses_celery() -> bool:
 
 def agent_runtime() -> AgentRuntime:
     return AgentRuntime(_choice("AGENT_RUNTIME", AgentRuntime, AgentRuntime.DEEP_AGENTS.value))
+
+
+def follow_up_suggestions() -> bool:
+    """Whether to spend one small model call after each answer on suggested next questions. On unless FOLLOW_UP_SUGGESTIONS=0."""
+    return os.environ.get("FOLLOW_UP_SUGGESTIONS", "1").strip().lower() not in ("0", "false", "off", "no")

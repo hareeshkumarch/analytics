@@ -1180,6 +1180,8 @@ export interface components {
             charts?: components["schemas"]["ChartOut"][] | null;
             /** Criteria */
             criteria?: components["schemas"]["CriterionOut"][] | null;
+            /** Follow Ups */
+            follow_ups?: string[] | null;
             /** Outcome */
             outcome?: string | null;
             /** Route */

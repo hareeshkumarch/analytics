@@ -272,3 +272,5 @@ class Answer:
     outcome: str = "success"
     criteria: tuple[CriterionResult, ...] = ()
     route: str = "standard"
+    # Questions the user could ask next, suggested after the answer is written.
+    follow_ups: tuple[str, ...] = ()

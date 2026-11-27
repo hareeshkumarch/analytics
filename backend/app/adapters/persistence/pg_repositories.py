@@ -232,6 +232,7 @@ class PgRunRepository:
                     last_event_sequence=1,
                     owner_generation=1,
                     answer_json={"question": question},
+                    question=question,
                     orchestration_json={"clarification_revision": 0},
                     created_at=now,
                 )
@@ -508,7 +509,8 @@ class PgRunRepository:
                 RunRow.mode,
                 RunRow.status,
                 RunRow.created_at,
-                RunRow.answer_json["question"].as_string(),
+                # Rows written before the column existed still carry the question only in the JSON.
+                func.coalesce(RunRow.question, RunRow.answer_json["question"].as_string()),
                 RunRow.answer_json["error"].as_string(),
             ).where(RunRow.workspace_id == workspace_id)
             if since is not None:
@@ -664,6 +666,7 @@ class PgRunRepository:
                             for c in answer.claims
                         ],
                         "charts": [asdict(chart) for chart in answer.charts],
+                        "follow_ups": list(answer.follow_ups),
                         "outcome": answer.outcome,
                         "route": answer.route,
                         "criteria": [
@@ -1329,6 +1332,73 @@ class PgBudgetLedger:
             for run_id in run_ids
         }
 
+    @staticmethod
+    def _in_window(stmt: Any, workspace_id: str, since: datetime | None) -> Any:
+        """Restrict a budget query to one workspace's runs in a time window, by joining instead of listing run ids."""
+        stmt = stmt.join(RunRow, RunRow.run_id == BudgetReservationRow.run_id).where(RunRow.workspace_id == workspace_id)
+        return stmt.where(RunRow.created_at >= since) if since is not None else stmt
+
+    def usage_totals(self, workspace_id: str, since: datetime | None = None) -> dict[str, dict[str, object]]:
+        """Per-run attempts, tokens and cost for every run in the window, totalled by the database."""
+        stmt = self._in_window(
+            select(
+                BudgetReservationRow.run_id,
+                func.count(),
+                func.sum(func.coalesce(BudgetReservationRow.actual_tokens, BudgetReservationRow.reserved_tokens)),
+                func.sum(func.coalesce(BudgetReservationRow.actual_cost_usd, BudgetReservationRow.reserved_cost_usd, 0)),
+                func.max(case((BudgetReservationRow.settled.is_(False), 1), else_=0)),
+            ),
+            workspace_id,
+            since,
+        ).group_by(BudgetReservationRow.run_id)
+        with self._sf() as db:
+            rows = db.execute(stmt).all()
+        return {
+            run_id: {
+                "run_id": run_id,
+                "used_attempts": int(count),
+                "total_tokens": int(tokens or 0),
+                "total_cost_usd": str(cost or Decimal("0")),
+                "incomplete": bool(incomplete),
+            }
+            for run_id, count, tokens, cost, incomplete in rows
+        }
+
+    def usage_by_model(self, workspace_id: str, since: datetime | None = None) -> list[dict[str, object]]:
+        """Calls, tokens, cost and latency per model for the window, grouped by the database."""
+        provider = func.coalesce(BudgetReservationRow.provider_id, "unknown")
+        model = func.coalesce(BudgetReservationRow.model_id, "unknown")
+        stmt = self._in_window(
+            select(
+                provider,
+                model,
+                func.count(),
+                func.sum(case((BudgetReservationRow.settled.is_(False), 1), else_=0)),
+                func.sum(func.coalesce(BudgetReservationRow.actual_tokens, BudgetReservationRow.reserved_tokens, 0)),
+                func.sum(func.coalesce(BudgetReservationRow.actual_cost_usd, BudgetReservationRow.reserved_cost_usd, 0)),
+                func.max(case((BudgetReservationRow.cost_is_unknown.is_(True), 1), else_=0)),
+                func.avg(BudgetReservationRow.latency_ms),
+            ),
+            workspace_id,
+            since,
+        ).group_by(provider, model)
+        with self._sf() as db:
+            rows = db.execute(stmt).all()
+        usage = [
+            {
+                "provider_id": str(p),
+                "model_id": str(m),
+                "calls": int(calls),
+                "unsettled_calls": int(unsettled or 0),
+                "total_tokens": int(tokens or 0),
+                "total_cost_usd": str(Decimal(str(cost or 0))),
+                "cost_unknown": bool(unknown),
+                "avg_latency_ms": round(float(latency)) if latency is not None else None,
+            }
+            for p, m, calls, unsettled, tokens, cost, unknown, latency in rows
+        ]
+        return sorted(usage, key=lambda item: (-Decimal(str(item["total_cost_usd"])), -int(str(item["total_tokens"]))))
+
     def get_model_usage(self, run_ids: list[str]) -> list[dict[str, object]]:
         with self._sf() as db:
             rows = db.execute(
@@ -1386,6 +1456,45 @@ class PgToolExecutionLedger:
         with self._sf() as db:
             with db.begin():
                 db.add(ToolExecutionRow(**asdict(execution)))
+
+    def usage_by_tool(self, workspace_id: str, since: datetime | None = None) -> list[dict[str, Any]]:
+        """Per-tool call counts and timings for the window, grouped by the database."""
+        row = ToolExecutionRow
+        stmt = (
+            select(
+                row.tool,
+                func.count(),
+                func.sum(case((row.status.in_(("failed", "denied")), 1), else_=0)),
+                func.sum(case((row.error_code == "INVALID_ARGUMENT", 1), else_=0)),
+                func.sum(case((row.error_code == "DUPLICATE_FAILED_CALL", 1), else_=0)),
+                func.sum(case((row.error_code == "TIMEOUT", 1), else_=0)),
+                func.sum(case((row.cache_hit.is_(True), 1), else_=0)),
+                func.avg(row.duration_ms),
+                func.count(func.distinct(row.run_id + ":" + row.task_id)),
+            )
+            .join(RunRow, RunRow.run_id == row.run_id)
+            .where(RunRow.workspace_id == workspace_id)
+            .group_by(row.tool)
+            .order_by(row.tool)
+        )
+        if since is not None:
+            stmt = stmt.where(RunRow.created_at >= since)
+        with self._sf() as db:
+            rows = db.execute(stmt).all()
+        return [
+            {
+                "tool": tool,
+                "calls": int(calls),
+                "failed_calls": int(failed or 0),
+                "invalid_calls": int(invalid or 0),
+                "duplicate_calls": int(duplicate or 0),
+                "timeouts": int(timeouts or 0),
+                "cache_hits": int(cache_hits or 0),
+                "avg_duration_ms": round(float(duration or 0)),
+                "calls_per_task": round(int(calls) / max(1, int(tasks)), 2),
+            }
+            for tool, calls, failed, invalid, duplicate, timeouts, cache_hits, duration, tasks in rows
+        ]
 
     def list_for_runs(self, run_ids: list[str]) -> list[ToolExecution]:
         if not run_ids:

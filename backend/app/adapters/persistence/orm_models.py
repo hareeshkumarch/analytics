@@ -113,6 +113,8 @@ class RunRow(Base):
     answer_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     orchestration_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    # Copy of answer_json["question"], so listings and usage search read a column instead of each run's JSON.
+    question: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class BudgetReservationRow(Base):

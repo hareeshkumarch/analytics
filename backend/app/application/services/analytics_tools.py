@@ -123,20 +123,27 @@ RUN_QUERY_SCHEMA: dict[str, Any] = {
                 "contribution_breakdown",
                 "distribution",
                 "reconciliation_lookup",
+                "trend",
+                "percentiles",
+                "outliers",
             ],
             "description": (
                 "aggregate: metrics grouped by columns. detail: raw rows. compare_periods: one metric for two "
                 "date ranges. contribution_breakdown: one metric per value of a dimension, largest first. "
                 "distribution: for a numeric column, a histogram with `buckets` bins plus min/max/avg/count; for other "
                 "columns, min/max/count/distinct count. reconciliation_lookup: join two tables on a key "
-                "and compare amount totals; each filter applies to whichever table has that column."
+                "and compare amount totals; each filter applies to whichever table has that column. "
+                "trend: one metric per day, week, month, quarter or year, with its moving average over `window` periods, "
+                "the change from the period before, and growth as a fraction (0.18 means +18%). "
+                "percentiles: chosen percentiles of a numeric column (median is 0.5), overall or per group. "
+                "outliers: how many values of a numeric column lie beyond 1.5 interquartile ranges, with the bounds."
             ),
         },
         "purpose": {"type": "string", "description": "One sentence: what this query is for."},
         "table_id": {"type": "string", "description": "Table name from inspect_schema."},
         "metrics": {"type": "array", "items": _METRIC, "description": "aggregate only."},
-        "metric": {**_METRIC, "description": "compare_periods and contribution_breakdown."},
-        "group_by": {**_STRING_LIST, "description": "aggregate and compare_periods."},
+        "metric": {**_METRIC, "description": "compare_periods, contribution_breakdown and trend."},
+        "group_by": {**_STRING_LIST, "description": "aggregate, compare_periods, percentiles and outliers (one column for outliers)."},
         "select_fields": {**_STRING_LIST, "description": "detail only."},
         "filters": {
             "type": "array",
@@ -169,13 +176,20 @@ RUN_QUERY_SCHEMA: dict[str, Any] = {
                 "required": ["field_id"],
             },
         },
-        "date_field": {"type": "string", "description": "compare_periods only."},
+        "date_field": {"type": "string", "description": "compare_periods and trend."},
+        "grain": {"type": "string", "enum": ["day", "week", "month", "quarter", "year"], "description": "trend only; default month."},
+        "window": {"type": "integer", "description": "trend only: periods in the moving average, 1-24; default 3."},
+        "percentiles": {
+            "type": "array",
+            "items": {"type": "number"},
+            "description": "percentiles only: up to 5 values between 0 and 1; default [0.25, 0.5, 0.75, 0.9].",
+        },
         "current_start": {"type": "string", "description": "ISO date, compare_periods only."},
         "current_end": {"type": "string", "description": "ISO date, compare_periods only."},
         "previous_start": {"type": "string", "description": "ISO date, compare_periods only."},
         "previous_end": {"type": "string", "description": "ISO date, compare_periods only."},
         "dimension_field": {"type": "string", "description": "contribution_breakdown only."},
-        "field_id": {"type": "string", "description": "distribution only."},
+        "field_id": {"type": "string", "description": "distribution, percentiles and outliers."},
         "buckets": {"type": "integer", "description": f"distribution only, 1-{MAX_BUCKETS}."},
         "left_table_id": {"type": "string", "description": "reconciliation_lookup only."},
         "right_table_id": {"type": "string", "description": "reconciliation_lookup only."},
@@ -216,6 +230,9 @@ RUN_QUERY_TOOL = ToolDefinition(
         "- contribution_breakdown: table_id, metric, dimension_field\n"
         "- distribution: table_id, field_id, buckets\n"
         "- reconciliation_lookup: left_table_id, right_table_id, left_key, right_key, left_amount_field, right_amount_field\n"
+        "- trend: table_id, date_field, metric, grain, window\n"
+        "- percentiles: table_id, field_id, percentiles, group_by\n"
+        "- outliers: table_id, field_id, group_by\n"
         "sum and avg need a numeric column. count counts the rows where field_id is not null.\n"
         "Example, revenue by region, largest first: "
         '{"operation": "aggregate", "purpose": "Revenue by region", "table_id": "orders", '
@@ -224,7 +241,10 @@ RUN_QUERY_TOOL = ToolDefinition(
         "Example, this March against last March: "
         '{"operation": "compare_periods", "purpose": "March revenue year on year", "table_id": "orders", '
         '"date_field": "order_date", "metric": {"alias": "revenue", "func": "sum", "field_id": "amount"}, '
-        '"current_start": "2026-03-01", "current_end": "2026-04-01", "previous_start": "2025-03-01", "previous_end": "2025-04-01"}'
+        '"current_start": "2026-03-01", "current_end": "2026-04-01", "previous_start": "2025-03-01", "previous_end": "2025-04-01"}\n'
+        "Example, monthly revenue with a 3-month moving average and month-on-month growth: "
+        '{"operation": "trend", "purpose": "Monthly revenue trend", "table_id": "orders", "date_field": "order_date", '
+        '"metric": {"alias": "revenue", "func": "sum", "field_id": "amount"}, "grain": "month", "window": 3}'
     ),
     parameters_schema=RUN_QUERY_SCHEMA,
     strict=False,
