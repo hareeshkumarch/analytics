@@ -308,7 +308,6 @@ class ApiContext:
         self.publish_api_event = _publish_api_event
         self.broadcast_persisted_event = _broadcast_persisted_event
         self.upload_bytes = _upload_bytes
-        self.semantics_for = _semantics_for
         self.resolve_binding = _resolve_binding
         self.policy_for_workspace = _policy_for_workspace
         self.snapshot_record = _snapshot_record

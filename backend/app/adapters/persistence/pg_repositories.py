@@ -670,17 +670,6 @@ class PgCredentialRepository:
                 for r in rows
             ]
 
-    def delete_credential(self, workspace_id: str, provider: str) -> None:
-        with self._sf() as db:
-            with db.begin():
-                stmt = select(CredentialRefRow).where(
-                    CredentialRefRow.workspace_id == workspace_id,
-                    CredentialRefRow.provider_or_source == provider,
-                )
-                row = db.scalars(stmt).first()
-                if row:
-                    row.revoked = True
-
 
 class PgRoutingRepository:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:

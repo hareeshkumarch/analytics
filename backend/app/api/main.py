@@ -4,6 +4,8 @@ import os
 import threading
 import time
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -60,6 +62,17 @@ def validate_loopback_bind(host: str) -> None:
         )
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    for start in app.state.startup_hooks:
+        await start()
+    try:
+        yield
+    finally:
+        for stop in app.state.shutdown_hooks:
+            await stop()
+
+
 def create_app(
     container: AppContainer | None = None,
     session_factory: sessionmaker[Session] | None = None,
@@ -70,7 +83,10 @@ def create_app(
         version="0.1.0",
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
+        lifespan=_lifespan,
     )
+    app.state.startup_hooks = []
+    app.state.shutdown_hooks = []
     app.state.container = container or build_container()
 
     sf = session_factory or create_session_factory()

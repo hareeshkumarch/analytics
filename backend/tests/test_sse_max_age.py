@@ -18,7 +18,7 @@ class TestSseStreamMaxAge(unittest.TestCase):
                 "/api/v1/workspaces/ws1/runs", json={"question": "q", "mode": "quick", "background_async": False}
             ).json()["run_id"]
             with patch.object(support, "SSE_MAX_STREAM_SECONDS", 0.5):
-                res = client.get(f"/api/v1/workspaces/ws1/runs/{run_id}/events?after=0", timeout=20)
+                res = client.get(f"/api/v1/workspaces/ws1/runs/{run_id}/events?after=0")
             self.assertEqual(res.status_code, 200)
             self.assertIn("run.status", res.text)
             self.assertNotIn("run.finished", res.text)

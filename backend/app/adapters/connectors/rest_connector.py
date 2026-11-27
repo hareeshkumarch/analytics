@@ -30,9 +30,6 @@ from app.domain.models import (
 )
 
 
-PAGINATION_MODES = ("none", "cursor", "next_link", "link_header", "last_id")
-
-
 def _split_outside_quotes(text: str, delimiter: str) -> list[str]:
     parts: list[str] = []
     start = 0

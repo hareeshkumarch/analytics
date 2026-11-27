@@ -172,14 +172,12 @@ def register(ctx: ApiContext) -> None:
                 logger.exception("Artifact sweep failed")
             await asyncio.sleep(SWEEP_INTERVAL_SECONDS)
 
-    @app.on_event("shutdown")
     async def _stop_outbox_dispatcher() -> None:
         for name in ("outbox_task", "artifact_sweep_task"):
             task = getattr(app.state, name, None)
             if task is not None:
                 task.cancel()
 
-    @app.on_event("startup")
     async def _resume_active_runs() -> None:
         app.state.artifact_sweep_task = asyncio.create_task(_sweep_artifacts_forever())
         if os.environ.get("RUN_EXECUTION_MODE", "inline").strip().lower() == "celery":
@@ -195,4 +193,6 @@ def register(ctx: ApiContext) -> None:
             app.state.runs[run_id] = run_rec
             app.state.bg_tasks[run_id] = asyncio.create_task(_execute_run_record(run_rec))
 
+    app.state.startup_hooks.append(_resume_active_runs)
+    app.state.shutdown_hooks.append(_stop_outbox_dispatcher)
     ctx.execute_run_record = _execute_run_record

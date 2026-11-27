@@ -219,18 +219,6 @@ class PlanDAG:
 
 
 @dataclass(frozen=True, slots=True)
-class EvidenceRef:
-    evidence_id: str
-    query_ir_hash: str
-    result_hash: str
-    snapshot_id: str
-    semantic_version_id: str
-    artifact_id: str | None = None
-    row_count: int = 0
-    truncated: bool = False
-
-
-@dataclass(frozen=True, slots=True)
 class Claim:
     claim_id: str
     label: str

@@ -52,14 +52,3 @@ class SnapshotQueryPort(Protocol):
         timeout_seconds: int = 15,
         business_timezone: str = "UTC",
     ) -> tuple[QueryResult, str]: ...
-
-
-class QueryExecutor(Protocol):
-    def execute(
-        self,
-        compiled: CompiledQuery,
-        snapshot_path: str,
-        snapshot_id: str,
-        semantic_version_id: str,
-        timeout_seconds: int = 15,
-    ) -> QueryResult: ...

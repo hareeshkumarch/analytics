@@ -19,7 +19,6 @@ class HarnessProfileSpec:
     system_prompt_suffix: str
     allowed_tools: tuple[str, ...]
     excluded_tools: tuple[str, ...] = tuple(sorted(FORBIDDEN_DEFAULT_TOOLS))
-    max_compaction_tokens: int = 4096
 
 
 DEFAULT_HARNESS_PROFILES: dict[AgentRole, HarnessProfileSpec] = {

@@ -66,13 +66,9 @@ class SchedulerState:
     replan_count: int = 0
     accepted_task_count: int = 0
     specialist_instances_used: int = 0
-    tool_invocations_used: int = 0
-    analytical_calls_used: int = 0
     plan: PlanDAG | None = None
     task_statuses: dict[str, TaskStatus] = field(default_factory=dict)
     results: dict[str, TaskAttemptResult] = field(default_factory=dict)
-    awaiting_clarification: bool = False
-    clarification_prompt: str | None = None
     cancelled: bool = False
 
 
@@ -117,7 +113,7 @@ class DeterministicSupervisor:
             self.state.task_statuses[task_id] = status
 
     def next_ready_tasks(self, max_tasks: int | None = None) -> tuple[TaskNode, ...]:
-        if self.state.cancelled or self.state.awaiting_clarification or self.state.plan is None:
+        if self.state.cancelled or self.state.plan is None:
             return ()
         self._propagate_failed_dependencies()
         running_count = sum(1 for s in self.state.task_statuses.values() if s == TaskStatus.RUNNING)
@@ -187,27 +183,6 @@ class DeterministicSupervisor:
                 if any(self.state.task_statuses.get(dep) in failed_dependencies for dep in task.dependencies):
                     self.state.task_statuses[task.task_id] = TaskStatus.FAILED
                     changed = True
-
-    def record_tool_invocation(self, is_analytical: bool = False) -> None:
-        if self.state.tool_invocations_used + 1 > self.state.limits.max_tool_invocations:
-            raise BudgetExhaustedError(
-                f"Exceeded max_tool_invocations ({self.state.limits.max_tool_invocations})"
-            )
-        self.state.tool_invocations_used += 1
-        if is_analytical:
-            if self.state.analytical_calls_used + 1 > self.state.limits.analytical_calls:
-                raise BudgetExhaustedError(
-                    f"Exceeded analytical_calls ({self.state.limits.analytical_calls})"
-                )
-            self.state.analytical_calls_used += 1
-
-    def request_clarification(self, prompt: str) -> None:
-        self.state.awaiting_clarification = True
-        self.state.clarification_prompt = prompt
-
-    def resume_from_clarification(self) -> None:
-        self.state.awaiting_clarification = False
-        self.state.clarification_prompt = None
 
     def all_tasks_joined(self) -> bool:
         if self.state.plan is None:

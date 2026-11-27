@@ -93,11 +93,6 @@ class TransactionLostError(ConnectorError):
     retryable = True
 
 
-class SchemaDriftError(DomainError):
-    code = "schema_drift_detected"
-    http_status = 409
-
-
 class QueryValidationError(DomainError):
     code = "query_validation_error"
     http_status = 400
@@ -133,11 +128,6 @@ class CircuitOpenError(ProviderError):
     code = "circuit_open"
     retryable = True
     http_status = 503
-
-
-class IdempotencyConflictError(DomainError):
-    code = "idempotency_conflict"
-    http_status = 409
 
 
 class VersionConflictError(DomainError):

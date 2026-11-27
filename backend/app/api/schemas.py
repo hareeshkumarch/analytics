@@ -1,6 +1,6 @@
 from typing import Any, Literal, Union
 from decimal import Decimal
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.domain.models import ConnectorFamily, RunMode
 from app.domain.providers import ProviderId, RoutingPreset
@@ -21,8 +21,7 @@ from app.domain.query_ir import (
 
 
 class StrictApiModel(BaseModel):
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class FilterPredicateSchema(StrictApiModel):

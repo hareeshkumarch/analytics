@@ -29,7 +29,7 @@ class TestPydanticAndAsyncApi(unittest.TestCase):
             self.assertIn("body.unexpected_hack_field", body["field_errors"])
 
     def test_discriminated_query_ir_pydantic_envelope(self) -> None:
-        env = QueryIREnvelope.parse_obj(
+        env = QueryIREnvelope.model_validate(
             {
                 "query": {
                     "operation": "aggregate",

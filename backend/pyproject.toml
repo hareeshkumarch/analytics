@@ -57,6 +57,7 @@ exclude = ["tests", "tests.*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+asyncio_default_fixture_loop_scope = "function"
 timeout = 120
 
 [tool.ruff]
