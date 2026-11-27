@@ -148,6 +148,7 @@ class ColumnDetailOut(ApiResponse):
     nullable: bool | None = None
     leading_zero_id: bool | None = None
     currency: str | None = None
+    note: str | None = None
 
 
 class TableDetailOut(ApiResponse):

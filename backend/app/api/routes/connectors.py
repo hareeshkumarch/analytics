@@ -201,6 +201,7 @@ def register(ctx: ApiContext) -> APIRouter:
                                 "nullable": col.nullable,
                                 "leading_zero_id": col.is_leading_zero_id,
                                 "currency": col.currency_code,
+                                **({"note": col.note} if col.note else {}),
                             }
                             for col in t.columns
                         ],

@@ -88,7 +88,7 @@
         "additionalProperties": false,
         "properties": {
           "answer": {
-            "maxLength": 5000,
+            "maxLength": 2000,
             "minLength": 1,
             "title": "Answer",
             "type": "string"
@@ -134,6 +134,17 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
           },
           "nullable": {
             "anyOf": [
@@ -307,7 +318,7 @@
         "additionalProperties": false,
         "properties": {
           "question_text": {
-            "maxLength": 10000,
+            "maxLength": 4000,
             "minLength": 1,
             "title": "Question Text",
             "type": "string"
@@ -393,7 +404,7 @@
             "default": "quick"
           },
           "question": {
-            "maxLength": 10000,
+            "maxLength": 4000,
             "minLength": 1,
             "title": "Question",
             "type": "string"

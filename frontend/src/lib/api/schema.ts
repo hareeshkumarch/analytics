@@ -721,6 +721,8 @@ export interface components {
             leading_zero_id?: boolean | null;
             /** Name */
             name: string;
+            /** Note */
+            note?: string | null;
             /** Nullable */
             nullable?: boolean | null;
             /** Type */

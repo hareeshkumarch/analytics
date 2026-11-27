@@ -68,6 +68,7 @@ class ColumnSchema:
     currency_code: str | None = None
     decimal_precision: int | None = None
     decimal_scale: int | None = None
+    note: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

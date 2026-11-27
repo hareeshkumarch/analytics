@@ -111,7 +111,7 @@ class XlsxFileParser:
                             else:
                                 col_lists[c_idx].append(s_val)
 
-                arrow_table, col_schemas = infer_table(headers, col_lists)
+                arrow_table, col_schemas = infer_table(headers, col_lists, opts.get("date_order"))
                 ipc_bytes = serialize_arrow_ipc_checked(arrow_table, limits, cumulative_bytes)
                 cumulative_bytes += len(ipc_bytes)
                 resolved_name = f"{table_name}__{sheet_name}" if len(sheet_names) > 1 else table_name

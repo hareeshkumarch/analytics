@@ -354,7 +354,7 @@ class RestJsonConnector:
         tname = str(config.get("table_name") or (request.selected_tables[0] if request.selected_tables else "rest_records"))
         keys = list(dict.fromkeys(k for r in all_records for k in r.keys()))
         if keys:
-            arrow_table, col_schemas = infer_table(keys, [[_cell_text(r.get(k)) for r in all_records] for k in keys])
+            arrow_table, col_schemas = infer_table(keys, [[_cell_text(r.get(k)) for r in all_records] for k in keys], config.get("date_order"))
         else:
             arrow_table = pa.table({"_empty": pa.array([], type=pa.string())})
             col_schemas = (ColumnSchema(name="_empty", arrow_type="string", nullable=True),)

@@ -9,6 +9,15 @@ from app.domain.models import ColumnSchema
 
 T = TypeVar("T")
 
+DAY_FIRST = "day_first"
+MONTH_FIRST = "month_first"
+DATE_ORDERS = (DAY_FIRST, MONTH_FIRST)
+MAX_DAY_OR_MONTH_AMBIGUITY = 12
+AMBIGUOUS_DATE_NOTE = (
+    "Dates like 03/04/2026 could be day-first or month-first and no value settles it, so this column was kept as text. "
+    "Set date_order to day_first or month_first when importing to read it as dates."
+)
+
 _LEADING_ZERO = re.compile(r"0[0-9]+")
 _GROUPED_INTEGER = r"\d+|[1-9]\d{0,2}(?:,\d{3})+|[1-9]\d?(?:,\d{2})*,\d{3}"
 _AMOUNT = re.compile(
@@ -95,15 +104,19 @@ def _infer_numeric(name: str, texts: list[str | None]) -> tuple[pa.Array, Column
     return array, schema
 
 
-def _infer_temporal(name: str, texts: list[str | None]) -> tuple[pa.Array, ColumnSchema] | None:
+def _infer_temporal(name: str, texts: list[str | None], date_order: str | None) -> tuple[pa.Array, ColumnSchema] | str | None:
     matches = _parse_each(_DATE.fullmatch, texts)
     if matches is None:
         return None
     loose = [m for m in matches if m is not None and m["first"]]
-    day_first = any(int(m["first"]) > 12 for m in loose)
-    month_first = any(int(m["second"]) > 12 for m in loose)
+    day_first = any(int(m["first"]) > MAX_DAY_OR_MONTH_AMBIGUITY for m in loose)
+    month_first = any(int(m["second"]) > MAX_DAY_OR_MONTH_AMBIGUITY for m in loose)
     if day_first and month_first:
         return None
+    if loose and date_order in DATE_ORDERS:
+        month_first = date_order == MONTH_FIRST
+    elif loose and not day_first and not month_first:
+        return AMBIGUOUS_DATE_NOTE
     try:
         moments = [None if m is None else _moment(m, month_first) for m in matches]
     except ValueError:
@@ -113,20 +126,23 @@ def _infer_temporal(name: str, texts: list[str | None]) -> tuple[pa.Array, Colum
     return _typed(name, moments, pa.timestamp("us"))
 
 
-def infer_column(name: str, values: Sequence[str | None]) -> tuple[pa.Array, ColumnSchema]:
+def infer_column(name: str, values: Sequence[str | None], date_order: str | None = None) -> tuple[pa.Array, ColumnSchema]:
     texts = [v.strip() if v else None for v in values]
     present = [t for t in texts if t]
     is_leading_zero_id = any(_LEADING_ZERO.fullmatch(t) for t in present)
+    note: str | None = None
     if present and not is_leading_zero_id:
-        inferred = _infer_numeric(name, texts) or _infer_temporal(name, texts)
-        if inferred is not None:
+        inferred = _infer_numeric(name, texts) or _infer_temporal(name, texts, date_order)
+        if isinstance(inferred, str):
+            note = inferred
+        elif inferred is not None:
             return inferred
-    schema = ColumnSchema(name=name, arrow_type="string", is_leading_zero_id=is_leading_zero_id)
+    schema = ColumnSchema(name=name, arrow_type="string", is_leading_zero_id=is_leading_zero_id, note=note)
     return pa.array([v or None for v in values], type=pa.string()), schema
 
 
 def infer_table(
-    headers: Sequence[str], columns: Sequence[Sequence[str | None]]
+    headers: Sequence[str], columns: Sequence[Sequence[str | None]], date_order: str | None = None
 ) -> tuple[pa.Table, tuple[ColumnSchema, ...]]:
-    inferred = [infer_column(header, values) for header, values in zip(headers, columns)]
+    inferred = [infer_column(header, values, date_order) for header, values in zip(headers, columns)]
     return pa.table({schema.name: array for array, schema in inferred}), tuple(s for _, s in inferred)

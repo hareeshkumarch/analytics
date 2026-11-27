@@ -98,7 +98,7 @@ class CsvFileParser:
                     raise LimitExceededError(f"Cell at row {r_idx + 2}, col {c_idx + 1} exceeds max_chars_per_cell")
                 col_lists[c_idx].append(val)
 
-        arrow_table, col_schemas = infer_table(headers, col_lists)
+        arrow_table, col_schemas = infer_table(headers, col_lists, opts.get("date_order"))
         ipc_bytes = serialize_arrow_ipc_checked(arrow_table, limits)
         return [
             ParsedTable(

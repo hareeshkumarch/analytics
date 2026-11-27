@@ -163,7 +163,7 @@ class GoogleSheetsConnector:
                 for i in range(len(headers)):
                     v = row[i] if i < len(row) else None
                     col_lists[i].append(None if v is None else str(v))
-            arrow_table, col_schemas = infer_table(headers, col_lists)
+            arrow_table, col_schemas = infer_table(headers, col_lists, config.get("date_order"))
             ipc_bytes = serialize_arrow_ipc_checked(arrow_table, request.limits, total_bytes)
             batches.append(
                 ExtractionBatch(

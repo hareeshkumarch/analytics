@@ -138,7 +138,6 @@ def test_tsv_shares_inference() -> None:
         (["2026-10-31", "2026-01-05"], [date(2026, 10, 31), date(2026, 1, 5)]),
         (["31/10/2026", "01-11-2026", "5.11.2026"], [date(2026, 10, 31), date(2026, 11, 1), date(2026, 11, 5)]),
         (["10/31/2026", "11/01/2026"], [date(2026, 10, 31), date(2026, 11, 1)]),
-        (["01/02/2026", "03/04/2026"], [date(2026, 2, 1), date(2026, 4, 3)]),
         (["2026-10-31 00:00:00", "31/10/2026"], [date(2026, 10, 31), date(2026, 10, 31)]),
     ],
 )
@@ -247,3 +246,9 @@ def test_parsed_currency_and_date_columns_query_through_duckdb() -> None:
     assert executor.execute_tables(compiled, tables, "snap", "sem").rows == (
         (Decimal("124456.78"), Decimal("-500.00")),
     )
+
+
+def test_dates_whose_order_nothing_settles_stay_text() -> None:
+    _, schema = infer_column("d", ["01/02/2026", "03/04/2026"])
+    assert schema.arrow_type == "string"
+    assert schema.note

@@ -9,7 +9,7 @@ import { DataTable, cellCls, rowCls } from "@/features/data/DataTable";
 
 function typeText(c: ColumnDetail | undefined): string {
   if (!c) return "—";
-  return [c.type, c.currency, c.leading_zero_id && "leading zeros kept"].filter(Boolean).join(" · ");
+  return [c.type, c.currency, c.leading_zero_id && "leading zeros kept", c.note].filter(Boolean).join(" · ");
 }
 
 function Bound({ value }: { value: string | null }) {
