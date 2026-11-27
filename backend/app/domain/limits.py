@@ -1,6 +1,8 @@
 from decimal import Decimal
 from dataclasses import dataclass
 
+from app.domain.models import RunMode
+
 
 @dataclass(frozen=True, slots=True)
 class DataLimits:
@@ -109,6 +111,10 @@ DEEP_BUDGET_LIMITS = RunBudgetLimits(
     total_tokens=500_000,
     finalization_reserve_tokens=24_000,
 )
+
+
+def limits_for(mode: RunMode | str) -> RunBudgetLimits:
+    return QUICK_BUDGET_LIMITS if RunMode(mode) == RunMode.QUICK else DEEP_BUDGET_LIMITS
 
 
 @dataclass(frozen=True, slots=True)

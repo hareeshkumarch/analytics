@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import logging
-import os
 import re
 import threading
 import time
@@ -24,6 +23,7 @@ from app.adapters.orchestration.deep_agents_bridge import (
 from app.adapters.orchestration.deep_agent_runtime import DeepAgentTaskRunner
 from app.adapters.persistence.langgraph_checkpointer import open_langgraph_checkpointer
 from app.adapters.orchestration.structured_schemas import PLAN_SCHEMA, REPLAN_SCHEMA
+from app.application.runtime_settings import AgentRuntime, agent_runtime
 from app.application.services.context_compiler import composer_findings, specialist_context
 from app.application.services.task_records import (
     TaskLedger,
@@ -61,8 +61,8 @@ from app.domain.errors import BudgetExhaustedError, ClarificationRequired, publi
 from app.domain.events import EventType, RunEvent
 from app.domain.timezone import DEFAULT_BUSINESS_TIMEZONE
 from app.domain.limits import DEFAULT_GLOBAL_LIMITS, REPLAN_TASKS
-from app.domain.models import Answer, Claim, PlanDAG, RunMode, RunStatus, TaskBudget, TaskNode, TaskStatus
-from app.domain.providers import AgentRole, RoutingPolicy
+from app.domain.models import Answer, Claim, PlanDAG, RunMode, RunStatus, TaskBudget, TaskKind, TaskNode, TaskStatus
+from app.domain.providers import AgentRole, RoutingPolicy, role_for_kind
 
 logger = logging.getLogger(__name__)
 
@@ -122,10 +122,10 @@ def _call_timeout(deadline: float | None, final_round: bool = False) -> int:
     return max(floor, min(TOOL_ROUND_TIMEOUT_SECONDS, int(deadline - time.monotonic())))
 
 
-def _evidence_verdict(claims: list[Claim], flagged: set[str]) -> ReviewVerdict:
+def _evidence_verdict(claims: list[Claim], flagged: set[str], remediation_claims: set[str]) -> ReviewVerdict:
     gaps: list[str] = []
     for claim in claims:
-        if claim.claim_id in flagged or "review" in claim.claim_id or "remediate" in claim.claim_id:
+        if claim.claim_id in flagged or claim.claim_id in remediation_claims:
             continue
         if not claim.evidence_ids:
             flagged.add(claim.claim_id)
@@ -324,19 +324,19 @@ def _plan_from_agent(
                     semantic_version_id=semantic_version_id,
                     required_inputs=tuple(str(value) for value in required_inputs),
                     result_schema=_RESULT_SCHEMAS[kind],
-                    priority=1 if kind == "evidence_reviewer" else 2,
+                    priority=1 if kind == TaskKind.EVIDENCE_REVIEWER else 2,
                     acceptance_criteria=task_criteria or _DEFAULT_ACCEPTANCE[kind],
                 )
             )
-        if not any(task.kind == "data_specialist" for task in tasks):
+        if not any(task.kind == TaskKind.DATA_SPECIALIST for task in tasks):
             raise ValueError("Planner omitted a data specialist")
-        if mode == RunMode.DEEP and not any(task.kind == "evidence_reviewer" for task in tasks):
+        if mode == RunMode.DEEP and not any(task.kind == TaskKind.EVIDENCE_REVIEWER for task in tasks):
             raise ValueError("Planner omitted the evidence reviewer")
         if mode == RunMode.DEEP:
             analytical_ids = {
-                task.task_id for task in tasks if task.kind != "evidence_reviewer"
+                task.task_id for task in tasks if task.kind != TaskKind.EVIDENCE_REVIEWER
             }
-            reviewers = [task for task in tasks if task.kind == "evidence_reviewer"]
+            reviewers = [task for task in tasks if task.kind == TaskKind.EVIDENCE_REVIEWER]
             if len(reviewers) != 1 or not analytical_ids.issubset(set(reviewers[0].dependencies)):
                 raise ValueError("Planner reviewer must depend on all analytical tasks")
         criteria = draft.get("completion_criteria", ["All analytical claims grounded in evidence"])
@@ -364,14 +364,6 @@ def _remediation_from_draft(draft: dict[str, Any]) -> tuple[str, str] | str | No
     if draft.get("action") != "remediate" or kind not in _REMEDIATION_KINDS or not objective:
         return None
     return kind, objective
-
-
-def _role_for(task: TaskNode) -> AgentRole:
-    if "review" in task.kind:
-        return AgentRole.EVIDENCE_REVIEWER
-    if "reconcil" in task.kind:
-        return AgentRole.RECONCILIATION_SPECIALIST
-    return AgentRole.DATA_SPECIALIST
 
 
 class InvestigationOrchestrator:
@@ -406,7 +398,7 @@ class InvestigationOrchestrator:
         should_cancel: Callable[[], bool] | None = None,
         token_budget: int | None = None,
     ) -> SpecialistOutcome:
-        role = _role_for(task)
+        role = role_for_kind(task.kind)
         tools = toolbox.definitions if toolbox.available else ()
         bridge = GatewayChatModelBridge(self._container.routing_service, policy, run_id, role)
 
@@ -638,8 +630,7 @@ class InvestigationOrchestrator:
         task_history_loader: Callable[[str], tuple[list[dict[str, Any]], list[dict[str, Any]]]] | None = None,
         token_budget: int | None = None,
     ) -> SpecialistOutcome:
-        runtime = os.environ.get("AGENT_RUNTIME", "deepagents").strip().lower()
-        if runtime == "legacy":
+        if agent_runtime() == AgentRuntime.LEGACY:
             return self._run_specialist_task_legacy(
                 task=task,
                 question=question,
@@ -807,7 +798,7 @@ class InvestigationOrchestrator:
             max_cost_usd=policy.hard_cost_ceiling_usd,
             finalization_reserve_tokens=limits.finalization_reserve_tokens,
         )
-        use_deep_agents = os.environ.get("AGENT_RUNTIME", "deepagents").strip().lower() != "legacy"
+        use_deep_agents = agent_runtime() == AgentRuntime.DEEP_AGENTS
         saved_route = initial_plan.get("route") if isinstance(initial_plan, dict) else None
         if saved_route in ExecutionRoute._value2member_map_:
             route = RouteDecision(ExecutionRoute(saved_route), str(initial_plan.get("route_reason") or ""))
@@ -933,10 +924,10 @@ class InvestigationOrchestrator:
                 findings[task.task_id] = text
                 summary_parts.append(text)
                 restored = restored_claim(record)
-                if restored is not None and "review" not in task.kind:
+                if restored is not None and task.kind != TaskKind.EVIDENCE_REVIEWER:
                     collected_claims.append(restored)
                 verdict = restored_verdict(record)
-                if verdict is not None and "review" in task.kind:
+                if verdict is not None and task.kind == TaskKind.EVIDENCE_REVIEWER:
                     latest_review_verdict = verdict
                 for evidence_id in record.evidence_ids if evidence_lookup is not None else ():
                     item = evidence_lookup(evidence_id) if evidence_lookup is not None else None
@@ -1069,7 +1060,7 @@ class InvestigationOrchestrator:
                 )
                 if outcome.error:
                     task_errors.append(f"{task.task_id}: {outcome.error}")
-                    if "review" in task.kind:
+                    if task.kind == TaskKind.EVIDENCE_REVIEWER:
                         latest_review_verdict = ReviewVerdict(
                             approved=False,
                             gaps=("The evidence review failed and must be repeated.",),
@@ -1079,9 +1070,9 @@ class InvestigationOrchestrator:
                         {"task_id": task.task_id, "status": "failed", "error": outcome.error[:500]},
                     )
                     continue
-                if "review" in task.kind and outcome.review_verdict is not None:
+                if task.kind == TaskKind.EVIDENCE_REVIEWER and outcome.review_verdict is not None:
                     latest_review_verdict = outcome.review_verdict
-                if outcome.claim is not None and "review" not in task.kind:
+                if outcome.claim is not None and task.kind != TaskKind.EVIDENCE_REVIEWER:
                     collected_claims.append(outcome.claim)
                 text = str(outcome.attempt.payload["text"])
                 findings[task.task_id] = text
@@ -1129,7 +1120,8 @@ class InvestigationOrchestrator:
             if replan_evaluator is not None:
                 verdict = replan_evaluator(collected_claims, supervisor.state.replan_count)
             else:
-                evidence_verdict = _evidence_verdict(collected_claims, flagged)
+                remediation_claims = {f"clm_{task_id}" for task_id, record in ledger.records.items() if record.plan_revision > 1}
+                evidence_verdict = _evidence_verdict(collected_claims, flagged, remediation_claims)
                 if latest_review_verdict is None:
                     verdict = evidence_verdict
                 else:
@@ -1213,7 +1205,7 @@ class InvestigationOrchestrator:
             review_dependencies = tuple(
                 task.task_id
                 for task in existing_tasks
-                if task.kind != "evidence_reviewer"
+                if task.kind != TaskKind.EVIDENCE_REVIEWER
                 and supervisor.state.task_statuses.get(task.task_id) == TaskStatus.COMPLETED
             ) + (followup_task.task_id,)
             followup_review = TaskNode(

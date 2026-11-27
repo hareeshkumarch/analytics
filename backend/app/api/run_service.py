@@ -1,11 +1,11 @@
 import asyncio
 from datetime import datetime, timezone
 import logging
-import os
 from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.application.runtime_settings import uses_celery
 from app.application.services.artifact_lifecycle import SWEEP_INTERVAL_SECONDS, sweep_artifacts
 from app.application.services.orchestration_service import InvestigationOrchestrator
 from app.bootstrap.logging_setup import run_id_var
@@ -180,7 +180,7 @@ def register(ctx: ApiContext) -> None:
 
     async def _resume_active_runs() -> None:
         app.state.artifact_sweep_task = asyncio.create_task(_sweep_artifacts_forever())
-        if os.environ.get("RUN_EXECUTION_MODE", "inline").strip().lower() == "celery":
+        if uses_celery():
             app.state.outbox_task = asyncio.create_task(_dispatch_outbox_forever())
             return
         try:

@@ -34,7 +34,7 @@ from app.domain.errors import BudgetExhaustedError, LimitExceededError, NotFound
 from app.domain.events import EventType, RunEvent
 from app.application.services.task_store import apply_transition
 from app.domain.models import Answer, RunStatus, TaskBudget, TaskRecord
-from app.domain.limits import DEEP_BUDGET_LIMITS, DEFAULT_DATA_LIMITS, QUICK_BUDGET_LIMITS, DataLimits
+from app.domain.limits import DEEP_BUDGET_LIMITS, DEFAULT_DATA_LIMITS, DataLimits, limits_for
 from app.domain.providers import AgentRole, BudgetReservation
 from app.domain.timezone import DEFAULT_BUSINESS_TIMEZONE, normalize_timezone
 from app.domain.usage import summarize_model_usage
@@ -1177,7 +1177,7 @@ class PgBudgetLedger:
                 existing = db.scalars(
                     select(BudgetReservationRow).where(BudgetReservationRow.run_id == run_id)
                 ).all()
-                limits = QUICK_BUDGET_LIMITS if run_row.mode == "quick" else DEEP_BUDGET_LIMITS
+                limits = limits_for(run_row.mode)
                 if len(existing) + 1 > min(limits.total_model_attempts, self._max_attempts_default):
                     raise BudgetExhaustedError(f"Run {run_id} exceeded max model attempts")
 
@@ -1326,8 +1326,8 @@ class PgBudgetLedger:
     def token_limit(self, run_id: str) -> int:
         with self._sf() as db:
             mode = db.scalar(select(RunRow.mode).where(RunRow.run_id == run_id))
-        limits = QUICK_BUDGET_LIMITS if mode == "quick" else DEEP_BUDGET_LIMITS
-        return limits.total_tokens - limits.finalization_reserve_tokens
+        limits = limits_for(mode) if mode else DEEP_BUDGET_LIMITS
+        return int(limits.total_tokens - limits.finalization_reserve_tokens)
 
 
 class PgToolExecutionLedger:

@@ -18,6 +18,12 @@ class ConnectorFamily(str, Enum):
     UPLOADED_DUCKDB = "uploaded_duckdb"
 
 
+class TaskKind(str, Enum):
+    DATA_SPECIALIST = "data_specialist"
+    RECONCILIATION_SPECIALIST = "reconciliation_specialist"
+    EVIDENCE_REVIEWER = "evidence_reviewer"
+
+
 class ConsistencyLevel(str, Enum):
     SNAPSHOT_ISOLATION = "snapshot_isolation"
     REPEATABLE_READ = "repeatable_read"

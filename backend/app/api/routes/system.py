@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.responses import OpsSwitchListOut, OpsSwitchOut
 from app.api.schemas import SetOpsSwitchRequest
+from app.application.runtime_settings import uses_celery
 from app.application.services.ops_controls import PROVIDER_PREFIX, RUNS_SWITCH
 from app.application.services.ops_metrics import render_prometheus
 from app.bootstrap.container import AppContainer
@@ -77,7 +78,7 @@ def register(ctx: ApiContext) -> APIRouter:
         except SQLAlchemyError:
             logger.exception("Readiness: database check failed")
             checks["database"] = "unavailable"
-        if os.environ.get("RUN_EXECUTION_MODE", "inline").strip().lower() == "celery":
+        if uses_celery():
             try:
                 await asyncio.to_thread(_ping_redis)
                 checks["redis"] = "ok"

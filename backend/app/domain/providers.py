@@ -3,6 +3,8 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 
+from app.domain.models import TaskKind
+
 
 class ProviderId(str, Enum):
     OPENAI = "openai"
@@ -136,3 +138,14 @@ class ModelUsage:
     reported_cost_usd: Decimal | None = None
     estimated_cost_usd: Decimal | None = None
     cost_is_unknown: bool = False
+
+
+_ROLE_FOR_KIND = {
+    TaskKind.DATA_SPECIALIST: AgentRole.DATA_SPECIALIST,
+    TaskKind.RECONCILIATION_SPECIALIST: AgentRole.RECONCILIATION_SPECIALIST,
+    TaskKind.EVIDENCE_REVIEWER: AgentRole.EVIDENCE_REVIEWER,
+}
+
+
+def role_for_kind(kind: str) -> AgentRole:
+    return _ROLE_FOR_KIND[TaskKind(kind)]

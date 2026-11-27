@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import logging
-import os
 import time
 import uuid
 from typing import Any
@@ -13,6 +12,8 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.application.runtime_settings import ExecutionMode, uses_celery
+from app.application.runtime_settings import execution_mode as execution_mode_setting
 from app.domain.events import RunEvent
 from app.api.schemas import (
     ClarifyRunRequest,
@@ -70,8 +71,8 @@ def register(ctx: ApiContext) -> APIRouter:
                 raise HTTPException(status_code=409, detail="Idempotency-Key reused with different payload")
             return JSONResponse(status_code=prev_code, content=prev_resp)
 
-        execution_mode = os.environ.get("RUN_EXECUTION_MODE", "inline").strip().lower()
-        if execution_mode == "celery" and app.state.database_dialect != "postgresql":
+        execution_mode = execution_mode_setting()
+        if execution_mode == ExecutionMode.CELERY and app.state.database_dialect != "postgresql":
             raise HTTPException(
                 status_code=503,
                 detail="Celery run execution requires PostgreSQL-backed persistence.",
@@ -132,7 +133,7 @@ def register(ctx: ApiContext) -> APIRouter:
                 question=payload.question,
                 snapshot_id=snapshot_id or None,
                 semantic_version_id=semantic_version_id or None,
-                enqueue=execution_mode == "celery" and payload.background_async and not payload.execute_inline,
+                enqueue=execution_mode == ExecutionMode.CELERY and payload.background_async and not payload.execute_inline,
             )
         except SQLAlchemyError as exc:
             logger.exception("Failed to create run in DB")
@@ -160,7 +161,7 @@ def register(ctx: ApiContext) -> APIRouter:
         if payload.execute_inline:
             await _execute_bounded_run()
         elif payload.background_async:
-            if execution_mode == "celery":
+            if execution_mode == ExecutionMode.CELERY:
                 await asyncio.to_thread(dispatch_pending, app.state.repo_runs)
             else:
                 app.state.bg_tasks[run_id] = asyncio.create_task(_execute_bounded_run())
@@ -382,7 +383,7 @@ def register(ctx: ApiContext) -> APIRouter:
             run_id,
             expected_revision=payload.revision,
             answer=answer,
-            enqueue=os.environ.get("RUN_EXECUTION_MODE", "inline").strip().lower() == "celery",
+            enqueue=uses_celery(),
         )
         if updated is None or event is None:
             raise HTTPException(status_code=409, detail="Clarification revision conflict")
@@ -390,8 +391,7 @@ def register(ctx: ApiContext) -> APIRouter:
         app.state.runs[run_id] = run_rec
         _broadcast_persisted_event(event)
 
-        execution_mode = os.environ.get("RUN_EXECUTION_MODE", "inline").strip().lower()
-        if execution_mode == "celery":
+        if uses_celery():
             await asyncio.to_thread(dispatch_pending, app.state.repo_runs)
         else:
             app.state.bg_tasks[run_id] = asyncio.create_task(ctx.execute_run_record(run_rec))

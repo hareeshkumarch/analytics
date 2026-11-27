@@ -48,7 +48,7 @@ from app.application import prompts
 from app.application.prompts import using_prompt
 from app.domain.errors import public_message
 from app.domain.models import Claim, TaskNode
-from app.domain.providers import AgentRole, RoutingPolicy
+from app.domain.providers import AgentRole, RoutingPolicy, role_for_kind
 
 logger = logging.getLogger(__name__)
 
@@ -356,7 +356,7 @@ class DeepAgentTaskRunner:
         task_history_loader: Callable[[str], tuple[list[dict[str, Any]], list[dict[str, Any]]]] | None = None,
         token_budget: int | None = None,
     ) -> SpecialistOutcome:
-        role = _role_for(task)
+        role = role_for_kind(task.kind)
         profile = DEFAULT_HARNESS_PROFILES.get(role)
         allowed_names = set(profile.allowed_tools if profile else ())
         definitions = tuple(
@@ -629,10 +629,3 @@ class DeepAgentTaskRunner:
             review_verdict,
         )
 
-
-def _role_for(task: TaskNode) -> AgentRole:
-    if "review" in task.kind:
-        return AgentRole.EVIDENCE_REVIEWER
-    if "reconcil" in task.kind:
-        return AgentRole.RECONCILIATION_SPECIALIST
-    return AgentRole.DATA_SPECIALIST

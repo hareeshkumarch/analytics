@@ -368,11 +368,13 @@ class TestToolLoop(unittest.TestCase):
             return Claim(claim_id=cid, label="x", statement="s", value=None, unit=None, currency=None, evidence_ids=ev)
 
         flagged: set[str] = set()
-        claims = [claim("clm_t1_analyze", ()), claim("clm_t1_reconcile", ("ev_1",)), claim("clm_t2_review", ())]
-        verdict = _evidence_verdict(claims, flagged)
+        claims = [claim("clm_t1_analyze", ()), claim("clm_t1_reconcile", ("ev_1",)), claim("clm_t3_remediate", ())]
+        verdict = _evidence_verdict(claims, flagged, {"clm_t3_remediate"})
         self.assertFalse(verdict.approved)
         self.assertEqual(len(verdict.gaps), 1)
-        self.assertTrue(_evidence_verdict(claims, flagged).approved)
+        self.assertTrue(_evidence_verdict(claims, flagged, {"clm_t3_remediate"}).approved)
+        sneaky = [claim("clm_t1_review_refunds", ())]
+        self.assertFalse(_evidence_verdict(sneaky, set(), set()).approved)
 
     def _toolbox(self, c, budget=(20, 20)) -> AnalyticsToolbox:
         return AnalyticsToolbox(
