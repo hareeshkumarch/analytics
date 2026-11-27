@@ -56,7 +56,7 @@ Checked 2026-11-25 against `main` @ `da9b4a9`; updated 2026-11-27 @ `3c7d267`. T
 | 23.3 | Memory | N/A | No long-term memory; previous turns read from run records. |
 | 24 | Budgets, quotas | Met | Per-mode token, cost, call and time limits, final-answer reserve, budget.warning, optional daily workspace quota. |
 | 25.1 | Provider gateway | Met | Adapters, capability matrix, streaming fallback, structured output with bounded repair, circuit breakers. |
-| 25.2–25.4 | Context compiler, compaction | Partial | Versioned templates, stable prefix, per-section token accounting; no separate compiler stage. |
+| 25.2–25.4 | Context compiler, compaction | Met | Versioned templates and a stable prefix. `context_compiler` builds the specialist prompt and the composer's findings from prioritized sections within a token budget, trimming the least important (older findings first) to a floor and never touching the question, task or criteria; older tool results are compacted in the loop; per-section token accounting on every model call. |
 | 26 | Prompt architecture, structured outputs | Met | Strict JSON schemas, untrusted fields separated, versioned templates recorded on every model call. |
 | 27 | Deep Agents harness controls | Met | Restricted harness per specialist, explicit tools, per-task budget slices and acceptance criteria. One owner per concern: `run_tasks` owns task status, results and budgets; the LangGraph checkpoint owns only the in-flight messages of a running task. |
 | 28.1 | Task/run state machine and outcomes | Met | Run outcomes; task transitions checked against an allowed-transition table with optimistic versions. |
