@@ -626,16 +626,16 @@ export function SettingsView() {
                 return (
                   <li
                     key={p.provider_id}
-                    className="flex flex-wrap items-start gap-x-4 gap-y-2.5 border-t border-border px-3.5 py-3 first:border-t-0 sm:flex-nowrap sm:first:border-t"
+                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2.5 border-t border-border px-3.5 py-3 first:border-t-0 sm:flex sm:items-start sm:first:border-t"
                   >
-                    <span className="order-1 inline-flex min-w-0 flex-1 items-center gap-2.5 font-medium text-ink sm:w-[28%] sm:flex-none">
+                    <span className="order-1 inline-flex min-w-0 items-center gap-2.5 font-medium text-ink sm:w-[28%] sm:flex-none">
                       <ProviderLogo providerId={p.provider_id} />
                       {providerLabel(p.provider_id)}
                     </span>
-                    <span className="order-3 basis-full text-secondary sm:order-2 sm:flex-1 sm:basis-auto">
+                    <span className="order-3 min-w-0 text-secondary sm:order-2 sm:flex-1">
                       {models.length ? <Details models={models.map((m) => ({ id: m.model_id, roles: m.roles }))} /> : "None enabled"}
                     </span>
-                    <span className="order-2 shrink-0 sm:order-3 sm:w-[120px] sm:text-right">
+                    <span className="order-2 justify-self-end sm:order-3 sm:w-[120px] sm:text-right">
                       {p.key_status === "needs_key" ? (
                         <Badge tone="err" dot>
                           Key unreadable
@@ -650,7 +650,7 @@ export function SettingsView() {
                         </Badge>
                       )}
                     </span>
-                    <span className="order-4 flex basis-full flex-wrap items-start gap-2 sm:w-[208px] sm:basis-auto sm:flex-nowrap sm:justify-end">
+                    <span className="order-4 flex flex-wrap items-start justify-end gap-2 sm:w-[208px] sm:flex-nowrap">
                       {ops.data?.available.includes(providerSwitchId(p.provider_id)) && (
                         <PauseControl switchId={providerSwitchId(p.provider_id)} data={ops.data} />
                       )}
@@ -679,7 +679,7 @@ export function SettingsView() {
 function Details({ models }: { models: { id: string; roles: string[] }[] }) {
   return (
     <details className="group">
-      <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 border border-border bg-panel/60 px-2 py-0.5 text-[12px] font-medium text-body transition-colors hover:border-border-strong hover:bg-panel hover:text-ink [&::-webkit-details-marker]:hidden">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 whitespace-nowrap border border-border bg-panel/60 px-2 py-0.5 text-[12px] font-medium text-body transition-colors hover:border-border-strong hover:bg-panel hover:text-ink [&::-webkit-details-marker]:hidden">
         <span>
           {models.length} model{models.length === 1 ? "" : "s"}
         </span>

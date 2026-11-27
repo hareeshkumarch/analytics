@@ -1352,13 +1352,13 @@ export function AskView() {
       </div>
 
       <aside className="order-first space-y-3 lg:sticky lg:top-8 lg:order-none">
-        <div className="flex gap-2">
-          <button type="button" onClick={startNew} className={cx(btn.secondary, "flex-1 px-3 font-medium")}>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={startNew} className={cx(btn.secondary, "flex-1 px-3 font-medium max-lg:min-h-[36px]", !active && "max-lg:hidden")}>
             New question
           </button>
           <button
             type="button"
-            className={cx(btn.secondary, "px-3 lg:hidden")}
+            className={cx(btn.secondary, "px-3 max-lg:min-h-[36px] lg:hidden")}
             aria-expanded={historyOpen}
             aria-controls="ask-history"
             onClick={() => setHistoryOpen((o) => !o)}
