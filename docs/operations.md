@@ -19,7 +19,7 @@ The JSON and Markdown report goes to `backend/eval/reports/` with per-question p
 - Run a few questions: `make eval EVAL_ARGS="--only q01_net_sales q12_profit"`
 - Save a passing report as the new baseline: `make eval EVAL_ARGS="--update-baseline"`
 
-The `Evaluation` workflow runs the corpus nightly and on demand. It is skipped unless a provider key secret is set, and keeps the last passing report as its baseline.
+The `Evaluation` workflow runs the corpus nightly, on demand, and on pull requests that change prompts, services, orchestration, providers, the query layer, the evaluation code or the model config. A pull request is compared against the last passing baseline from `main` and fails on a regression; the report is in the job summary. Only runs on `main` update the baseline. The workflow is skipped, with a notice, when no provider key secret (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY` or `GEMINI_API_KEY`) is available, which includes pull requests from forks.
 
 ## Dependency security
 The `Security` workflow runs on every push and pull request and weekly. It fails when `pip-audit` finds a known vulnerability in `backend/requirements.lock` or `requirements-dev.lock`, or `npm audit` finds a high or critical one in the frontend's production dependencies, and uploads CycloneDX SBOMs for both as the `sbom` artifact. To fix a finding, raise the pin in `backend/pyproject.toml` or `frontend/package.json` and run `make lock`.

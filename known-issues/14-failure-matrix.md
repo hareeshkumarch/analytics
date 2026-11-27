@@ -103,7 +103,7 @@ Tests marked (PG) run against real PostgreSQL. They run in CI, where the backend
 | Unnecessary reflection | Covered | Bounded rounds and replans: `test_budget_guardrails` |
 | Token usage delayed or missing | Covered | Unsettled reservations keep the run incomplete: `test_usage_totals` |
 | Parallel agents overdraw budget | Covered | `test_budget_and_orchestration::parallel_last_slot_budget_admission` |
-| Prompt/tool update regresses quality | Partial | `make eval` fails on a pass-rate or cost regression against the baseline (`test_evaluation::report_scores_questions_and_flags_regressions_against_the_baseline`); it runs nightly and on demand, not on every PR |
+| Prompt/tool update regresses quality | Partial | `make eval` fails on a pass-rate or cost regression against the baseline (`test_evaluation::report_scores_questions_and_flags_regressions_against_the_baseline`); it runs on PRs that change prompts or orchestration, nightly and on demand, but only when a provider key secret is set |
 
 ## 34.4 Orchestration, UI and operations
 

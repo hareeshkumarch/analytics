@@ -7,12 +7,23 @@ on:
         required: false
   schedule:
     - cron: "17 2 * * *"
+  pull_request:
+    paths:
+      - backend/app/application/prompts.py
+      - backend/app/application/services/**
+      - backend/app/adapters/orchestration/**
+      - backend/app/adapters/providers/**
+      - backend/app/adapters/query/**
+      - backend/app/evaluation/**
+      - backend/config/**
+      - .github/workflows/eval.yml
 
 jobs:
   eval:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
+      UPDATES_BASELINE: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -47,9 +58,14 @@ jobs:
         if: steps.keys.outputs.run == 'true'
         env:
           MODEL: ${{ inputs.model }}
-        run: make eval EVAL_ARGS="--update-baseline ${MODEL:+--model $MODEL}"
+        run: |
+          if [ "$UPDATES_BASELINE" = "true" ]; then UPDATE="--update-baseline"; else UPDATE=""; fi
+          make eval EVAL_ARGS="$UPDATE ${MODEL:+--model $MODEL}"
+      - name: Report in the job summary
+        if: always() && steps.keys.outputs.run == 'true'
+        run: cat backend/eval/reports/*.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "No report was written." >> "$GITHUB_STEP_SUMMARY"
       - name: Save the baseline
-        if: success() && steps.keys.outputs.run == 'true'
+        if: success() && steps.keys.outputs.run == 'true' && env.UPDATES_BASELINE == 'true'
         uses: actions/cache/save@v4
         with:
           path: backend/eval/baselines
