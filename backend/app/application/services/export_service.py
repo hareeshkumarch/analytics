@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from docx import Document
-from fpdf import FPDF
+from fpdf import FPDF, XPos, YPos
 
 from app.domain.errors import LimitExceededError, ValidationError
 from app.domain.limits import DataLimits, DEFAULT_DATA_LIMITS
@@ -164,20 +164,20 @@ class ExportService:
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
         pdf.set_font(_UNICODE_FONT_FAMILY, "B", 14)
-        pdf.cell(0, 10, "Agentic Analytics Workspace - Investigation Export", ln=1)
+        pdf.cell(0, 10, "Agentic Analytics Workspace - Investigation Export", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.set_font(_UNICODE_FONT_FAMILY, "", 10)
         pdf.cell(
             0,
             6,
             f"Scope: {scope_label} | Snapshot: {answer.snapshot_id} | Semantic: {answer.semantic_version_id}",
-            ln=1,
+            new_x=XPos.LMARGIN, new_y=YPos.NEXT,
         )
         pdf.ln(4)
         pdf.set_font(_UNICODE_FONT_FAMILY, "", 11)
         pdf.multi_cell(0, 6, answer.summary_markdown, new_x="LMARGIN", new_y="NEXT")
         pdf.ln(4)
         pdf.set_font(_UNICODE_FONT_FAMILY, "B", 12)
-        pdf.cell(0, 8, "Validated Claims", ln=1)
+        pdf.cell(0, 8, "Validated Claims", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.set_font(_UNICODE_FONT_FAMILY, "", 10)
         for c in answer.claims:
             line = f"[{c.label}] {c.statement} (Value: {c.value} {c.currency or c.unit or ''}; Evidence: {', '.join(c.evidence_ids)})"
@@ -193,21 +193,21 @@ class ExportService:
         if answer.criteria:
             pdf.ln(3)
             pdf.set_font(_UNICODE_FONT_FAMILY, "B", 12)
-            pdf.cell(0, 8, "Verification", ln=1)
+            pdf.cell(0, 8, "Verification", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             pdf.set_font(_UNICODE_FONT_FAMILY, "", 10)
             for line in _verification_lines(answer):
                 pdf.multi_cell(0, 5, f"- {line}", new_x="LMARGIN", new_y="NEXT")
         if evidence:
             pdf.ln(3)
             pdf.set_font(_UNICODE_FONT_FAMILY, "B", 12)
-            pdf.cell(0, 8, "Sources", ln=1)
+            pdf.cell(0, 8, "Sources", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             pdf.set_font(_UNICODE_FONT_FAMILY, "", 9)
             for line in _source_lines(evidence):
                 pdf.multi_cell(0, 5, f"- {line}", new_x="LMARGIN", new_y="NEXT")
         if answer.limitations:
             pdf.ln(3)
             pdf.set_font(_UNICODE_FONT_FAMILY, "B", 12)
-            pdf.cell(0, 8, "Limitations", ln=1)
+            pdf.cell(0, 8, "Limitations", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             pdf.set_font(_UNICODE_FONT_FAMILY, "", 10)
             for lim in answer.limitations:
                 pdf.multi_cell(0, 5, f"- {lim}", new_x="LMARGIN", new_y="NEXT")

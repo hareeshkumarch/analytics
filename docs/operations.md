@@ -21,6 +21,9 @@ The JSON and Markdown report goes to `backend/eval/reports/` with per-question p
 
 The `Evaluation` workflow runs the corpus nightly and on demand. It is skipped unless a provider key secret is set, and keeps the last passing report as its baseline.
 
+## Dependency security
+The `Security` workflow runs on every push and pull request and weekly. It fails when `pip-audit` finds a known vulnerability in `backend/requirements.lock` or `requirements-dev.lock`, or `npm audit` finds a high or critical one in the frontend's production dependencies, and uploads CycloneDX SBOMs for both as the `sbom` artifact. To fix a finding, raise the pin in `backend/pyproject.toml` or `frontend/package.json` and run `make lock`.
+
 ## Backup & Restore
 - Backup PostgreSQL + published artifacts: `make backup-dev`
 - Restore from backup directory: `make restore-dev BACKUP_DIR=./backups/<timestamp>`
