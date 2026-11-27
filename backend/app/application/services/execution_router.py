@@ -45,6 +45,8 @@ def choose_route(
         return RouteDecision(ExecutionRoute.STANDARD, "The question depends on earlier turns or a clarification.")
     if len(text) > MAX_DIRECT_QUESTION_CHARS or len(text.split()) > MAX_DIRECT_QUESTION_WORDS or text.count("?") > 1:
         return RouteDecision(ExecutionRoute.STANDARD, "The question is long or asks several things.")
+    if any(ch.isalpha() and not ch.isascii() for ch in text):
+        return RouteDecision(ExecutionRoute.STANDARD, "The question is not in English, so a single query step can't be assumed.")
     match = _MULTI_STEP.search(text)
     if match:
         return RouteDecision(ExecutionRoute.STANDARD, f"The question asks for analysis beyond one query ({match.group(0).lower()!r}).")

@@ -34,6 +34,17 @@ from app.api.context import ApiContext
 logger = logging.getLogger(__name__)
 
 
+MAX_SOURCE_SUFFIX_CHARS = 42
+HASHED_SOURCE_SUFFIX_CHARS = 24
+
+
+def scoped_source_id(source_prefix: str, requested_source_id: str) -> str:
+    suffix = requested_source_id.removeprefix("src_")
+    if len(suffix) > MAX_SOURCE_SUFFIX_CHARS:
+        suffix = hashlib.sha256(suffix.encode("utf-8")).hexdigest()[:HASHED_SOURCE_SUFFIX_CHARS]
+    return f"{source_prefix}{suffix}"
+
+
 def register(ctx: ApiContext) -> APIRouter:
     router = APIRouter()
     app = ctx.app
@@ -117,11 +128,7 @@ def register(ctx: ApiContext) -> APIRouter:
         requested_source_id = payload.source_id or "src_" + hashlib.sha256(
             json.dumps([payload.family.value, source_config], sort_keys=True, default=str).encode("utf-8")
         ).hexdigest()[:24]
-        source_id = (
-            requested_source_id
-            if requested_source_id.startswith(source_prefix)
-            else f"{source_prefix}{requested_source_id.removeprefix('src_')[:42]}"
-        )
+        source_id = requested_source_id if requested_source_id.startswith(source_prefix) else scoped_source_id(source_prefix, requested_source_id)
         try:
             version = app.state.repo_snapshots.reserve_snapshot_version(
                 workspace_id,
