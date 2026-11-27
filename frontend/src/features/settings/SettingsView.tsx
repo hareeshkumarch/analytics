@@ -111,7 +111,7 @@ export function SettingsView() {
   const keyCardRef = useRef<HTMLFormElement>(null);
   const apiKeyInputRef = useRef<HTMLInputElement>(null);
 
-  const [roleDrafts, setRoleDrafts] = useState<Record<string, string[]>>({});
+  const [roleDraftState, setRoleDraftState] = useState<Record<string, string[]> | null>(null);
   const [ceilingDraft, setCeilingDraft] = useState("");
   const [customRolesOpen, setCustomRolesOpen] = useState(false);
   const [routingMsg, setRoutingMsg] = useState<Msg | null>(null);
@@ -145,13 +145,14 @@ export function SettingsView() {
   const routingLoaded = Boolean(routing.data);
   useEffect(() => {
     if (!routingLoaded) return;
-    setRoleDrafts(JSON.parse(savedRoutesKey) as Record<string, string[]>);
+    setRoleDraftState(JSON.parse(savedRoutesKey) as Record<string, string[]>);
   }, [routingLoaded, savedRoutesKey]);
   useEffect(() => {
     if (!routingLoaded) return;
     setCeilingDraft(savedCeiling);
   }, [routingLoaded, savedCeiling]);
 
+  const roleDrafts = roleDraftState ?? savedRoutes;
   const changedRoles = routeRoles.filter((role) => !sameList(roleDrafts[role] ?? [], savedRoutes[role] ?? []));
   const ceilingChanged = ceilingDraft.trim() !== savedCeiling;
   const dirty = changedRoles.length > 0 || ceilingChanged;
@@ -194,7 +195,8 @@ export function SettingsView() {
   }
 
   function moveRoleModel(role: string, from: number, to: number) {
-    setRoleDrafts((prev) => {
+    setRoleDraftState((current) => {
+      const prev = current ?? savedRoutes;
       const list = [...(prev[role] ?? [])];
       if (from < 0 || to < 0 || from >= list.length || to >= list.length || from === to) return prev;
       const [moved] = list.splice(from, 1);
@@ -204,7 +206,8 @@ export function SettingsView() {
   }
 
   function removeRoleModel(role: string, index: number) {
-    setRoleDrafts((prev) => {
+    setRoleDraftState((current) => {
+      const prev = current ?? savedRoutes;
       const list = [...(prev[role] ?? [])];
       list.splice(index, 1);
       return { ...prev, [role]: list };
@@ -212,7 +215,8 @@ export function SettingsView() {
   }
 
   function addRoleModel(role: string, modelId: string) {
-    setRoleDrafts((prev) => {
+    setRoleDraftState((current) => {
+      const prev = current ?? savedRoutes;
       const list = prev[role] ?? [];
       if (list.includes(modelId)) return prev;
       return { ...prev, [role]: [...list, modelId] };
@@ -443,10 +447,11 @@ export function SettingsView() {
               </p>
             </div>
 
-            {routeRoles.length > 0 && (
+            {(routeRoles.length > 0 || isLoading) && (
               <div className="border-t border-border pt-3">
                 <button
                   type="button"
+                  disabled={routeRoles.length === 0}
                   aria-expanded={rolesExpanded}
                   aria-controls="routing-custom-roles"
                   onClick={() => setCustomRolesOpen((o) => !o)}
@@ -575,7 +580,7 @@ export function SettingsView() {
                     type="button"
                     className={btn.ghost}
                     onClick={() => {
-                      setRoleDrafts(savedRoutes);
+                      setRoleDraftState(savedRoutes);
                       setCeilingDraft(savedCeiling);
                       setRoutingMsg(null);
                     }}
@@ -607,7 +612,7 @@ export function SettingsView() {
             </span>
           )}
         </div>
-        {isLoading && <div className="h-24 animate-pulse bg-panel" aria-hidden="true" />}
+        {isLoading && <div className="h-80 animate-pulse bg-panel" aria-hidden="true" />}
         {error && <Notice tone="err" title="Couldn't load providers">{errorMessage(error)}</Notice>}
         {data && data.providers.length > 0 && (
           <div className="border border-border text-[13px]">

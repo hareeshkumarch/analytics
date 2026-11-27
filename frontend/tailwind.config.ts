@@ -46,8 +46,8 @@ const config: Config = {
       },
       fontFamily: {
         sans: ["var(--font-inter)", "Inter", "ui-sans-serif", "system-ui", "-apple-system", '"Segoe UI"', "sans-serif"],
-        display: ["var(--font-manrope)", "Manrope", "var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
-        mono: ["var(--font-mono)", '"JetBrains Mono"', '"Cascadia Mono"', "ui-monospace", "SFMono-Regular", "monospace"],
+        display: ["var(--font-inter)", "Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["ui-monospace", "SFMono-Regular", '"Cascadia Mono"', "Menlo", "Consolas", "monospace"],
       },
       boxShadow: {
         card: "0 1px 2px rgb(var(--shadow) / 0.04)",

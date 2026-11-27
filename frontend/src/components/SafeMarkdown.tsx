@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useMemo } from "react";
+import React, { createContext, memo, useContext, useMemo } from "react";
 import { HScroll } from "@/components/HScroll";
 import { citationNumbers, parseEvidenceCitation } from "@/lib/text";
 
@@ -366,7 +366,7 @@ const HEADING_CLS: Record<number, string> = {
   4: "text-[15px] font-semibold",
 };
 
-export function SafeMarkdown({ content }: { content: string }) {
+export const SafeMarkdown = memo(function SafeMarkdown({ content }: { content: string }) {
   const blocks = useMemo(() => parse(content), [content]);
   const numbers = useMemo(() => citationNumbers(content), [content]);
   return (
@@ -468,4 +468,4 @@ export function SafeMarkdown({ content }: { content: string }) {
       </div>
     </CitationNumbers.Provider>
   );
-}
+});

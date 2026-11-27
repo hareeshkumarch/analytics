@@ -118,8 +118,17 @@ function fromStored(run: StoredRun): Session {
   };
 }
 
+const STREAM_FLUSH_MS = 80;
+
+function applyEvents(s: Session, evts: SseEnvelope[]): Partial<Session> {
+  let state = s;
+  for (const evt of evts) state = { ...state, ...applyEvent(state, evt) };
+  const kept = evts.filter((e) => e.type !== "answer.delta");
+  return { ...state, events: kept.length ? [...s.events, ...kept] : s.events, lastSeq: Math.max(s.lastSeq, ...evts.map((e) => e.sequence)) };
+}
+
 function applyEvent(s: Session, evt: SseEnvelope): Partial<Session> {
-  const next: Partial<Session> = { events: [...s.events, evt], lastSeq: Math.max(s.lastSeq, evt.sequence) };
+  const next: Partial<Session> = {};
   if (evt.type === "answer.reset") {
     next.answer = "";
     next.answerFromServer = false;
@@ -203,6 +212,50 @@ function eventSummary(payload: Record<string, unknown>): string {
 function taskName(taskId: string): string {
   return humanize(taskId.replace(/^t\d+_/, ""));
 }
+
+const HistoryItem = React.memo(function HistoryItem({
+  id,
+  runId,
+  question,
+  status,
+  mode,
+  createdAt,
+  active,
+  followUp,
+  onSelect,
+}: {
+  id: string;
+  runId: string | null;
+  question: string;
+  status: string;
+  mode: string;
+  createdAt: string | null;
+  active: boolean;
+  followUp: boolean;
+  onSelect: (id: string, runId: string | null) => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-current={active ? "true" : undefined}
+      onClick={() => onSelect(id, runId)}
+      className={cx("block w-full px-2.5 py-2 text-left transition-colors", active ? "bg-bubble text-ink" : "text-body hover:bg-sidebar")}
+    >
+      {followUp && <span className="sr-only">Follow-up: </span>}
+      <span className="line-clamp-2 text-[13px] leading-snug">{question}</span>
+      <span className="mt-1 flex items-center gap-1.5 text-[11px] text-secondary">
+        <span
+          aria-hidden="true"
+          className={cx(
+            "h-1.5 w-1.5 rounded-full",
+            status === "completed" ? "bg-ok-dot" : status === "failed" ? "bg-err-dot" : isTerminal(status) ? "bg-secondary" : "animate-pulse bg-warn-dot"
+          )}
+        />
+        {statusLabel(status)} · {mode} · {relativeTime(createdAt)}
+      </span>
+    </button>
+  );
+});
 
 function RunProgress({ events, workspaceId, runId }: { events: SseEnvelope[]; workspaceId: string; runId: string | null }) {
   const changes = events.filter((e) => e.type === "task.status" || e.type === "plan.updated").length;
@@ -410,10 +463,36 @@ export function AskView() {
     []
   );
 
-  const closeStream = useCallback((id: string) => {
-    closers.current.get(id)?.();
-    closers.current.delete(id);
-  }, []);
+  const pending = useRef(new Map<string, { events: SseEnvelope[]; timer: number }>());
+
+  const flush = useCallback(
+    (id: string) => {
+      const queued = pending.current.get(id);
+      if (!queued) return;
+      pending.current.delete(id);
+      window.clearTimeout(queued.timer);
+      patch(id, (s) => applyEvents(s, queued.events));
+    },
+    [patch]
+  );
+
+  const enqueue = useCallback(
+    (id: string, evt: SseEnvelope) => {
+      const queued = pending.current.get(id);
+      if (queued) queued.events.push(evt);
+      else pending.current.set(id, { events: [evt], timer: window.setTimeout(() => flush(id), STREAM_FLUSH_MS) });
+    },
+    [flush]
+  );
+
+  const closeStream = useCallback(
+    (id: string) => {
+      flush(id);
+      closers.current.get(id)?.();
+      closers.current.delete(id);
+    },
+    [flush]
+  );
 
   /** Subscribe a session to its run's events after `afterSeq`. One code path for live, resumed and replayed runs. */
   const attach = useCallback(
@@ -429,14 +508,14 @@ export function AskView() {
       }));
       const close = subscribeRunEvents(url, afterSeq, {
         onEvent: (evt) => {
-          patch(sessionId, (s) => applyEvent(s, evt));
+          enqueue(sessionId, evt);
           if (evt.type === "run.finished") {
             closeStream(sessionId);
             void queryClient.invalidateQueries({ queryKey: ["runs", activeWorkspaceId] });
             void queryClient.invalidateQueries({ queryKey: ["usage", activeWorkspaceId] });
           }
         },
-        onResetDraft: () => patch(sessionId, () => ({ answer: "" })),
+        onResetDraft: () => flush(sessionId),
         onDisconnected: () => {
           closers.current.delete(sessionId);
           patch(sessionId, (s) => (isTerminal(s.status) ? { streaming: false } : { streaming: false, connectionLost: true }));
@@ -454,7 +533,7 @@ export function AskView() {
         );
       }
     },
-    [activeWorkspaceId, closeStream, patch, queryClient]
+    [activeWorkspaceId, closeStream, enqueue, flush, patch, queryClient]
   );
 
   const active = sessions.find((s) => s.id === activeId) ?? null;
@@ -539,14 +618,14 @@ export function AskView() {
   }
   const canAsk = blockers.length === 0 && Boolean(snapshot);
 
-  function selectSession(s: Session) {
+  const selectSession = useCallback((id: string, runId: string | null) => {
     setOpenEvidence(null);
     setPinError(null);
     setConfirmDeleteId(null);
-    setActiveId(s.id);
+    setActiveId(id);
     setHistoryOpen(false);
-    setUrlParam("run", s.runId);
-  }
+    setUrlParam("run", runId);
+  }, []);
 
   async function startRun(
     question: string,
@@ -893,30 +972,19 @@ export function AskView() {
     </div>
   );
 
-  function historyItem(s: Session, followUp = false) {
-    const isActive = s.id === activeId;
-    return (
-      <button
-        type="button"
-        aria-current={isActive ? "true" : undefined}
-        onClick={() => selectSession(s)}
-        className={cx("block w-full px-2.5 py-2 text-left transition-colors", isActive ? "bg-bubble text-ink" : "text-body hover:bg-sidebar")}
-      >
-        {followUp && <span className="sr-only">Follow-up: </span>}
-        <span className="line-clamp-2 text-[13px] leading-snug">{s.question}</span>
-        <span className="mt-1 flex items-center gap-1.5 text-[11px] text-secondary">
-          <span
-            aria-hidden="true"
-            className={cx(
-              "h-1.5 w-1.5 rounded-full",
-              s.status === "completed" ? "bg-ok-dot" : s.status === "failed" ? "bg-err-dot" : isTerminal(s.status) ? "bg-secondary" : "animate-pulse bg-warn-dot"
-            )}
-          />
-          {statusLabel(s.status)} · {s.mode} · {relativeTime(s.createdAt)}
-        </span>
-      </button>
-    );
-  }
+  const historyItem = (s: Session, followUp = false) => (
+    <HistoryItem
+      id={s.id}
+      runId={s.runId}
+      question={s.question}
+      status={s.status}
+      mode={s.mode}
+      createdAt={s.createdAt}
+      active={s.id === activeId}
+      followUp={followUp}
+      onSelect={selectSession}
+    />
+  );
 
   const showHistoryControls = sortedSessions.length > 0 || Boolean(hq) || historyFilter !== "all";
   const history = (
@@ -1247,29 +1315,10 @@ export function AskView() {
                 )
               )}
 
-              {active.status === "completed" && active.runId && (
-                <form onSubmit={(e) => void handleFollowUp(e)} className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row">
-                  <label htmlFor="follow-up" className="sr-only">
-                    Ask a follow-up question
-                  </label>
-                  <input
-                    id="follow-up"
-                    value={followUpDraft}
-                    onChange={(e) => setFollowUpDraft(e.target.value)}
-                    placeholder="Ask a follow-up about this answer"
-                    maxLength={inputLimits?.max_question_chars}
-                    className={cx(inputCls, "min-h-[40px] flex-1")}
-                  />
-                  <button type="submit" disabled={submitting || !followUpDraft.trim()} className={btn.secondary}>
-                    Follow up
-                  </button>
-                </form>
-              )}
-
               {nonSchemaTools.length > 0 && (
-                <div className="space-y-2 border-t border-border pt-3">
-                  <p className="text-[12px] font-semibold uppercase tracking-wide text-secondary">Evidence · {nonSchemaTools.length} quer{nonSchemaTools.length === 1 ? "y" : "ies"}</p>
-                  <ul className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                  <p className="text-[12px] text-secondary">Sources</p>
+                  <ul aria-label="Sources" className="flex flex-wrap gap-1.5">
                     {nonSchemaTools.map((evt) => {
                         const p = evt.payload;
                         const evId = typeof p.evidence_id === "string" ? p.evidence_id : null;
@@ -1306,7 +1355,7 @@ export function AskView() {
               )}
 
               {(active.runId || active.events.length > 0) && (
-                <div className="border-t border-border pt-2">
+                <div>
                   <Details summary="Technical details">
                     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[12px]">
                       {active.runId && (
@@ -1345,6 +1394,32 @@ export function AskView() {
                     )}
                   </Details>
                 </div>
+              )}
+
+              {active.status === "completed" && active.runId && (
+                <form onSubmit={(e) => void handleFollowUp(e)} className="flex gap-2 border-t border-border pt-4">
+                  <label htmlFor="follow-up" className="sr-only">
+                    Ask a follow-up question
+                  </label>
+                  <input
+                    id="follow-up"
+                    value={followUpDraft}
+                    onChange={(e) => setFollowUpDraft(e.target.value)}
+                    placeholder="Ask a follow-up"
+                    maxLength={inputLimits?.max_question_chars}
+                    className={cx(inputCls, "min-h-[40px] min-w-0 flex-1")}
+                  />
+                  <button
+                    type="submit"
+                    aria-label="Ask follow-up"
+                    disabled={submitting || !followUpDraft.trim()}
+                    className={cx(btn.secondary, "w-10 shrink-0 !px-0")}
+                  >
+                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 19V5M5 12l7-7 7 7" />
+                    </svg>
+                  </button>
+                </form>
               )}
             </section>
           </article>

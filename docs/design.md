@@ -1,8 +1,8 @@
 # UI design
 
 **Look: "Graphite" (minimal).** Neutral zinc grays with a charcoal accent (near-white in dark mode).
-Color appears only where it means something: small status dots, and red for errors. Manrope for headings,
-Inter for UI text, JetBrains Mono for ids, SQL and traces. **Sharp corners everywhere** (no rounded
+Color appears only where it means something: small status dots, and red for errors. One typeface, Inter
+(semibold for headings), and the system's monospace for ids, SQL and traces. **Sharp corners everywhere** (no rounded
 buttons, cards or inputs); only status dots and spinners are round. Pages use the full width up to
 1480px with tight gutters (16px on phones, 32px on desktop).
 
@@ -86,4 +86,10 @@ change the variables in `globals.css`; no component needs editing.
 - Shared pieces live in `components/ui.tsx`: `btn.*`, `Notice`, `Badge`, `SearchInput`, `FilterChips`, `EmptyState`, `Details`, `Skeleton`, `Spinner`. Use them instead of new class strings.
 - Lists with more than a handful of items get a `SearchInput` and, where useful, `FilterChips` with counts.
 - Show people what they need to act on; put ids, hashes, raw traces and raw errors behind a collapsed `Details` ("Technical details").
-- Fonts are self-hosted with `next/font` (no runtime request to Google).
+- Inter is self-hosted with `next/font` (no runtime request to Google); monospace uses the system font, so no second download.
+
+## Performance rules
+
+- Charts load on demand: `ChartPlot` and `UsageBarChart` hold every `recharts` import and are loaded with `next/dynamic`. Don't import `recharts` anywhere else.
+- Streamed answer text is applied every `STREAM_FLUSH_MS` (80 ms), not once per piece, and `answer.delta` events are not kept in the event list. Keep per-piece work out of render.
+- Reserve space for content that loads: placeholders roughly the height of the real content, and no section that appears or opens only after data arrives.

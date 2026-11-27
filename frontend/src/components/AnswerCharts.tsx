@@ -1,20 +1,25 @@
 "use client";
 
 import React, { useContext, useMemo } from "react";
-import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import dynamic from "next/dynamic";
 import type { ChartOut } from "@/lib/api/types";
 import { EvidenceContext } from "@/components/SafeMarkdown";
 import { useThemeColor } from "@/lib/theme";
 
-const AXIS_LABEL_CHARS = 24;
-
 export type AnswerChart = ChartOut;
+
+const ChartPlot = dynamic(() => import("@/components/ChartPlot").then((m) => m.ChartPlot), { ssr: false });
 
 const compact = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
 const full = new Intl.NumberFormat(undefined, { maximumFractionDigits: 4 });
 const humanize = (field: string) => field.replace(/_/g, " ");
 
-function numberFormats(currency: string | null | undefined): { axis: Intl.NumberFormat; value: Intl.NumberFormat } {
+export interface NumberFormats {
+  axis: Intl.NumberFormat;
+  value: Intl.NumberFormat;
+}
+
+function numberFormats(currency: string | null | undefined): NumberFormats {
   if (!currency) return { axis: compact, value: full };
   try {
     return {
@@ -29,16 +34,8 @@ function numberFormats(currency: string | null | undefined): { axis: Intl.Number
 function ChartCard({ chart, small, showTitle }: { chart: AnswerChart; small: boolean; showTitle: boolean }) {
   const openEvidence = useContext(EvidenceContext);
   const formats = useMemo(() => numberFormats(chart.currency), [chart.currency]);
-  const gridColor = useThemeColor("border", "#E4E4E7");
-  const axisColor = useThemeColor("muted", "#696972");
-  const surfaceColor = useThemeColor("surface", "#FFFFFF");
-  const inkColor = useThemeColor("ink", "#18181B");
   const palette = [useThemeColor("data-1", "#1B6E9C"), useThemeColor("data-2", "#C2652A"), useThemeColor("data-3", "#B0407A")];
   const colorFor = (idx: number) => palette[Math.min(idx, palette.length - 1)];
-  const shortLabel = (value: unknown) => {
-    const text = String(value ?? "");
-    return text.length > AXIS_LABEL_CHARS ? `${text.slice(0, AXIS_LABEL_CHARS - 1)}…` : text;
-  };
   const keys = chart.y_fields.map((_, i) => `s${i}`);
   const data = chart.rows.map((row) => {
     const point: Record<string, string | number | null> = { label: String(row[0] ?? "") };
@@ -48,25 +45,6 @@ function ChartCard({ chart, small, showTitle }: { chart: AnswerChart; small: boo
     return point;
   });
   const names = Object.fromEntries(keys.map((key, i) => [key, humanize(chart.y_fields[i])]));
-  const axes = [
-    <CartesianGrid key="grid" stroke={gridColor} vertical={false} />,
-    <XAxis key="x" dataKey="label" stroke={axisColor} fontSize={11} tickLine={false} axisLine={false} minTickGap={12} tickFormatter={shortLabel} />,
-    <YAxis
-      key="y"
-      stroke={axisColor}
-      fontSize={11}
-      tickLine={false}
-      axisLine={false}
-      width={48}
-      tickFormatter={(v) => formats.axis.format(Number(v))}
-    />,
-    <Tooltip
-      key="tip"
-      cursor={chart.chart_type === "line" ? { stroke: gridColor } : { fill: gridColor, fillOpacity: 0.45 }}
-      formatter={(value, key) => [value === null ? "—" : formats.value.format(Number(value)), names[String(key)] ?? String(key)]}
-      contentStyle={{ borderRadius: 0, border: `1px solid ${gridColor}`, background: surfaceColor, color: inkColor, fontSize: 12 }}
-    />
-  ];
   const label = `${chart.title}: ${chart.y_fields.map(humanize).join(", ")} by ${humanize(chart.x_field)}, ${chart.rows.length} points.`;
 
   return (
@@ -87,23 +65,7 @@ function ChartCard({ chart, small, showTitle }: { chart: AnswerChart; small: boo
         </figcaption>
       )}
       <div className={small ? "h-36 w-full" : "h-52 w-full"} role="img" aria-label={label}>
-        <ResponsiveContainer width="100%" height="100%">
-          {chart.chart_type === "line" ? (
-            <LineChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: -8 }}>
-              {axes}
-              {keys.map((key, i) => (
-                <Line key={key} dataKey={key} stroke={colorFor(i)} strokeWidth={2} dot={data.length <= 24} isAnimationActive={false} />
-              ))}
-            </LineChart>
-          ) : (
-            <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -8 }} barCategoryGap={chart.chart_type === "histogram" ? 1 : "20%"}>
-              {axes}
-              {keys.map((key, i) => (
-                <Bar key={key} dataKey={key} fill={colorFor(i)} maxBarSize={chart.chart_type === "histogram" ? undefined : 36} isAnimationActive={false} />
-              ))}
-            </BarChart>
-          )}
-        </ResponsiveContainer>
+        <ChartPlot chart={chart} data={data} keys={keys} names={names} colors={palette} formats={formats} />
       </div>
       {!small && (
         <details className="mt-2 text-[12px] text-secondary">

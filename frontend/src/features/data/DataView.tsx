@@ -36,7 +36,7 @@ export function DataView() {
   const missing = Boolean(chosenId && snapshotsQuery.data && !snapshots.some((s) => s.snapshot_id === chosenId));
   const approvedCount = snapshots.filter((s) => s.approved).length;
   const hasData = snapshots.length > 0;
-  const showSources = !hasData || adding || Boolean(reimport);
+  const showSources = (!snapshotsQuery.isLoading && !hasData) || adding || Boolean(reimport);
 
   function closeSources() {
     setAdding(false);

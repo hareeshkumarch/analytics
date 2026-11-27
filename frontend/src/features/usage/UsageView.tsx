@@ -3,14 +3,13 @@
 import React, { useMemo } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import dynamic from "next/dynamic";
 import { anyText, useUrlState } from "@/lib/url";
 import { apiFetch, errorMessage } from "@/lib/api/client";
 import { RichSelect, RichOption } from "@/components/RichSelect";
 import { PageHeader } from "@/components/PageHeader";
 import { HScroll } from "@/components/HScroll";
 import { EmptyState, FilterChips, Notice, SearchInput, btn, cardCls, cx } from "@/components/ui";
-import { useThemeColor } from "@/lib/theme";
 import { providerLabel, relativeTime, useWorkspace } from "@/lib/workspace";
 import type { ModelUsageOut, RunUsageOut, ToolUsageOut, UsageOut } from "@/lib/api/types";
 
@@ -21,6 +20,8 @@ type UsageResponse = UsageOut;
 type WindowKey = "24h" | "7d" | "30d" | "90d" | "all";
 type Metric = "tokens" | "cost" | "runs";
 
+
+const UsageBarChart = dynamic(() => import("@/features/usage/UsageBarChart").then((m) => m.UsageBarChart), { ssr: false });
 const REFRESH_MS = 15000;
 
 const WINDOW_OPTIONS: { value: WindowKey; label: string }[] = [
@@ -280,11 +281,6 @@ export function UsageView() {
   const [metric, setMetric] = useUrlState<Metric>("metric", "tokens", isMetric);
   const [providerFilter, setProviderFilter] = useUrlState("provider", "all", anyText);
 
-  const gridColor = useThemeColor("border", "#E4E4E7");
-  const axisColor = useThemeColor("muted", "#696972");
-  const barColor = useThemeColor("data-1", "#1B6E9C");
-  const surfaceColor = useThemeColor("surface", "#FFFFFF");
-  const inkColor = useThemeColor("ink", "#18181B");
 
   const windowHours = WINDOW_HOURS[windowFilter];
   const since =
@@ -478,32 +474,13 @@ export function UsageView() {
                 </div>
               ) : (
                 <div className="h-56 w-full" role="img" aria-label={`${metricLabel} per ${windowFilter === "24h" ? "hour" : "day"}; the table below lists every run.`}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -8 }}>
-                      <CartesianGrid stroke={gridColor} vertical={false} />
-                      <XAxis dataKey="label" stroke={axisColor} fontSize={11} tickLine={false} axisLine={false} minTickGap={12} />
-                      <YAxis
-                        stroke={axisColor}
-                        fontSize={11}
-                        tickLine={false}
-                        axisLine={false}
-                        width={48}
-                        tickFormatter={(v) => (metric === "cost" ? `$${compact.format(Number(v))}` : compact.format(Number(v)))}
-                      />
-                      <Tooltip
-                        cursor={{ fill: gridColor, fillOpacity: 0.45 }}
-                        formatter={(value) => [metric === "cost" ? formatCost(Number(value)) : Number(value).toLocaleString(), metricLabel]}
-                        contentStyle={{
-                          borderRadius: 0,
-                          border: `1px solid ${gridColor}`,
-                          background: surfaceColor,
-                          color: inkColor,
-                          fontSize: 12,
-                        }}
-                      />
-                      <Bar dataKey={metric} fill={barColor} maxBarSize={36} isAnimationActive={false} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <UsageBarChart
+                    data={chartData}
+                    dataKey={metric}
+                    seriesLabel={metricLabel}
+                    formatAxis={(v) => (metric === "cost" ? `$${compact.format(v)}` : compact.format(v))}
+                    formatValue={(v) => (metric === "cost" ? formatCost(v) : v.toLocaleString())}
+                  />
                 </div>
               )}
             </section>
