@@ -380,7 +380,7 @@ class PgRunRepository:
                 return True
 
     def conversation_turns(
-        self, workspace_id: str, conversation_id: str, before_run_id: str, limit: int = 3
+        self, workspace_id: str, conversation_id: str, before_run_id: str, limit: int
     ) -> list[dict[str, str]]:
         with self._sf() as db:
             current = db.get(RunRow, before_run_id)

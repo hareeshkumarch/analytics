@@ -1,5 +1,6 @@
 from decimal import Decimal
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, replace
 
 from app.domain.models import RunMode
 
@@ -18,7 +19,6 @@ class DataLimits:
     max_expanded_file_bytes: int = 200_000_000
     ingestion_deadline_seconds: int = 300
     max_preview_rows: int = 1_000
-    max_chart_points: int = 2_000
     max_export_bytes: int = 10 * 1024 * 1024
     arrow_batch_max_rows: int = 4_096
 
@@ -29,6 +29,14 @@ class DataLimits:
     rest_connect_timeout_seconds: int = 5
     rest_response_timeout_seconds: int = 15
     rest_max_attempts_per_request: int = 3
+
+    connector_connect_timeout_seconds: int = 5
+    connector_read_timeout_seconds: int = 20
+    connector_max_attempts: int = 4
+    connector_backoff_cap_seconds: float = 30.0
+    database_read_timeout_seconds: int = 30
+    warehouse_max_tables: int = 1_000
+    warehouse_page_size: int = 1_000
 
     def to_safe_dict(self) -> dict[str, int]:
         return {
@@ -44,7 +52,6 @@ class DataLimits:
             "max_expanded_file_bytes": self.max_expanded_file_bytes,
             "ingestion_deadline_seconds": self.ingestion_deadline_seconds,
             "max_preview_rows": self.max_preview_rows,
-            "max_chart_points": self.max_chart_points,
             "max_export_bytes": self.max_export_bytes,
         }
 
@@ -61,7 +68,6 @@ class RunBudgetLimits:
     accepted_dag_tasks: int
     concurrent_specialists: int
     lifetime_specialist_instances: int
-    max_depth: int
     max_replans: int
     max_tool_invocations: int
     total_tokens: int = 500_000
@@ -90,7 +96,6 @@ QUICK_BUDGET_LIMITS = RunBudgetLimits(
     accepted_dag_tasks=4,
     concurrent_specialists=1,
     lifetime_specialist_instances=4,
-    max_depth=1,
     max_replans=0,
     max_tool_invocations=16,
     total_tokens=200_000,
@@ -105,7 +110,6 @@ DEEP_BUDGET_LIMITS = RunBudgetLimits(
     accepted_dag_tasks=12,
     concurrent_specialists=2,
     lifetime_specialist_instances=8,
-    max_depth=1,
     max_replans=2,
     max_tool_invocations=64,
     total_tokens=500_000,
@@ -121,15 +125,11 @@ def limits_for(mode: RunMode | str) -> RunBudgetLimits:
 class GlobalLimits:
     max_active_root_runs: int = 1
     max_queued_runs: int = 10
-    max_active_query_runners: int = 1
     query_timeout_seconds: int = 15
-    query_terminate_grace_seconds: int = 5
     max_attempts_per_logical_step: int = 3
     max_schema_repairs_per_step: int = 1
     max_proposed_tool_calls_per_response: int = 8
     max_model_tool_result_bytes: int = 64 * 1024
-    clarification_expiry_days: int = 7
-    sse_event_retention_days: int = 7
     idempotency_key_retention_hours: int = 24
     max_question_chars: int = 4_000
     max_clarification_chars: int = 2_000
@@ -137,30 +137,24 @@ class GlobalLimits:
     workspace_daily_cost_usd: Decimal | None = None
 
 
-@dataclass(frozen=True, slots=True)
-class RunnerResourceProfile:
-    name: str
-    vcpu: int
-    memory_gib: int
-    duckdb_memory_gib: int | None
-    temp_budget_gib: int
+def _positive_int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    value = int(raw)
+    if value < 1:
+        raise ValueError(f"{name} must be a positive integer, got {raw!r}")
+    return value
 
 
-QUERY_EXPORT_RUNNER_PROFILE = RunnerResourceProfile(
-    name="query_export",
-    vcpu=1,
-    memory_gib=2,
-    duckdb_memory_gib=1,
-    temp_budget_gib=1,
-)
+def global_limits_from_env() -> GlobalLimits:
+    base = GlobalLimits()
+    return replace(
+        base,
+        max_active_root_runs=_positive_int_env("MAX_ACTIVE_RUNS", base.max_active_root_runs),
+        max_queued_runs=_positive_int_env("MAX_QUEUED_RUNS", base.max_queued_runs),
+    )
 
-INGEST_BUILD_RUNNER_PROFILE = RunnerResourceProfile(
-    name="ingest_build",
-    vcpu=2,
-    memory_gib=4,
-    duckdb_memory_gib=None,
-    temp_budget_gib=2,
-)
 
 DEFAULT_DATA_LIMITS = DataLimits()
-DEFAULT_GLOBAL_LIMITS = GlobalLimits()
+DEFAULT_GLOBAL_LIMITS = global_limits_from_env()

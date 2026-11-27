@@ -29,7 +29,7 @@ from app.adapters.persistence.pg_repositories import (
 from app.adapters.query.snapshot_engine import SnapshotQueryEngine
 from app.adapters.query.sqlglot_compiler import SqlGlotQueryCompiler
 from app.application.services.ops_controls import OpsSwitches
-from app.application.services.orchestration_service import InvestigationOrchestrator
+from app.application.services.orchestration_service import PRIOR_TURNS, InvestigationOrchestrator
 from app.application.services.routing_service import routing_policy_from_saved
 from app.bootstrap.container import build_container
 from app.domain.events import EventType, RunEvent
@@ -218,7 +218,7 @@ def _execute_persisted_run(run_id: str) -> dict[str, str]:
             evidence_lookup=lambda evidence_id: evidence.get(run_id, evidence_id),
             task_history_loader=load_task_history,
             clarification_answer=orchestration_state.get("clarification_answer"),
-            prior_turns=runs.conversation_turns(workspace_id, str(run.get("conversation_id") or ""), run_id),
+            prior_turns=runs.conversation_turns(workspace_id, str(run.get("conversation_id") or ""), run_id, PRIOR_TURNS),
             initial_plan=orchestration_state.get("plan"),
             on_plan=save_plan,
             business_timezone=PgWorkspaceSettings(session_factory).get_business_timezone(workspace_id),

@@ -5,6 +5,7 @@ import time
 from typing import Any, Callable, Iterable
 
 
+from app.domain.limits import DEFAULT_DATA_LIMITS
 from app.adapters.parsers.inference import infer_table
 from app.adapters.parsers.registry import serialize_arrow_ipc_checked
 from app.application.ports.clock import Clock
@@ -54,7 +55,7 @@ class GoogleSheetsConnector:
         creds = Credentials.from_service_account_info(info, scopes=SHEETS_READONLY_SCOPE)
         return build("sheets", "v4", credentials=creds, cache_discovery=False)
 
-    def _with_quota_retry(self, fn: Callable[[], Any], max_attempts: int = 4) -> Any:
+    def _with_quota_retry(self, fn: Callable[[], Any], max_attempts: int = DEFAULT_DATA_LIMITS.connector_max_attempts) -> Any:
         for attempt in range(max_attempts):
             try:
                 return fn()
@@ -63,7 +64,7 @@ class GoogleSheetsConnector:
                 is_quota = "429" in msg or "quota" in msg or "rate limit" in msg
                 if not is_quota or attempt == max_attempts - 1:
                     raise ConnectorError(f"Google Sheets API error: {exc}", retryable=is_quota) from exc
-                delay = min(16.0, (2 ** attempt) + random.uniform(0.0, 0.5))
+                delay = min(DEFAULT_DATA_LIMITS.connector_backoff_cap_seconds, (2 ** attempt) + random.uniform(0.0, 0.5))
                 time.sleep(delay)
         raise ConnectorError("Google Sheets retry exhausted", retryable=True)
 
@@ -96,8 +97,10 @@ class GoogleSheetsConnector:
             lambda: service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
         )
         sheets = meta.get("sheets", [])
-        if len(sheets) > 20:
-            raise LimitExceededError("Spreadsheet exceeds max_workbook_sheets (20)")
+        if len(sheets) > DEFAULT_DATA_LIMITS.max_workbook_sheets:
+            raise LimitExceededError(
+                f"Spreadsheet has {len(sheets)} sheets, exceeding the limit of {DEFAULT_DATA_LIMITS.max_workbook_sheets}"
+            )
         return tuple(
             DiscoveredTable(
                 name=s["properties"]["title"],

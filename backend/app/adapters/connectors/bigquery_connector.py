@@ -4,6 +4,7 @@ from typing import Any, Callable, Iterable
 
 import pyarrow as pa
 
+from app.domain.limits import DEFAULT_DATA_LIMITS
 from app.adapters.parsers.registry import serialize_arrow_ipc_checked
 from app.application.ports.clock import Clock
 from app.application.ports.connectors import (
@@ -131,10 +132,11 @@ class BigQueryConnector:
             if not dataset_id:
                 raise ValidationError("BigQuery dataset ID is required.")
             dataset = client.get_dataset(f"{project_id}.{dataset_id}")
-            tables = list(client.list_tables(dataset, max_results=1001))
-            if len(tables) > 1000:
+            max_tables = DEFAULT_DATA_LIMITS.warehouse_max_tables
+            tables = list(client.list_tables(dataset, max_results=max_tables + 1))
+            if len(tables) > max_tables:
                 raise LimitExceededError(
-                    f"BigQuery dataset {dataset_id!r} has more than 1,000 tables."
+                    f"BigQuery dataset {dataset_id!r} has more than {max_tables:,} tables."
                 )
             discovered: list[DiscoveredTable] = []
             for table in tables:
@@ -211,7 +213,7 @@ class BigQueryConnector:
                 rows = client.list_rows(
                     table,
                     selected_fields=selected_schema,
-                    page_size=1_000,
+                    page_size=DEFAULT_DATA_LIMITS.warehouse_page_size,
                     max_results=request.limits.max_rows_per_dataset + 1,
                 )
                 arrow_schema = pa.schema(

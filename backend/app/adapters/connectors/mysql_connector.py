@@ -4,6 +4,7 @@ from typing import Any, Callable, Iterable
 
 import pyarrow as pa
 
+from app.domain.limits import DEFAULT_DATA_LIMITS
 from app.adapters.connectors.destination_policy import DestinationPolicy, validate_and_resolve_host
 from app.adapters.connectors.tls import ca_pem_from, tls_mode_for
 from app.adapters.parsers.registry import serialize_arrow_ipc_checked
@@ -90,8 +91,8 @@ class MySqlConnector:
             user=user,
             password=password,
             database=database,
-            connect_timeout=5,
-            read_timeout=30,
+            connect_timeout=DEFAULT_DATA_LIMITS.connector_connect_timeout_seconds,
+            read_timeout=DEFAULT_DATA_LIMITS.database_read_timeout_seconds,
             autocommit=False,
             **({"ssl": tls} if tls is not None else {}),
         )

@@ -7,7 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.application.runtime_settings import uses_celery
 from app.application.services.artifact_lifecycle import SWEEP_INTERVAL_SECONDS, sweep_artifacts
-from app.application.services.orchestration_service import InvestigationOrchestrator
+from app.application.services.orchestration_service import PRIOR_TURNS, InvestigationOrchestrator
 from app.bootstrap.logging_setup import run_id_var
 from app.domain.errors import (
     ClarificationRequired,
@@ -78,7 +78,7 @@ def register(ctx: ApiContext) -> None:
                 prior_tool_invocations, prior_analytical_calls = _prior_tool_usage(run_id)
                 orchestration_state = app.state.repo_runs.get_orchestration_state(run_id)
                 prior_turns = app.state.repo_runs.conversation_turns(
-                    workspace_id, str(run_rec.get("conversation_id") or ""), run_id
+                    workspace_id, str(run_rec.get("conversation_id") or ""), run_id, PRIOR_TURNS
                 )
                 answer = await asyncio.to_thread(
                     orch.execute_local,

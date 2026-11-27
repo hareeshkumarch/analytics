@@ -59,7 +59,7 @@ class TestBudgetLimitInvariants(unittest.TestCase):
         with self.assertRaises(ValueError):
             dataclasses.replace(DEEP_BUDGET_LIMITS, lifetime_specialist_instances=4)
         with self.assertRaises(ValueError):
-            RunBudgetLimits("x", 1, 1, 1, 4, 1, 4, 1, 2, 1)
+            RunBudgetLimits("x", 1, 1, 1, 4, 1, 4, 2, 1)
 
 
 class TestSupervisorCapacity(unittest.TestCase):

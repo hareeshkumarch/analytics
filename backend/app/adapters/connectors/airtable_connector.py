@@ -8,6 +8,7 @@ from urllib.parse import quote
 import httpx
 import pyarrow as pa
 
+from app.domain.limits import DEFAULT_DATA_LIMITS
 from app.adapters.parsers.registry import serialize_arrow_ipc_checked
 from app.application.ports.clock import Clock
 from app.application.ports.connectors import (
@@ -59,22 +60,24 @@ class AirtableConnector:
 
     def _get(self, url: str, token: str, params: dict[str, str] | None = None) -> dict[str, Any]:
         headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
-        timeout = httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0)
+        limits = DEFAULT_DATA_LIMITS
+        connect = float(limits.connector_connect_timeout_seconds)
+        timeout = httpx.Timeout(connect=connect, read=float(limits.connector_read_timeout_seconds), write=connect, pool=connect)
         with httpx.Client(follow_redirects=False, timeout=timeout) as client:
-            for attempt in range(4):
+            for attempt in range(limits.connector_max_attempts):
                 try:
                     response = client.get(url, params=params, headers=headers)
                 except httpx.HTTPError as exc:
                     raise ConnectorError("Could not reach Airtable API.", retryable=True) from exc
                 if response.status_code == 429 or response.status_code in (500, 502, 503, 504):
-                    if attempt == 3:
+                    if attempt == limits.connector_max_attempts - 1:
                         raise ConnectorError(
                             f"Airtable API is temporarily unavailable (HTTP {response.status_code}).",
                             retryable=True,
                         )
                     retry_after = response.headers.get("Retry-After", "")
                     delay = float(retry_after) if retry_after.isdigit() else 2**attempt
-                    time.sleep(min(30.0, delay) + random.uniform(0.0, 0.2))
+                    time.sleep(min(limits.connector_backoff_cap_seconds, delay) + random.uniform(0.0, 0.2))
                     continue
                 if response.status_code >= 400:
                     remediation = None

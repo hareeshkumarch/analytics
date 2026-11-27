@@ -69,6 +69,8 @@ services:
       ARTIFACT_ROOT: /data/artifacts
       AGENT_RUNTIME: ${AGENT_RUNTIME:-deepagents}
       RUN_EXECUTION_MODE: ${RUN_EXECUTION_MODE:-celery}
+      MAX_ACTIVE_RUNS: ${MAX_ACTIVE_RUNS:-}
+      MAX_QUEUED_RUNS: ${MAX_QUEUED_RUNS:-}
       LOG_FORMAT: ${LOG_FORMAT:-json}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       REDIS_URL: redis://redis:6379/0
