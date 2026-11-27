@@ -18,9 +18,27 @@ class TestUngroundedFigures(unittest.TestCase):
     def test_matching_formats(self) -> None:
         text = (
             f"North sold 12.5 [{EV}]. Revenue was $1,234.50 [{EV}]. Margin was 12.3% [{EV}]. "
-            f"Volume reached 1.2M [{EV}].\n1. In 2024 on 2024-01-31 there were 3 regions."
+            f"Volume reached 1.2M [{EV}].\n1. In 2024 on 2024-01-31 there were 2 regions."
         )
         self.assertEqual(ungrounded_figures(text, EVIDENCE), [])
+
+    def test_small_counts_and_year_like_figures_are_checked(self) -> None:
+        self.assertEqual(ungrounded_figures(f"There were 3 regions [{EV}].", EVIDENCE), ["3"])
+        self.assertEqual(ungrounded_figures("We had 42 orders.", EVIDENCE), ["42"])
+        self.assertEqual(ungrounded_figures("We had 2000 orders.", EVIDENCE), ["2000"])
+        self.assertEqual(ungrounded_figures(f"We had 2 regions [{EV}].", EVIDENCE), [])
+
+    def test_years_ordinals_and_structural_numbers_are_not_figures(self) -> None:
+        evidence = [{"evidence_id": EV, "rows": [["2026-10-01", 3000]]}]
+        for text in (
+            f"Sales in 2026 were ₹3,000 [{EV}].",
+            f"FY 2025-26 sales were ₹3,000 [{EV}].",
+            f"October 2026 sales were ₹3,000 [{EV}].",
+            f"In Q3 2026 the top 3 regions made ₹3,000 [{EV}].",
+            f"The 2nd step found ₹3,000 [{EV}].",
+            f"2026 revenue was ₹3,000 [{EV}].",
+        ):
+            self.assertEqual(ungrounded_figures(text, evidence), [], text)
 
     def test_indian_grouped_currency_formats(self) -> None:
         evidence = [{"evidence_id": EV, "rows": [[100000, 1234567.89]]}]

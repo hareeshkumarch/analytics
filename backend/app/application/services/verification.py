@@ -16,6 +16,23 @@ _NUMBER = re.compile(
     r"\s?(%|[KMB]\b|k\b|bn\b)?"
 )
 _SEGMENT = re.compile(r"(?<=[.!?;:])\s+|\n+")
+_MONTHS = r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+YEAR_MIN, YEAR_MAX = Decimal(1900), Decimal(2100)
+_YEAR_BEFORE = re.compile(
+    r"\b(?:in|since|during|from|to|until|till|by|of|for|year|years|fy|cy|before|after|through|between|and|early|late|mid|calendar|fiscal)\s*$",
+    re.IGNORECASE,
+)
+_MONTH_OR_QUARTER_BEFORE = re.compile(rf"\b(?:{_MONTHS}|q[1-4]|h[12])[\s,.-]*$", re.IGNORECASE)
+_MONTH_AFTER = re.compile(rf"^\s*(?:{_MONTHS})\b", re.IGNORECASE)
+_YEAR_RANGE_AFTER = re.compile(r"^\s*[-–/]\s*\d{2,4}\b")
+_YEAR_RANGE_BEFORE = re.compile(r"\b(?:19|20)\d{2}\s*[-–/]\s*$")
+_STRUCTURAL_BEFORE = re.compile(
+    r"(?:\b(?:top|bottom|first|last|step|steps|stage|phase|rank|ranked|no\.|number|version|v|page|part|tier|level|"
+    r"quarter|week|day|days|month|months)\s*#?|#)\s*$",
+    re.IGNORECASE,
+)
+_ORDINAL_AFTER = re.compile(r"^(?:st|nd|rd|th)\b", re.IGNORECASE)
+_LEADING_YEAR = re.compile(r"^(\d{4})-\d{2}")
 _SCALE = {"k": Decimal(1_000), "K": Decimal(1_000), "M": Decimal(1_000_000), "B": Decimal(1_000_000_000), "bn": Decimal(1_000_000_000)}
 
 
@@ -28,16 +45,30 @@ class _Figure:
     percent: bool
 
 
+def _plain_integer(symbol: str, suffix: str, digits: str) -> bool:
+    return not (symbol or suffix or "," in digits or "." in digits)
+
+
+def _is_year(value: Decimal, before: str, after: str) -> bool:
+    return YEAR_MIN <= value <= YEAR_MAX and bool(
+        _YEAR_BEFORE.search(before) or _MONTH_OR_QUARTER_BEFORE.search(before) or _YEAR_RANGE_AFTER.match(after) or _MONTH_AFTER.match(after)
+    )
+
+
 def _figures(segment: str) -> list[_Figure]:
     figures: list[_Figure] = []
     for match in _NUMBER.finditer(segment):
         symbol, digits, suffix = match.group(1), match.group(2), match.group(3) or ""
+        before, after = segment[: match.start()], segment[match.end() :]
+        if _ORDINAL_AFTER.match(after):
+            continue
         mantissa = Decimal(digits.replace(",", ""))
         decimals = len(digits.split(".")[1]) if "." in digits else 0
-        material = bool(symbol or suffix or "," in digits or decimals) or abs(mantissa) >= 100
-        is_year = not (symbol or suffix or decimals or "," in digits) and 1900 <= mantissa <= 2100
-        if material and not is_year:
-            figures.append(_Figure(match.group(0).strip(), mantissa, decimals, _SCALE.get(suffix, Decimal(1)), suffix == "%"))
+        if _plain_integer(symbol, suffix, digits) and (
+            _is_year(mantissa, before, after) or _STRUCTURAL_BEFORE.search(before) or _YEAR_RANGE_BEFORE.search(before)
+        ):
+            continue
+        figures.append(_Figure(match.group(0).strip(), mantissa, decimals, _SCALE.get(suffix, Decimal(1)), suffix == "%"))
     return figures
 
 
@@ -47,6 +78,9 @@ def _numbers(rows: Iterable[Iterable[Any]]) -> list[Decimal]:
         for cell in row:
             if isinstance(cell, bool) or cell is None:
                 continue
+            year = _LEADING_YEAR.match(str(cell))
+            if year:
+                found.append(Decimal(year.group(1)))
             try:
                 number = Decimal(str(cell))
             except InvalidOperation:
@@ -54,6 +88,12 @@ def _numbers(rows: Iterable[Iterable[Any]]) -> list[Decimal]:
             if number.is_finite():
                 found.append(number)
     return found
+
+
+def _evidence_values(item: dict[str, Any]) -> list[Decimal]:
+    rows = item.get("rows") or []
+    counts = {Decimal(len(rows))} | ({Decimal(int(item["row_count"]))} if isinstance(item.get("row_count"), int) else set())
+    return [*_numbers(rows), *counts]
 
 
 def _matches(figure: _Figure, value: Decimal) -> bool:
@@ -67,7 +107,7 @@ def _matches(figure: _Figure, value: Decimal) -> bool:
 
 
 def ungrounded_figures(markdown: str, evidence: list[dict[str, Any]]) -> list[str]:
-    values_by_id = {str(e.get("evidence_id")): _numbers(e.get("rows") or []) for e in evidence}
+    values_by_id = {str(e.get("evidence_id")): _evidence_values(e) for e in evidence}
     every_value = [v for values in values_by_id.values() for v in values]
     text = _LIST_MARKER.sub(" ", _DATE.sub(" ", markdown))
     missing: list[str] = []
