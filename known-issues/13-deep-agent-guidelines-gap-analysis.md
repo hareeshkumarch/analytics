@@ -67,7 +67,7 @@ Checked 2026-11-25 against `main` @ `da9b4a9`; updated 2026-11-26 @ `6033894` pl
 | 31 | Observability, SLOs, incidents | Met | `/ready`, `/metrics`, alert rules, Grafana dashboard, pause switches for runs and providers with history, `docs/runbook.md`. |
 | 32 | Evaluation and gates | Partial | `make eval` with a versioned corpus, evidence-based scoring, baseline deltas and a regression exit code; runs nightly, on demand and as a check on PRs that change prompts or orchestration (needs a provider key secret). The corpus covers one dataset. |
 | 33 | Deployment and CI | Met | CI runs lint, types, unit, Playwright, accessibility, OpenAPI contract, and applies/rolls back every migration on PostgreSQL 16 with PostgreSQL-only tests; compose verified. Readiness check used by the API container. The Security workflow audits both backend lock files and the frontend production dependencies on every push, PR and weekly, and uploads CycloneDX SBOMs. |
-| 34 | Failure-mode matrix | Partial | Every row mapped in [14-failure-matrix.md](14-failure-matrix.md): 73 covered, 17 partial, 2 open (RLS, deferred with authentication; backup reconciliation), 14 N/A. |
+| 34 | Failure-mode matrix | Partial | Every row mapped in [14-failure-matrix.md](14-failure-matrix.md): 74 covered, 17 partial, 1 open (RLS, deferred with authentication), 14 N/A. |
 | 35 | Prompt library | Met | All prompts in `app/application/prompts.py` with content-hash versions; `/api/v1/prompts`. |
 | 36 | Release checklist | — | Tracked by this file and #15. |
 

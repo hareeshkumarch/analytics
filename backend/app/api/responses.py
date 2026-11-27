@@ -178,6 +178,7 @@ class SnapshotOut(ApiResponse):
     sha256: str | None = None
     table_details: list[TableDetailOut] | None = None
     reimport: ReimportOut | None = None
+    unavailable_tables: list[str] | None = None
 
 
 class SnapshotListOut(ApiResponse):

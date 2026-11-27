@@ -129,9 +129,9 @@ Tests marked (PG) run against real PostgreSQL. They run in CI, where the backend
 | Logging/metrics outage | Partial | A failed tool-ledger write is logged and the run continues; metrics are computed from the database, so they survive a process restart (`test_ops::counts_queue_stuck_runs_and_model_call_errors`); no fail-closed audit mode |
 | Missing secret / misconfiguration | Covered | `test_persistence_guardrails::missing_database_url_fails_outside_tests`, `::invalid_master_key_fails_startup` |
 | Logs contain PII or API key | Covered | `test_secret_redaction` |
-| Backup restores stale state | Open | `make backup-dev`/`restore-dev` and runbook steps exist; no restore reconciliation test |
+| Backup restores stale state | Covered | `make restore-dev` runs `app.jobs.reconcile`: `test_restore_reconciliation::missing_files_stale_exports_and_interrupted_runs_are_repaired_once`, `::runs_are_left_to_the_api_in_inline_mode_and_restored_files_clear_the_flag` |
 | Cost/latency spike after deploy | Partial | The eval cost margin (`test_evaluation`) and the p95 latency and provider error alerts in `infra/monitoring/alerts.yml`; the alert rules have no automated test |
 
 ## Summary
 
-106 rows: Covered 73, Partial 17, Open 2 (RLS, deferred with authentication; backup reconciliation), N/A 14.
+106 rows: Covered 74, Partial 17, Open 1 (RLS, deferred with authentication), N/A 14.

@@ -147,7 +147,11 @@ export function DatasetPanel({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {approved ? (
+          {snapshot.unavailable_tables?.length ? (
+            <Badge tone="err" dot>
+              Files missing for {snapshot.unavailable_tables.join(", ")}: import a new version
+            </Badge>
+          ) : approved ? (
             <Link href={`/ask?dataset=${encodeURIComponent(snapshot.snapshot_id)}`} className={btn.secondary}>
               Ask about this data
             </Link>

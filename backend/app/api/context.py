@@ -234,6 +234,11 @@ class ApiContext:
                         app.state.snapshots[snapshot_id] = snap
                 if not snap or snap["workspace_id"] != workspace_id:
                     raise HTTPException(status_code=404, detail="Snapshot not found in this workspace")
+                if snap.get("unavailable_tables"):
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"This dataset is missing files for {', '.join(snap['unavailable_tables'])} after a restore. Re-import it on the Data page.",
+                    )
                 sem = _semantics_for(snapshot_id)
                 if sem and not sem.get("approved"):
                     raise HTTPException(
@@ -250,7 +255,7 @@ class ApiContext:
                 for d in db_snaps:
                     if d["snapshot_id"] not in existing_ids:
                         all_snaps.append(d)
-            owned = [s for s in all_snaps if s["workspace_id"] == workspace_id]
+            owned = [s for s in all_snaps if s["workspace_id"] == workspace_id and not s.get("unavailable_tables")]
             approved = [
                 s for s in owned if s.get("approved") or _semantics_for(s["snapshot_id"]).get("approved")
             ]

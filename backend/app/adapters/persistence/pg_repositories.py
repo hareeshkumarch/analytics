@@ -1610,3 +1610,51 @@ class PgTaskRepository:
                     row.budget_tool_calls = updated.budget.tool_calls
                 row.updated_at = updated.updated_at or datetime.now(timezone.utc)
                 return updated
+
+
+class PgRestoreReconciliation:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._sf = session_factory
+
+    def dataset_files(self) -> list[tuple[str, dict[str, str], tuple[str, ...]]]:
+        with self._sf() as db:
+            rows = db.execute(select(SnapshotManifestRow.snapshot_id, SnapshotManifestRow.manifest_json)).all()
+        return [
+            (
+                snapshot_id,
+                {str(t): str(a) for t, a in ((manifest or {}).get("table_artifacts") or {}).items()},
+                tuple((manifest or {}).get("unavailable_tables") or ()),
+            )
+            for snapshot_id, manifest in rows
+        ]
+
+    def set_unavailable_tables(self, snapshot_id: str, tables: list[str]) -> None:
+        with self._sf() as db:
+            with db.begin():
+                row = db.get(SnapshotManifestRow, snapshot_id, with_for_update=True)
+                if row is None:
+                    return
+                manifest = dict(row.manifest_json or {})
+                if tables:
+                    manifest["unavailable_tables"] = sorted(tables)
+                else:
+                    manifest.pop("unavailable_tables", None)
+                row.manifest_json = manifest
+
+    def export_ids(self) -> list[str]:
+        with self._sf() as db:
+            return list(db.scalars(select(ExportArtifactRow.artifact_id)).all())
+
+    def active_runs_without_job(self) -> list[str]:
+        with self._sf() as db:
+            active = db.scalars(
+                select(RunRow.run_id).where(RunRow.status.in_((RunStatus.QUEUED.value, RunStatus.RUNNING.value)))
+            ).all()
+            queued = {str((job.payload_json or {}).get("run_id")) for job in db.scalars(select(OutboxJobRow)).all()}
+        return [run_id for run_id in active if run_id not in queued]
+
+    def enqueue_runs(self, run_ids: list[str]) -> None:
+        with self._sf() as db:
+            with db.begin():
+                for run_id in run_ids:
+                    _add_run_job(db, run_id)

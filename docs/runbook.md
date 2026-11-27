@@ -96,7 +96,13 @@ Alert `LedgerlineVerifiedCompletionLow`.
 Alert `LedgerlineApiDown`, or `/api/v1/ready` returns 503.
 
 1. `docker compose ps` and `docker compose logs api --tail 200`.
-2. If the database is unavailable, check `postgres` health and disk space. Restore from `make backup-dev` output only if the data is damaged (`make restore-dev BACKUP_DIR=...`).
+2. If the database is unavailable, check `postgres` health and disk space. Restore from `make backup-dev` output only if the data is damaged (`make restore-dev BACKUP_DIR=...`). The restore then runs `python -m app.jobs.reconcile`, which prints what it repaired:
+   - datasets with missing files are marked unavailable (runs on them get a 409 until they are re-imported)
+   - exports whose file is gone are removed
+   - in Celery mode, runs that were queued or running are re-queued and resume from their finished tasks
+   - files that nothing references are deleted
+
+   Running it again is safe and should report nothing to do.
 3. If Redis is unavailable, restart `redis`. Runs created meanwhile wait in the outbox.
 4. On shutdown, the API stops its background tasks, and Compose gives it 30 seconds. In inline mode, runs that were active resume when the API starts again. In Celery mode, the worker owns runs, and they are redelivered after a restart.
 

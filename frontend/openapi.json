@@ -1606,6 +1606,20 @@
             "title": "Total Rows",
             "type": "integer"
           },
+          "unavailable_tables": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Tables"
+          },
           "version": {
             "title": "Version",
             "type": "integer"

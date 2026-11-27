@@ -103,7 +103,11 @@ export function DatasetList({
                       v{s.version} · {s.total_rows.toLocaleString()} rows · {relativeTime(s.created_at)}
                     </span>
                   </span>
-                  {s.approved ? (
+                  {s.unavailable_tables?.length ? (
+                    <Badge tone="err" dot>
+                      Files missing
+                    </Badge>
+                  ) : s.approved ? (
                     <Badge tone="ok" dot>
                       Approved
                     </Badge>

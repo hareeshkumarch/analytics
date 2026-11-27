@@ -1221,6 +1221,8 @@ export interface components {
             total_normalized_bytes?: number | null;
             /** Total Rows */
             total_rows: number;
+            /** Unavailable Tables */
+            unavailable_tables?: string[] | null;
             /** Version */
             version: number;
         } & {

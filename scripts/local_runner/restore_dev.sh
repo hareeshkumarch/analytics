@@ -15,4 +15,8 @@ if [ -f "$BACKUP_DIR/artifacts.tar.gz" ]; then
   docker compose exec -T api tar -xzf - -C /data/artifacts < "$BACKUP_DIR/artifacts.tar.gz"
 fi
 
-echo "Restored from $BACKUP_DIR. Restart the api service so it reloads state: docker compose restart api"
+# Make the restored database and files agree: flag datasets with missing files, drop exports
+# whose file is gone, re-queue interrupted runs and remove unreferenced files.
+docker compose exec -T api python -m app.jobs.reconcile
+
+echo "Restored from $BACKUP_DIR. Restart the api and worker so they reload state: docker compose restart api worker"
