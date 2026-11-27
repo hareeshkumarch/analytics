@@ -20,13 +20,8 @@ function ChartCard({ chart, small, showTitle }: { chart: AnswerChart; small: boo
   const axisColor = useThemeColor("muted", "#696972");
   const surfaceColor = useThemeColor("surface", "#FFFFFF");
   const inkColor = useThemeColor("ink", "#18181B");
-  const palette = [
-    useThemeColor("accent", "#18181B"),
-    useThemeColor("clay", "#71717A"),
-    useThemeColor("body", "#3F3F46"),
-    useThemeColor("border-strong", "#8C8C96"),
-  ];
-  const colorFor = (idx: number) => palette[idx % palette.length];
+  const palette = [useThemeColor("data-1", "#1B6E9C"), useThemeColor("data-2", "#C2652A"), useThemeColor("data-3", "#B0407A")];
+  const colorFor = (idx: number) => palette[Math.min(idx, palette.length - 1)];
   const shortLabel = (value: unknown) => {
     const text = String(value ?? "");
     return text.length > AXIS_LABEL_CHARS ? `${text.slice(0, AXIS_LABEL_CHARS - 1)}…` : text;

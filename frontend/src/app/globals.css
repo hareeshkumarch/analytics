@@ -30,6 +30,9 @@
   --err-soft: 254 242 242;
   --err-dot: 220 38 38;
   --shadow: 24 24 27;
+  --data-1: 27 110 156;
+  --data-2: 194 101 42;
+  --data-3: 176 64 122;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -60,6 +63,9 @@
     --err-soft: 69 26 26;
     --err-dot: 248 113 113;
     --shadow: 0 0 0;
+    --data-1: 61 153 204;
+    --data-2: 217 119 58;
+    --data-3: 210 96 154;
   }
 }
 
@@ -90,6 +96,9 @@
   --err-soft: 69 26 26;
   --err-dot: 248 113 113;
   --shadow: 0 0 0;
+  --data-1: 61 153 204;
+  --data-2: 217 119 58;
+  --data-3: 210 96 154;
 }
 
 :root[data-theme="light"] {

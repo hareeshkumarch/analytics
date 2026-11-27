@@ -104,7 +104,7 @@ export function DataView() {
                 {approvedCount} of {snapshots.length} approved
               </span>
               {!showSources && (
-                <button type="button" className={btn.primary} onClick={() => setAdding(true)}>
+                <button type="button" className={btn.secondary} onClick={() => setAdding(true)}>
                   Add data
                 </button>
               )}

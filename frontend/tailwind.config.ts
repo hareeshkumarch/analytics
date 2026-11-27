@@ -42,6 +42,7 @@ const config: Config = {
         ok: { DEFAULT: token("ok"), soft: token("ok-soft"), dot: token("ok-dot") },
         warn: { DEFAULT: token("warn"), soft: token("warn-soft"), dot: token("warn-dot") },
         err: { DEFAULT: token("err"), soft: token("err-soft"), dot: token("err-dot") },
+        "data-1": token("data-1"),
       },
       fontFamily: {
         sans: ["var(--font-inter)", "Inter", "ui-sans-serif", "system-ui", "-apple-system", '"Segoe UI"', "sans-serif"],

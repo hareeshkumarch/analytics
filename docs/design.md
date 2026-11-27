@@ -43,10 +43,18 @@ Design tokens & components, Ask on phone.
 | border / border-strong | `#E4E4E7` / `#8C8C96` | dividers / input outlines (3:1+) |
 | plum (accent) | `#18181B` | primary buttons, active states, focus ring |
 | plum-soft | `#EEEEF0` | focus halo, selected rows |
-| plum-muted | `#71717A` | logo marks, chart bars |
+| plum-muted | `#71717A` | logo marks |
 | ok dot | `#16A34A` | success status dots |
 | warn | `#92400E` on `#FFF7E6`, dot `#D97706` | "needs your attention" (awaiting approval, reconnecting, newer data). Amber so it never looks like "done" |
 | err | `#B91C1C` on `#FEF2F2` | errors |
+| data-1 / data-2 / data-3 | `#1B6E9C` / `#C2652A` / `#B0407A` (dark: `#3D99CC` / `#D9773A` / `#D2609A`) | chart series only, in this fixed order |
+
+Data colours keep charts apart from actions: charcoal means "you can press this or it's selected", while blue, orange and magenta mean "this is data". Every pair passes the dataviz palette checks in both themes:
+- colour-blind separation (CVD ΔE at least 15)
+- normal-vision separation at least 15
+- contrast of at least 3:1 against `surface`
+
+Charts carry at most three series (`MAX_SERIES` in `charts.py`), so the order is never cycled. Recharts reads the colours with `useThemeColor("data-1")` and so on, and CSS bars use `bg-data-1`. Never use hex values. Status colours (ok, warn, err) are never used for series.
 
 Connector logos (`components/ConnectorLogo.tsx`) are the one place fixed brand colours are allowed: each logo is a self-contained tile with its own background and foreground, so it reads the same in both themes.
 
@@ -71,6 +79,10 @@ change the variables in `globals.css`; no component needs editing.
   segmented control instead, because both options stay visible.
 - Wide content goes in `HScroll` (edge fades, no bar). Vertical scroll areas show a thin themed scrollbar.
 - Controls are at least 40px tall (44px for inputs and selects), and every icon-only button has an `aria-label`.
+- Action weights:
+  - One filled button (`btn.primary`) per card or area, for its main action.
+  - Secondary actions are outlined (`btn.secondary`), and minor ones such as Copy, Unpin or Cancel are plain text (`btn.ghost`).
+  - Destructive actions live in an `ActionMenu` ("More"), separated from the rest, and ask for confirmation.
 - Shared pieces live in `components/ui.tsx`: `btn.*`, `Notice`, `Badge`, `SearchInput`, `FilterChips`, `EmptyState`, `Details`, `Skeleton`, `Spinner`. Use them instead of new class strings.
 - Lists with more than a handful of items get a `SearchInput` and, where useful, `FilterChips` with counts.
 - Show people what they need to act on; put ids, hashes, raw traces and raw errors behind a collapsed `Details` ("Technical details").

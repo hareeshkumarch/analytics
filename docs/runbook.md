@@ -9,7 +9,7 @@ This runbook covers the Docker Compose stack in `docker-compose.yml`. Commands r
 | `GET /api/v1/health` | Liveness: the API process is up. |
 | `GET /api/v1/ready` | Readiness: the database answers and, in Celery mode, Redis answers. Returns 503 with the failing check otherwise. The `api` container's health check uses it. |
 | `GET /api/v1/metrics` | Prometheus metrics, computed from the database so they cover the API and every worker. The edge proxy hides this path: scrape `api:8000` on the internal network. |
-| Settings → Operator controls | Pause new questions or a provider; shows the change history. Also `GET/PUT /api/v1/ops/switches[/{id}]`. |
+| Settings → Incident controls (bottom of the page) and Settings → Providers | Pause new questions, or pause a provider from its row; Incident controls also show the change history. Also `GET/PUT /api/v1/ops/switches[/{id}]`. |
 | Usage page, `/runs/{id}/model-calls`, `/runs/{id}/tool-executions` | Per-run cost, tokens, prompt versions and tool calls. |
 | JSON logs (`LOG_FORMAT=json`) and OTLP traces | Every line carries `request_id` and `run_id`. |
 
@@ -114,4 +114,4 @@ Alert `LedgerlineApiDown`, or `/api/v1/ready` returns 503.
 
 ## Authentication
 
-Operator controls and metrics are not authenticated yet. Keep the stack bound to `127.0.0.1` (the Compose default) until sign-in lands.
+Incident controls, provider pauses and metrics are not authenticated yet. Keep the stack bound to `127.0.0.1` (the Compose default) until sign-in lands.

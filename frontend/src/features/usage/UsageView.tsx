@@ -159,7 +159,7 @@ function ModelUsage({
                   </td>
                   <td className="px-3.5 py-3">
                     <div className="h-2 overflow-hidden bg-panel" aria-hidden="true">
-                      <div className="h-full bg-plum" style={{ width: `${(value(m) / max) * 100}%` }} />
+                      <div className="h-full bg-data-1" style={{ width: `${(value(m) / max) * 100}%` }} />
                     </div>
                   </td>
                   <td className="px-3.5 py-3 text-right tabular-nums">
@@ -282,7 +282,7 @@ export function UsageView() {
 
   const gridColor = useThemeColor("border", "#E4E4E7");
   const axisColor = useThemeColor("muted", "#696972");
-  const barColor = useThemeColor("accent", "#18181B");
+  const barColor = useThemeColor("data-1", "#1B6E9C");
   const surfaceColor = useThemeColor("surface", "#FFFFFF");
   const inkColor = useThemeColor("ink", "#18181B");
 
@@ -517,7 +517,7 @@ export function UsageView() {
                       </span>
                     </div>
                     <div className="h-2 overflow-hidden bg-panel" aria-hidden="true">
-                      <div className="h-full bg-plum" style={{ width: `${(modeMetricVal(m) / maxModeMetric) * 100}%` }} />
+                      <div className="h-full bg-data-1" style={{ width: `${(modeMetricVal(m) / maxModeMetric) * 100}%` }} />
                     </div>
                     <div className="text-xs tabular-nums text-secondary">{m.tokens.toLocaleString()} tokens</div>
                   </li>

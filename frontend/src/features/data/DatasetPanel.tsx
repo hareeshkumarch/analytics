@@ -7,6 +7,7 @@ import { ConnectorLogo, logoIdForFamily } from "@/components/ConnectorLogo";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { HScroll } from "@/components/HScroll";
 import { RichSelect } from "@/components/RichSelect";
+import { ActionMenu } from "@/components/ActionMenu";
 import { Badge, Notice, Spinner, btn, cx } from "@/components/ui";
 import { ApiError, errorMessage } from "@/lib/api/client";
 import { useSemantics } from "@/lib/api/semantics";
@@ -165,11 +166,11 @@ export function DatasetPanel({
               Import new version
             </button>
           )}
-          {confirmDelete === "idle" && (
-            <button type="button" onClick={() => setConfirmDelete("confirm")} disabled={deleting} className={btn.ghost}>
-              Delete
-            </button>
-          )}
+          <ActionMenu
+            menuLabel="Dataset actions"
+            disabled={deleting}
+            actions={confirmDelete === "idle" ? [{ label: "Delete dataset…", onSelect: () => setConfirmDelete("confirm"), danger: true }] : []}
+          />
         </div>
       </div>
 
