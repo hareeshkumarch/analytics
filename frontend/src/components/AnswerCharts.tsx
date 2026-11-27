@@ -6,6 +6,8 @@ import type { ChartOut } from "@/lib/api/types";
 import { EvidenceContext } from "@/components/SafeMarkdown";
 import { useThemeColor } from "@/lib/theme";
 
+const AXIS_LABEL_CHARS = 24;
+
 export type AnswerChart = ChartOut;
 
 const compact = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
@@ -25,6 +27,10 @@ function ChartCard({ chart, small }: { chart: AnswerChart; small: boolean }) {
     useThemeColor("border-strong", "#8C8C96"),
   ];
   const colorFor = (idx: number) => palette[idx % palette.length];
+  const shortLabel = (value: unknown) => {
+    const text = String(value ?? "");
+    return text.length > AXIS_LABEL_CHARS ? `${text.slice(0, AXIS_LABEL_CHARS - 1)}…` : text;
+  };
   const keys = chart.y_fields.map((_, i) => `s${i}`);
   const data = chart.rows.map((row) => {
     const point: Record<string, string | number | null> = { label: String(row[0] ?? "") };
@@ -36,7 +42,7 @@ function ChartCard({ chart, small }: { chart: AnswerChart; small: boolean }) {
   const names = Object.fromEntries(keys.map((key, i) => [key, humanize(chart.y_fields[i])]));
   const axes = [
     <CartesianGrid key="grid" stroke={gridColor} vertical={false} />,
-    <XAxis key="x" dataKey="label" stroke={axisColor} fontSize={11} tickLine={false} axisLine={false} minTickGap={12} />,
+    <XAxis key="x" dataKey="label" stroke={axisColor} fontSize={11} tickLine={false} axisLine={false} minTickGap={12} tickFormatter={shortLabel} />,
     <YAxis
       key="y"
       stroke={axisColor}

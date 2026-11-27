@@ -73,6 +73,7 @@ _CONTENT_TYPE_FORMATS = {
 
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 MAX_REDIRECTS = 5
+HTML_SNIFF_BYTES = 4096
 _PROBE_BYTES = 64 * 1024
 RECENT_DOWNLOADS_MAX = 4
 RECENT_DOWNLOAD_TTL_SECONDS = 600
@@ -265,8 +266,9 @@ class RemoteFileConnector:
             raise ValidationError(f"Unsupported file format {fmt!r}")
         if not download.content:
             raise ValidationError("The downloaded file is empty.")
-        head = download.content[:512].lstrip().lower()
-        if download.content_type.split(";")[0].strip().lower() == "text/html" or head.startswith((b"<!doctype html", b"<html")):
+        head = download.content[:HTML_SNIFF_BYTES].removeprefix(b"\xef\xbb\xbf").lstrip().lower()
+        looks_like_html = head.startswith((b"<!doctype html", b"<html", b"<!--")) or b"<html" in head
+        if download.content_type.split(";")[0].strip().lower() == "text/html" or looks_like_html:
             raise ValidationError(
                 "This link opens a web page, not a file.",
                 remediation="Share the file publicly and use a direct download link (for Google Sheets: Anyone with the link can view).",

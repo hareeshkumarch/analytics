@@ -225,16 +225,30 @@ function remoteFields(o: { urlLabel: string; placeholder: string; help: string; 
   return fields;
 }
 
-/** Turn any Google Sheets link into its CSV export link, or null if it isn't one. */
-export function toSheetsCsvUrl(link: string): string | null {
-  let u: URL;
+function sheetsUrl(link: string): URL | null {
   try {
-    u = new URL(link.trim());
+    const u = new URL(link.trim());
+    return u.hostname === "docs.google.com" && u.pathname.startsWith("/spreadsheets/") ? u : null;
   } catch {
     return null;
   }
-  if (u.hostname !== "docs.google.com") return null;
-  const gid = u.searchParams.get("gid") ?? /gid=(\d+)/.exec(u.hash)?.[1] ?? null;
+}
+
+function sheetsGid(u: URL): string | null {
+  return u.searchParams.get("gid") ?? /gid=(\d+)/.exec(u.hash)?.[1] ?? null;
+}
+
+/** True when a Google Sheets link doesn't say which tab to import, so the first tab is used. */
+export function sheetsLinkLacksTab(link: string): boolean {
+  const u = sheetsUrl(link);
+  return u !== null && sheetsGid(u) === null;
+}
+
+/** Turn any Google Sheets link into its CSV export link, or null if it isn't one. */
+export function toSheetsCsvUrl(link: string): string | null {
+  const u = sheetsUrl(link);
+  if (!u) return null;
+  const gid = sheetsGid(u);
   const published = /^\/spreadsheets\/d\/e\/([A-Za-z0-9_-]+)/.exec(u.pathname);
   if (published) {
     const out = new URL(`https://docs.google.com/spreadsheets/d/e/${published[1]}/pub`);

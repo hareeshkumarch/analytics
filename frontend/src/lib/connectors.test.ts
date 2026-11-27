@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CONNECTOR_BY_ID, detectFileFormat, initialValues, isFieldVisible, toPayload, toSheetsCsvUrl } from "@/lib/connectors";
+import { CONNECTOR_BY_ID, detectFileFormat, initialValues, isFieldVisible, sheetsLinkLacksTab, toPayload, toSheetsCsvUrl } from "@/lib/connectors";
 
 describe("toSheetsCsvUrl", () => {
   it("turns sharing links into CSV export links", () => {
@@ -12,6 +12,12 @@ describe("toSheetsCsvUrl", () => {
     expect(toSheetsCsvUrl("https://docs.google.com/spreadsheets/d/e/2PACX-x/pubhtml?gid=7")).toBe(
       "https://docs.google.com/spreadsheets/d/e/2PACX-x/pub?output=csv&gid=7"
     );
+  });
+
+  it("says when a link names no tab", () => {
+    expect(sheetsLinkLacksTab("https://docs.google.com/spreadsheets/d/abc/edit")).toBe(true);
+    expect(sheetsLinkLacksTab("https://docs.google.com/spreadsheets/d/abc/edit#gid=42")).toBe(false);
+    expect(sheetsLinkLacksTab("https://example.com/file.csv")).toBe(false);
   });
 
   it("rejects other hosts and non-links", () => {

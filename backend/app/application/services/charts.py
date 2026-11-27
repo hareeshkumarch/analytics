@@ -32,7 +32,7 @@ def _number(value: Any) -> float | None:
 
 
 def _label(value: Any) -> str:
-    return "(blank)" if value is None or value == "" else str(value)[:80]
+    return "(blank)" if value is None or value == "" else str(value)
 
 
 def _is_numeric_column(rows: list[list[Any]], index: int) -> bool:

@@ -3,7 +3,7 @@
 import React, { useId, useState } from "react";
 import { RichSelect } from "@/components/RichSelect";
 import { btn, cx, inputCls } from "@/components/ui";
-import { ConnectorDef, FieldDef, FieldValue, Values, isFieldVisible, toSheetsCsvUrl } from "@/lib/connectors";
+import { ConnectorDef, FieldDef, FieldValue, Values, isFieldVisible, sheetsLinkLacksTab, toSheetsCsvUrl } from "@/lib/connectors";
 
 interface FieldProps {
   field: FieldDef;
@@ -140,6 +140,11 @@ function Field({ field, id, value, error, disabled, onChange, sheetsHint }: Fiel
         />
       )}
       {sheetsHint && <SheetsLinkHint field={field} value={text} onChange={onChange} />}
+      {field.key === "sheet_url" && sheetsLinkLacksTab(text) && (
+        <p className="text-xs text-secondary">
+          This link doesn&apos;t name a tab, so the first tab will be imported. To import another tab, open it and copy the address again.
+        </p>
+      )}
       <FieldMessages id={id} help={field.help} error={error} />
     </div>
   );

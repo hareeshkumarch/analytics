@@ -34,6 +34,29 @@ def _decode(raw_bytes: bytes, requested: str | None) -> str:
     raise ValidationError(f"Unable to decode CSV using {encodings[-1]}: {failure}") from failure
 
 
+SNIFF_LINES = 50
+SNIFF_DELIMITERS = ",\t;|"
+DEFAULT_DELIMITER = ","
+
+
+def _consistent(lines: list[str], delimiter: str) -> bool:
+    counts = {len(row) for row in csv.reader(lines, delimiter=delimiter) if row}
+    return len(counts) == 1 and counts.pop() > 1
+
+
+def _sniff_delimiter(text: str) -> str:
+    lines = [line for line in text.splitlines()[:SNIFF_LINES] if line.strip()]
+    if not lines:
+        return DEFAULT_DELIMITER
+    try:
+        guess = csv.Sniffer().sniff("\n".join(lines), delimiters=SNIFF_DELIMITERS).delimiter
+    except csv.Error:
+        guess = DEFAULT_DELIMITER
+    if _consistent(lines, guess):
+        return guess
+    return next((d for d in SNIFF_DELIMITERS if _consistent(lines, d)), guess)
+
+
 class CsvFileParser:
     format_name = "csv"
 
@@ -53,12 +76,7 @@ class CsvFileParser:
 
         delimiter = opts.get("delimiter")
         if delimiter is None:
-            sample = text[:8192]
-            try:
-                dialect = csv.Sniffer().sniff(sample, delimiters=",\t;|")
-                delimiter = dialect.delimiter
-            except csv.Error:
-                delimiter = ","
+            delimiter = _sniff_delimiter(text)
 
         reader = csv.reader(io.StringIO(text), delimiter=delimiter)
         rows = list(reader)

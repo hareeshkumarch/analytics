@@ -13,6 +13,11 @@ DAY_FIRST = "day_first"
 MONTH_FIRST = "month_first"
 DATE_ORDERS = (DAY_FIRST, MONTH_FIRST)
 MAX_DAY_OR_MONTH_AMBIGUITY = 12
+MAX_DECIMAL_SCALE = 18
+DECIMAL_SCALE_NOTE = (
+    f"Some values have more than {MAX_DECIMAL_SCALE} decimal places, more than a decimal column can hold exactly, "
+    "so this column was kept as text."
+)
 AMBIGUOUS_DATE_NOTE = (
     "Dates like 03/04/2026 could be day-first or month-first and no value settles it, so this column was kept as text. "
     "Set date_order to day_first or month_first when importing to read it as dates."
@@ -76,7 +81,7 @@ def _typed(name: str, values: list[Any], arrow_type: pa.DataType) -> tuple[pa.Ar
     return pa.array(values, type=arrow_type), ColumnSchema(name=name, arrow_type=str(arrow_type))
 
 
-def _infer_numeric(name: str, texts: list[str | None]) -> tuple[pa.Array, ColumnSchema] | None:
+def _infer_numeric(name: str, texts: list[str | None]) -> tuple[pa.Array, ColumnSchema] | str | None:
     amounts = _parse_each(_parse_amount, texts)
     if amounts is None:
         return None
@@ -89,7 +94,9 @@ def _infer_numeric(name: str, texts: list[str | None]) -> tuple[pa.Array, Column
             return _typed(name, [None if v is None else int(v) for v in values], pa.int64())
         except (pa.ArrowInvalid, OverflowError):
             pass
-    scale = min(max(max_scale, 2), 18)
+    if max_scale > MAX_DECIMAL_SCALE:
+        return DECIMAL_SCALE_NOTE
+    scale = max(max_scale, 2)
     try:
         array = pa.array(values, type=pa.decimal128(38, scale))
     except (pa.ArrowInvalid, OverflowError):
@@ -132,7 +139,8 @@ def infer_column(name: str, values: Sequence[str | None], date_order: str | None
     is_leading_zero_id = any(_LEADING_ZERO.fullmatch(t) for t in present)
     note: str | None = None
     if present and not is_leading_zero_id:
-        inferred = _infer_numeric(name, texts) or _infer_temporal(name, texts, date_order)
+        numeric = _infer_numeric(name, texts)
+        inferred = numeric if numeric is not None else _infer_temporal(name, texts, date_order)
         if isinstance(inferred, str):
             note = inferred
         elif inferred is not None:
