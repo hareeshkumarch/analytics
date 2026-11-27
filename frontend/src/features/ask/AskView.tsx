@@ -26,12 +26,12 @@ import type { RunMode } from "@/lib/types";
 import { setUrlParam } from "@/lib/url";
 import { AnswerCharts, type AnswerChart } from "@/components/AnswerCharts";
 import { AnswerVerification, type Criterion } from "@/components/AnswerVerification";
-import { ExportMenu } from "@/features/ask/ExportMenu";
+import { AnswerMenu } from "@/features/ask/AnswerMenu";
 import { SampleDataButton } from "@/components/SampleDataButton";
 import { SAMPLE_QUESTIONS, isSampleDataset } from "@/lib/sample";
 import type { CreatePinRequest, RunOut, RunPageOut, TaskRecordListOut } from "@/lib/api/types";
 import { progressSteps } from "@/lib/progress";
-import { stripEvidenceIds } from "@/lib/text";
+import { headlineFigure, stripEvidenceIds } from "@/lib/text";
 
 interface Session {
   id: string;
@@ -483,6 +483,12 @@ export function AskView() {
   const isBusy = active ? !isTerminal(active.status) : false;
   const isAwaitingInput = active?.status === "awaiting_input";
   const isWorking = isBusy && !isAwaitingInput;
+  const headline = useMemo(
+    () => (active?.status === "completed" && active.answer ? headlineFigure(active.answer) : null),
+    [active?.status, active?.answer],
+  );
+  const canCopy = active?.status === "completed" && Boolean(active.runId && active.answer);
+  const canDelete = Boolean(active?.runId) && !isBusy && Boolean(active && isTerminal(active.status));
   const toolEvents = active ? active.events.filter((e) => e.type === "tool.result") : [];
   const nonSchemaTools = toolEvents.filter((e) => e.payload.tool !== "inspect_schema");
   const finishedEvent = active ? [...active.events].reverse().find((e) => e.type === "run.finished") : undefined;
@@ -1076,18 +1082,10 @@ export function AskView() {
                   {activeDataset ? ` · ${datasetLabel(activeDataset)} v${activeDataset.version}` : ""}
                   {active.createdAt ? ` · ${relativeTime(active.createdAt)}` : ""}
                 </span>
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={statusTone(active.status)} dot pulse={isWorking}>
                     {statusLabel(active.status)}
                   </Badge>
-                  {active.status === "completed" && active.answer && (
-                    <button type="button" onClick={() => void copyAnswer()} className={btn.ghost}>
-                      {copied ? "Copied" : "Copy"}
-                    </button>
-                  )}
-                  {active.status === "completed" && active.runId && active.answer && (
-                    <ExportMenu workspaceId={activeWorkspaceId} runId={active.runId} question={active.question} />
-                  )}
                   {active.status === "completed" && active.runId && (
                     pinnedRunIds.has(active.runId) ? (
                       <Link href="/dashboard" className={btn.secondary}>
@@ -1104,20 +1102,25 @@ export function AskView() {
                       Cancel
                     </button>
                   )}
-                  {!isBusy && active.runId && isTerminal(active.status) && (
-                    confirmDeleteId === active.id ? (
-                      <>
-                        <button type="button" onClick={() => void handleDelete()} className={cx(btn.secondary, "border-err text-err hover:border-err")}>
-                          Confirm delete
-                        </button>
-                        <button type="button" onClick={() => setConfirmDeleteId(null)} className={btn.ghost}>
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <button type="button" onClick={() => void handleDelete()} className={btn.ghost}>
-                        Delete
+                  {confirmDeleteId === active.id ? (
+                    <>
+                      <button type="button" onClick={() => void handleDelete()} className={cx(btn.secondary, "border-err text-err hover:border-err")}>
+                        Confirm delete
                       </button>
+                      <button type="button" onClick={() => setConfirmDeleteId(null)} className={btn.ghost}>
+                        Keep it
+                      </button>
+                    </>
+                  ) : (
+                    (canCopy || canDelete) && (
+                      <AnswerMenu
+                        workspaceId={activeWorkspaceId}
+                        runId={canCopy ? active.runId : null}
+                        question={active.question}
+                        copied={copied}
+                        onCopy={canCopy ? () => void copyAnswer() : undefined}
+                        onDelete={canDelete ? () => void handleDelete() : undefined}
+                      />
                     )
                   )}
                 </div>
@@ -1217,10 +1220,13 @@ export function AskView() {
 
               {active.answer ? (
                 <ErrorBoundary key={active.id} title="This answer couldn't be shown">
+                  {headline && (
+                    <p className="mb-2 font-display text-[32px] font-semibold leading-tight tracking-tight text-ink tabular-nums">{headline}</p>
+                  )}
                   <EvidenceContext.Provider value={active.runId ? setOpenEvidence : null}>
                     <SafeMarkdown content={active.answer} />
+                    {active.status === "completed" && <AnswerCharts charts={active.charts} />}
                   </EvidenceContext.Provider>
-                  {active.status === "completed" && <AnswerCharts charts={active.charts} />}
                   {active.status === "completed" && <AnswerVerification outcome={active.outcome} criteria={active.criteria} />}
                 </ErrorBoundary>
               ) : (
@@ -1259,7 +1265,8 @@ export function AskView() {
                     {nonSchemaTools.map((evt) => {
                         const p = evt.payload;
                         const evId = typeof p.evidence_id === "string" ? p.evidence_id : null;
-                        const label = `${OPERATION_LABELS[String(p.operation ?? "")] ?? "Query"}${
+                        const purpose = typeof p.purpose === "string" ? p.purpose.trim().replace(/\.$/, "") : "";
+                        const label = `${purpose || (OPERATION_LABELS[String(p.operation ?? "")] ?? "Query")}${
                           p.row_count !== undefined ? ` · ${Number(p.row_count).toLocaleString()} rows` : ""
                         }`;
                         return (

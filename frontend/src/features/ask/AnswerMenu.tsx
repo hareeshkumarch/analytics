@@ -7,10 +7,14 @@ import { workspacePath } from "@/lib/workspace";
 import type { CreateExportRequest } from "@/lib/api/types";
 
 const FORMATS = [
-  { id: "pdf", label: "PDF", ext: "pdf" },
-  { id: "docx", label: "Word document", ext: "docx" },
-  { id: "html", label: "Web page (HTML)", ext: "html" },
+  { id: "pdf", label: "Export as PDF", ext: "pdf" },
+  { id: "docx", label: "Export as Word document", ext: "docx" },
+  { id: "html", label: "Export as web page (HTML)", ext: "html" },
 ] as const;
+
+const MENU_WIDTH_PX = 220;
+const ITEM_CLS =
+  "block w-full px-3.5 py-2.5 text-left text-[13px] text-body hover:bg-sidebar hover:text-ink focus:bg-sidebar focus:text-ink focus:outline-none";
 
 type Format = (typeof FORMATS)[number];
 
@@ -19,7 +23,21 @@ function fileName(question: string, ext: string): string {
   return `${slug || "answer"}.${ext}`;
 }
 
-export function ExportMenu({ workspaceId, runId, question }: { workspaceId: string; runId: string; question: string }) {
+export function AnswerMenu({
+  workspaceId,
+  runId,
+  question,
+  copied,
+  onCopy,
+  onDelete,
+}: {
+  workspaceId: string;
+  runId: string | null;
+  question: string;
+  copied: boolean;
+  onCopy?: () => void;
+  onDelete?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [alignRight, setAlignRight] = useState(true);
   const [busy, setBusy] = useState<Format["id"] | null>(null);
@@ -30,7 +48,7 @@ export function ExportMenu({ workspaceId, runId, question }: { workspaceId: stri
   useLayoutEffect(() => {
     if ((!open && !error) || !trigger.current) return;
     const rect = trigger.current.getBoundingClientRect();
-    setAlignRight(rect.right >= 220 && rect.left + 220 > window.innerWidth - 16);
+    setAlignRight(rect.right >= MENU_WIDTH_PX && rect.left + MENU_WIDTH_PX > window.innerWidth - 16);
   }, [open, error]);
 
   useEffect(() => {
@@ -55,6 +73,7 @@ export function ExportMenu({ workspaceId, runId, question }: { workspaceId: stri
   useEffect(() => setError(null), [runId]);
 
   async function download(format: Format) {
+    if (!runId) return;
     setOpen(false);
     setBusy(format.id);
     setError(null);
@@ -101,31 +120,59 @@ export function ExportMenu({ workspaceId, runId, question }: { workspaceId: stri
           setError(null);
           setOpen((v) => !v);
         }}
+        aria-label="More actions"
         className={btn.ghost}
       >
-        {busy ? "Exporting…" : "Export"}
+        {busy ? "Exporting…" : copied ? "Copied" : "More"}
+        <svg aria-hidden="true" viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6">
+          <path d="M4 6l4 4 4-4" />
+        </svg>
       </button>
       {open && (
         <div
           role="menu"
           tabIndex={-1}
-          aria-label="Export answer"
+          aria-label="Answer actions"
           onKeyDown={onMenuKey}
-          className={`absolute top-full z-30 mt-1 min-w-[200px] border border-border-strong bg-surface py-1 shadow-pop ${
+          className={`absolute top-full z-30 mt-1 min-w-[220px] border border-border-strong bg-surface py-1 shadow-pop ${
             alignRight ? "right-0" : "left-0"
           }`}
         >
-          {FORMATS.map((format) => (
+          {onCopy && (
             <button
-              key={format.id}
               type="button"
               role="menuitem"
-              onClick={() => void download(format)}
-              className="block w-full px-3.5 py-2 text-left text-[13px] text-body hover:bg-sidebar hover:text-ink focus:bg-sidebar focus:text-ink focus:outline-none"
+              onClick={() => {
+                setOpen(false);
+                onCopy();
+              }}
+              className={ITEM_CLS}
             >
-              {format.label}
+              Copy answer
             </button>
-          ))}
+          )}
+          {runId &&
+            FORMATS.map((format) => (
+              <button key={format.id} type="button" role="menuitem" onClick={() => void download(format)} className={ITEM_CLS}>
+                {format.label}
+              </button>
+            ))}
+          {onDelete && (
+            <>
+              <div role="separator" className="my-1 border-t border-border" />
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  onDelete();
+                }}
+                className={`${ITEM_CLS} text-err hover:text-err focus:text-err`}
+              >
+                Delete answer…
+              </button>
+            </>
+          )}
         </div>
       )}
       {error && (

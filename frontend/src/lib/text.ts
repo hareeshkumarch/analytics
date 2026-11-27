@@ -2,6 +2,23 @@ const EVIDENCE_ID_PATTERN = "ev_[0-9a-f]{12}";
 const EVIDENCE_GROUP_STRIP_RE = new RegExp(`\\s*\\[${EVIDENCE_ID_PATTERN}(?:\\s*,\\s*${EVIDENCE_ID_PATTERN})*\\]`, "g");
 const EVIDENCE_ID_EXACT_RE = new RegExp(`^${EVIDENCE_ID_PATTERN}$`);
 
+const EVIDENCE_ID_ANY_RE = new RegExp(EVIDENCE_ID_PATTERN, "g");
+const BOLD_FIGURE_RE = /\*\*([^*\n]{1,40}?\d[^*\n]{0,40}?)\*\*/;
+const FIGURE_RE = /[-−]?[₹$€£]?\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:%|[KMB]\b|lakh|crore|million|billion))?/;
+
+export function headlineFigure(markdown: string): string | null {
+  const bold = BOLD_FIGURE_RE.exec(markdown)?.[1];
+  return bold ? (FIGURE_RE.exec(bold)?.[0] ?? bold).trim() : null;
+}
+
+export function citationNumbers(markdown: string): Map<string, number> {
+  const numbers = new Map<string, number>();
+  for (const match of markdown.matchAll(EVIDENCE_ID_ANY_RE)) {
+    if (!numbers.has(match[0])) numbers.set(match[0], numbers.size + 1);
+  }
+  return numbers;
+}
+
 export function stripEvidenceIds(markdown: string): string {
   return markdown.replace(EVIDENCE_GROUP_STRIP_RE, "");
 }

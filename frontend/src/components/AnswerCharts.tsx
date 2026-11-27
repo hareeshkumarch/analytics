@@ -124,21 +124,20 @@ function ChartCard({ chart, small }: { chart: AnswerChart; small: boolean }) {
           </div>
         </details>
       )}
-      <p className="mt-1.5 text-[11px] text-secondary">
-        Evidence{" "}
-        {openEvidence ? (
-          <button
-            type="button"
-            onClick={() => openEvidence(chart.evidence_id)}
-            className="font-mono underline decoration-border-strong underline-offset-4 hover:text-ink"
-          >
-            {chart.evidence_id}
-          </button>
-        ) : (
-          <code className="font-mono">{chart.evidence_id}</code>
-        )}
-        {chart.truncated && " · partial data: only the first rows are shown"}
-      </p>
+      {(openEvidence || chart.truncated) && (
+        <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[11px] text-secondary">
+          {openEvidence && (
+            <button
+              type="button"
+              onClick={() => openEvidence(chart.evidence_id)}
+              className="underline decoration-border-strong underline-offset-4 hover:text-ink"
+            >
+              View source query
+            </button>
+          )}
+          {chart.truncated && <span>Partial data: only the first rows are shown</span>}
+        </p>
+      )}
     </figure>
   );
 }

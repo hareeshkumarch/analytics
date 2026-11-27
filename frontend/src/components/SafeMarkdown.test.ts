@@ -23,8 +23,9 @@ describe("SafeMarkdown", () => {
     expect(html).toContain("<strong");
     expect(html).toContain("<em");
     expect(html).toContain('href="https://example.com/docs"');
-    expect(html).toContain(">ev_0123456789ab<");
-    expect(html).toContain(">ev_ba9876543210<");
+    expect(html).toContain('aria-label="Source 1: show the query and rows behind this figure"');
+    expect(html).toContain('aria-label="Source 2: show the query and rows behind this figure"');
+    expect(html).not.toContain("ev_0123456789ab");
     expect(html).toContain("Unsafe [bad](javascript:alert(1)).");
     expect(html).not.toContain('href="javascript:');
   });

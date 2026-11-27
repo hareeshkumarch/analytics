@@ -54,15 +54,16 @@ test("a finished answer shows its chart, data table and export menu", async ({ p
   await chart.getByText("Show data").click();
   await expect(chart.getByRole("cell", { name: "north" })).toBeVisible();
 
-  await answer.getByRole("button", { name: "Export" }).click();
-  const menu = page.getByRole("menu", { name: "Export answer" });
-  await expect(menu.getByRole("menuitem")).toHaveCount(3);
-  await expect(menu.getByRole("menuitem", { name: "PDF" })).toBeFocused();
+  await answer.getByRole("button", { name: "More actions" }).click();
+  const menu = page.getByRole("menu", { name: "Answer actions" });
+  await expect(menu.getByRole("menuitem", { name: "Copy answer" })).toBeFocused();
+  await expect(menu.getByRole("menuitem", { name: "Export as PDF" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Delete answer…" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
-  await answer.getByRole("button", { name: "Export" }).click();
+  await answer.getByRole("button", { name: "More actions" }).click();
   const download = page.waitForEvent("download");
-  await page.getByRole("menuitem", { name: "PDF" }).click();
+  await page.getByRole("menuitem", { name: "Export as PDF" }).click();
   expect((await download).suggestedFilename()).toBe("sales-by-region.pdf");
   expect(exports).toEqual(["pdf"]);
 });

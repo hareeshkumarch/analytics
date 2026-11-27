@@ -641,7 +641,7 @@ class AnalyticsToolbox:
                 )
             ),
             is_error=False,
-            summary={"tool": CALCULATE_TOOL.name, "ok": True, "operation": operation, "evidence_id": evidence_id},
+            summary={"tool": CALCULATE_TOOL.name, "ok": True, "operation": operation, "purpose": evidence["purpose"], "evidence_id": evidence_id},
             evidence=evidence,
         )
 
@@ -750,6 +750,7 @@ class AnalyticsToolbox:
                 "status": status,
                 "cache_hit": result.cache_hit,
                 "operation": ir.operation,
+                "purpose": evidence["purpose"],
                 "row_count": result.row_count,
                 "evidence_id": evidence_id,
                 "execution_ms": result.execution_ms,
