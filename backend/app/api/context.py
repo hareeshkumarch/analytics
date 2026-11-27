@@ -272,7 +272,7 @@ class ApiContext:
             except SQLAlchemyError as exc:
                 logger.exception("Could not load routing policy for workspace %s", workspace_id)
                 raise _db_unavailable("load the routing policy and cost limit") from exc
-            policy = routing_policy_from_saved(saved, app.state.container.default_routing_policy)
+            policy = routing_policy_from_saved(saved, app.state.container.default_routing_policy, workspace_id)
             app.state.routing_policies[workspace_id] = policy
             return policy
 

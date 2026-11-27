@@ -110,7 +110,6 @@ def create_app(
     app.state.active_run_semaphore = asyncio.Semaphore(DEFAULT_GLOBAL_LIMITS.max_active_root_runs)
     app.state.snapshots = {}
     app.state.semantics = {}
-    app.state.encrypted_keys = {}
     app.state.undecryptable_keys = set()
     app.state.routing_policies = {}
 
@@ -131,8 +130,7 @@ def create_app(
                     pid = ProviderId(pid_str)
                     try:
                         plain = cipher.decrypt(cred["encrypted_payload"])
-                        c.routing_service._api_keys[pid] = plain
-                        app.state.encrypted_keys[f"{cred['workspace_id']}:{pid_str}"] = cred["encrypted_payload"]
+                        c.routing_service.set_workspace_key(str(cred["workspace_id"]), pid, plain)
                     except Exception as exc:
                         app.state.undecryptable_keys.add(f"{cred['workspace_id']}:{pid_str}")
                         logger.warning("Could not decrypt key for %s: %s", pid_str, exc)

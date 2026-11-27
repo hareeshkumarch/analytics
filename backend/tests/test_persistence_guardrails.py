@@ -64,8 +64,7 @@ class TestDatabaseErrorsAreReported(unittest.TestCase):
                 json={"provider_id": "openai", "api_key": "sk-test-never-stored"},
             )
         self._assert_unavailable(response)
-        self.assertNotEqual(self.container.routing_service._api_keys.get(ProviderId.OPENAI), "sk-test-never-stored")
-        self.assertNotIn("ws1:openai", self.app.state.encrypted_keys)
+        self.assertNotEqual(self.container.routing_service.api_key_for(ProviderId.OPENAI, "ws1"), "sk-test-never-stored")
 
     def test_failed_run_create_is_not_reported_as_queued(self) -> None:
         with patch.object(self.app.state.repo_runs, "create_run", _db_down):

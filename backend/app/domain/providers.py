@@ -125,6 +125,7 @@ class RoutingPolicy:
     allowed_providers: tuple[ProviderId, ...] = ()
     hard_cost_ceiling_usd: Decimal | None = None
     updated_at: datetime | None = None
+    workspace_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)

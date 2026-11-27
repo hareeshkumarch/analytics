@@ -60,9 +60,9 @@ Tests marked (PG) run against real PostgreSQL. They run in CI, where the backend
 | Transaction held during model call | Partial | Not done by design (short transactions per write); no automated idle-transaction check |
 | Lost update from concurrent workers | Covered | `test_run_fencing::only_the_latest_claim_can_write`, `test_semantic_approval::stale_approval_is_refused` |
 | Worker lease expires | Covered | `test_run_fencing::a_redelivered_run_is_finished_only_by_the_newest_worker` |
-| Connection reused with tenant setting | N/A | No per-connection tenant settings; tenant isolation: #21 |
-| RLS bypass | Open | Deferred with authentication: #21 |
-| Cross-tenant join / cache / FK | Partial | `test_workspace_scoping`, `test_uploads::uploads_are_scoped_to_their_workspace`; full sweep: #21 |
+| Connection reused with tenant setting | N/A | No per-connection tenant settings; RLS is deferred with authentication |
+| RLS bypass | Open | Deferred with authentication |
+| Cross-tenant join / cache / FK | Covered | `test_workspace_scoping::path_ids_from_another_workspace_are_not_found` (every object route in the OpenAPI schema), `::ids_in_request_bodies_from_another_workspace_are_not_found`, `::a_key_saved_in_one_workspace_is_not_used_by_another`, `test_uploads::uploads_are_scoped_to_their_workspace`; caches are keyed by snapshot, which belongs to one workspace |
 | Lagging read replica | N/A | Single primary |
 | Two queries see different snapshots | Covered | A run reads one snapshot: `test_snapshot_binding` |
 | N+1 / repeated schema query | Covered | Schema comes from snapshot metadata, not the database; `test_query_result_cache::a_repeated_question_is_served_from_cache_and_counted` |
@@ -134,4 +134,4 @@ Tests marked (PG) run against real PostgreSQL. They run in CI, where the backend
 
 ## Summary
 
-106 rows: Covered 72, Partial 18, Open 2 (RLS with #21; backup reconciliation), N/A 14.
+106 rows: Covered 73, Partial 17, Open 2 (RLS, deferred with authentication; backup reconciliation), N/A 14.

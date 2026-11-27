@@ -28,7 +28,7 @@ Checked 2026-11-25 against `main` @ `da9b4a9`; updated 2026-11-26 @ `6033894` pl
 
 | § | Topic | Status | Evidence / issue |
 |---|---|---|---|
-| 17.1 INV-01 | Scope from trusted context | Gap (deferred) | No authentication yet; some endpoints skip workspace checks: #21 |
+| 17.1 INV-01 | Scope from trusted context | Partial | Every object route checks that the object belongs to the workspace in the URL (table-driven test over the OpenAPI paths), and saved provider keys are per workspace. The workspace itself still comes from the URL until authentication lands (deferred). |
 | 17.1 INV-02/03 | Tool grants, versioned args, deadlines | Met | Fixed tool set per agent; each tool declares version, effect, timeout and result bounds, which are enforced. |
 | 17.1 INV-04 | Subagents cannot widen permissions/budget | Met | Shared run budget and restricted harness for every specialist. |
 | 17.1 INV-05/06 | Approvals; no blind retry of writes | N/A | No write tools. |
@@ -47,7 +47,7 @@ Checked 2026-11-25 against `main` @ `da9b4a9`; updated 2026-11-26 @ `6033894` pl
 | 20 | MCP, webhooks | N/A | Not used. API clients: timeouts, SSRF policy, TLS with optional CA (done). |
 | 21.1–21.2 | Control-plane schema, short transactions, outbox, fencing | Partial | Unique constraints, atomic version/quota updates, lock/statement timeouts, no DB transaction held across model calls, outbox, fencing, durable idempotency keys. Task rows: #32 |
 | 21.3 | Pools and limits | Partial | SQLAlchemy pools, `lock_timeout` 5 s, `statement_timeout` 30 s. Pool-exhaustion tests: #28 |
-| 21.4 | Tenant isolation / RLS | Gap (deferred) | #21 and the authentication work. |
+| 21.4 | Tenant isolation / RLS | Gap (deferred) | Application-level scoping is done (#21); RLS waits on authentication. |
 | 22.1–22.4 | Progressive schema discovery, typed intent, SQL gates, performance | Met | Staged `inspect_schema`, typed IR only, no free SQL, DuckDB external access off. |
 | 22.5 | Analytical correctness traps | Met | Decimals, half-open compare periods in the workspace business time zone, truncation flags, reconciliation aggregates before joining, metric lineage on evidence, figures checked against cited evidence. |
 | 22.6 | Typed writes only | N/A | No write tools. |
@@ -67,13 +67,13 @@ Checked 2026-11-25 against `main` @ `da9b4a9`; updated 2026-11-26 @ `6033894` pl
 | 31 | Observability, SLOs, incidents | Met | `/ready`, `/metrics`, alert rules, Grafana dashboard, pause switches for runs and providers with history, `docs/runbook.md`. |
 | 32 | Evaluation and gates | Partial | `make eval` with a versioned corpus, evidence-based scoring, baseline deltas and a regression exit code; nightly and on-demand workflow. Not a per-PR gate, and the corpus covers one dataset. |
 | 33 | Deployment and CI | Partial | CI runs lint, types, unit, Playwright, accessibility, OpenAPI contract, and applies/rolls back every migration on PostgreSQL 16 with PostgreSQL-only tests; compose verified. Readiness check used by the API container. Security scans/SBOM not yet. |
-| 34 | Failure-mode matrix | Partial | Every row mapped in [14-failure-matrix.md](14-failure-matrix.md): 72 covered, 18 partial, 2 open (RLS with #21; backup reconciliation), 14 N/A. |
+| 34 | Failure-mode matrix | Partial | Every row mapped in [14-failure-matrix.md](14-failure-matrix.md): 73 covered, 17 partial, 2 open (RLS, deferred with authentication; backup reconciliation), 14 N/A. |
 | 35 | Prompt library | Met | All prompts in `app/application/prompts.py` with content-hash versions; `/api/v1/prompts`. |
 | 36 | Release checklist | — | Tracked by this file and #15. |
 
 ## Priority order
 
 1. **P0** #16 outbox for Celery runs (done).
-2. **P1** #17 fencing (done), #18 tool envelope and error codes (done), #19 tool ledger (done), #20 criteria-based completion (done), #21 workspace scoping, #22 analytical correctness (done), #28 failure-mode tests (done), #29 security tests (done).
+2. **P1** #17 fencing (done), #18 tool envelope and error codes (done), #19 tool ledger (done), #20 criteria-based completion (done), #21 workspace scoping (done), #22 analytical correctness (done), #28 failure-mode tests (done), #29 security tests (done).
 3. **P2** #23 query cache, #24 execution-path router, #25 prompt versioning, #26 budget profiles, #31 artifact lifecycle (all done).
 4. **P3** #27 evaluation harness, #30 operations, #32 durable task records and incremental replanning (all done).

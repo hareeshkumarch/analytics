@@ -61,7 +61,7 @@ def dispose_worker_session_factory() -> None:
 
 
 def _policy_for_run(repo: PgRoutingRepository, container: Any, workspace_id: str) -> RoutingPolicy:
-    return routing_policy_from_saved(repo.get_policy(workspace_id), container.default_routing_policy)
+    return routing_policy_from_saved(repo.get_policy(workspace_id), container.default_routing_policy, workspace_id)
 
 
 def _load_saved_credentials(container: Any, repo: PgCredentialRepository, workspace_id: str) -> None:
@@ -76,8 +76,8 @@ def _load_saved_credentials(container: Any, repo: PgCredentialRepository, worksp
         if provider not in ProviderId._value2member_map_:
             continue
         try:
-            container.routing_service._api_keys[ProviderId(provider)] = cipher.decrypt(
-                credential["encrypted_payload"]
+            container.routing_service.set_workspace_key(
+                workspace_id, ProviderId(provider), cipher.decrypt(credential["encrypted_payload"])
             )
         except Exception:
             logger.exception("Could not decrypt a saved provider credential in worker")

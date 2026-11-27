@@ -1,3 +1,4 @@
+from dataclasses import replace
 from decimal import Decimal
 import json
 import threading
@@ -38,9 +39,9 @@ def _drain(stream: Generator[str, None, ModelResponse], on_piece: Callable[[str]
         on_piece(piece)
 
 
-def routing_policy_from_saved(saved: dict[str, Any] | None, default: RoutingPolicy) -> RoutingPolicy:
+def routing_policy_from_saved(saved: dict[str, Any] | None, default: RoutingPolicy, workspace_id: str = "") -> RoutingPolicy:
     if not saved:
-        return default
+        return default if default.workspace_id == workspace_id else replace(default, workspace_id=workspace_id)
     raw_routes = saved.get("role_routes") or {}
     routes = dict(default.role_routes)
     if isinstance(raw_routes, dict):
@@ -65,6 +66,7 @@ def routing_policy_from_saved(saved: dict[str, Any] | None, default: RoutingPoli
         role_routes=routes,
         allowed_providers=providers,
         hard_cost_ceiling_usd=Decimal(str(ceiling)) if ceiling is not None else None,
+        workspace_id=workspace_id,
     )
 
 
@@ -213,11 +215,18 @@ class RoutingService:
         self._api_keys = api_keys
         self._semaphores = semaphores or CredentialSemaphorePool()
         self._latency_ms: dict[str, float] = {}
+        self._workspace_keys: dict[tuple[str, ProviderId], str] = {}
         self._paused_providers: Callable[[], frozenset[ProviderId]] = frozenset
 
     def record_latency(self, model_id: str, latency_ms: int) -> None:
         previous = self._latency_ms.get(model_id)
         self._latency_ms[model_id] = latency_ms if previous is None else previous * (1 - LATENCY_EWMA_WEIGHT) + latency_ms * LATENCY_EWMA_WEIGHT
+
+    def set_workspace_key(self, workspace_id: str, provider: ProviderId, api_key: str) -> None:
+        self._workspace_keys[(workspace_id, provider)] = api_key
+
+    def api_key_for(self, provider: ProviderId, workspace_id: str) -> str:
+        return self._workspace_keys.get((workspace_id, provider)) or self._api_keys.get(provider, "")
 
     def set_paused_providers(self, source: Callable[[], frozenset[ProviderId]]) -> None:
         self._paused_providers = source
@@ -248,7 +257,7 @@ class RoutingService:
                 continue
             if model.provider_id not in policy.allowed_providers:
                 continue
-            if not self._api_keys.get(model.provider_id):
+            if not self.api_key_for(model.provider_id, policy.workspace_id):
                 continue
             if role not in model.roles:
                 continue
@@ -377,7 +386,7 @@ class RoutingService:
                     raise
 
                 gateway = self._providers.get(model.provider_id)
-                api_key = self._api_keys[model.provider_id]
+                api_key = self.api_key_for(model.provider_id, policy.workspace_id)
 
                 if partial[0] and on_reset is not None:
                     on_reset()

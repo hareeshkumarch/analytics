@@ -34,7 +34,7 @@ class TestPersistence(unittest.TestCase):
             )
             self.assertEqual(r_save.status_code, 200)
             self.assertEqual(r_save.json()["status"], "configured")
-            self.assertEqual(container1.routing_service._api_keys[ProviderId.OPENAI], "sk-test-secret-key-12345")
+            self.assertEqual(container1.routing_service.api_key_for(ProviderId.OPENAI, "ws_persist"), "sk-test-secret-key-12345")
 
             # Check provider list shows configured
             r_prov1 = client1.get("/api/v1/workspaces/ws_persist/providers")
@@ -50,7 +50,7 @@ class TestPersistence(unittest.TestCase):
             client2 = TestClient(app2)
 
             # Verification: On startup, key was automatically decrypted and loaded into container2
-            self.assertEqual(container2.routing_service._api_keys[ProviderId.OPENAI], "sk-test-secret-key-12345")
+            self.assertEqual(container2.routing_service.api_key_for(ProviderId.OPENAI, "ws_persist"), "sk-test-secret-key-12345")
             r_prov2 = client2.get("/api/v1/workspaces/ws_persist/providers")
             openai_p2 = next(p for p in r_prov2.json()["providers"] if p["provider_id"] == "openai")
             self.assertTrue(openai_p2["configured"])

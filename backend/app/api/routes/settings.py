@@ -43,7 +43,7 @@ def register(ctx: ApiContext) -> APIRouter:
             logger.exception("Failed to load provider keys from DB")
             raise _db_unavailable("load saved provider keys") from exc
         def key_status(provider: ProviderId) -> str:
-            if c.routing_service._api_keys.get(provider) or f"{workspace_id}:{provider.value}" in app.state.encrypted_keys:
+            if c.routing_service.api_key_for(provider, workspace_id):
                 return "ready"
             if f"{workspace_id}:{provider.value}" in app.state.undecryptable_keys:
                 return "needs_key"
@@ -84,7 +84,7 @@ def register(ctx: ApiContext) -> APIRouter:
         probed = app.state.provider_probes
         if time.monotonic() - probed.get((workspace_id, pid), -PROVIDER_PROBE_COOLDOWN_SECONDS) < PROVIDER_PROBE_COOLDOWN_SECONDS:
             raise HTTPException(status_code=429, detail="This provider was tested a moment ago. Try again in a few seconds.")
-        api_key = c.routing_service._api_keys.get(pid, "")
+        api_key = c.routing_service.api_key_for(pid, workspace_id)
         if not api_key:
             return {
                 "provider_id": pid.value,
@@ -189,6 +189,7 @@ def register(ctx: ApiContext) -> APIRouter:
             role_routes=role_routes,
             allowed_providers=current.allowed_providers,
             hard_cost_ceiling_usd=hard_cost_ceiling,
+            workspace_id=workspace_id,
         )
         app.state.routing_policies[workspace_id] = new_policy
         return {
@@ -213,10 +214,9 @@ def register(ctx: ApiContext) -> APIRouter:
         except SQLAlchemyError as exc:
             logger.exception("Failed to persist provider key to DB")
             raise _db_unavailable("save the provider key") from exc
-        app.state.encrypted_keys[f"{workspace_id}:{payload.provider_id.value}"] = encrypted
         app.state.undecryptable_keys.discard(f"{workspace_id}:{payload.provider_id.value}")
         c: AppContainer = app.state.container
-        c.routing_service._api_keys[payload.provider_id] = payload.api_key
+        c.routing_service.set_workspace_key(workspace_id, payload.provider_id, payload.api_key)
         return {"provider_id": payload.provider_id.value, "status": "configured"}
 
     @router.get("/api/v1/workspaces/{workspace_id}/settings", response_model=WorkspaceSettingsOut)
