@@ -5,7 +5,7 @@ import { ConnectorLogo, logoIdForFamily } from "@/components/ConnectorLogo";
 import { Badge, EmptyState, FilterChips, Notice, SearchInput, Skeleton, btn, cx } from "@/components/ui";
 import { errorMessage } from "@/lib/api/client";
 import { familyLabel } from "@/lib/connectors";
-import { SnapshotSummary, datasetLabel, relativeTime } from "@/lib/workspace";
+import { SnapshotSummary, datasetLabel, datasetTables, relativeTime } from "@/lib/workspace";
 
 type StatusFilter = "all" | "draft" | "approved";
 
@@ -100,7 +100,8 @@ export function DatasetList({
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13.5px] font-medium text-ink">{datasetLabel(s)}</span>
                     <span className="block truncate text-xs text-secondary">
-                      v{s.version} · {s.total_rows.toLocaleString()} rows · {relativeTime(s.created_at)}
+                      {s.display_name ? `${datasetTables(s)} · ` : ""}v{s.version} · {s.total_rows.toLocaleString()} rows ·{" "}
+                      {relativeTime(s.created_at)}
                     </span>
                   </span>
                   {s.unavailable_tables?.length ? (

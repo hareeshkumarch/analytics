@@ -28,7 +28,7 @@ from app.domain.limits import (
 )
 from app.domain.models import ConnectorFamily, MetricDefinition
 
-from app.api.support import _materialized_connector_config, _sample_files, _redacted_source_config, _reimport_state, _call_connector
+from app.api.support import _display_name, _materialized_connector_config, _sample_files, _redacted_source_config, _reimport_state, _call_connector
 from app.api.context import ApiContext
 
 logger = logging.getLogger(__name__)
@@ -190,6 +190,7 @@ def register(ctx: ApiContext) -> APIRouter:
                 "sha256": content_hash.hexdigest(),
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "source_family": payload.family.value,
+                "display_name": _display_name(payload),
                 "schema_fingerprint": manifest.schema_fingerprint,
                 "artifact_id": manifest.artifact_id,
                 "table_artifacts": {

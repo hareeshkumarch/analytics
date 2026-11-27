@@ -95,6 +95,14 @@ def _materialized_connector_config(
 SAMPLE_DATASETS = {"inr_acceptance": "Sample shop payments (INR)", "saas_subscriptions": "Sample SaaS subscriptions (USD)"}
 
 
+def _display_name(payload: ConnectorExtractRequest) -> str | None:
+    sample = payload.config.get("sample")
+    if sample is not None:
+        return SAMPLE_DATASETS.get(str(sample))
+    name = " ".join((payload.display_name or "").split())
+    return name or None
+
+
 def _sample_dir(name: str) -> Path:
     root = os.getenv("SAMPLE_DATA_DIR") or str(Path(__file__).resolve().parents[3] / "fixtures")
     return Path(root) / name

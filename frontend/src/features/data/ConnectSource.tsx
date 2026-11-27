@@ -15,6 +15,7 @@ import {
   isFieldVisible,
   missingRequired,
   needsProbe,
+  sourceDisplayName,
   toPayload,
 } from "@/lib/connectors";
 import { datasetLabel, useHealth } from "@/lib/workspace";
@@ -25,6 +26,8 @@ import { SourceForm } from "@/features/data/SourceForm";
 import { StepProgress } from "@/features/data/StepProgress";
 import { TableSelector, tableMeta } from "@/features/data/TableSelector";
 import { FlowError, FlowPhase, useSourceFlow } from "@/features/data/useSourceFlow";
+
+const PASTED_DISPLAY_NAME = "Pasted data";
 
 const STEP_BY_PHASE: Record<FlowPhase, string> = {
   details: "details",
@@ -187,6 +190,7 @@ function SourceSetup({
     void flow.importTables(single ? tableName.trim() : undefined, {
       source_id: reimport?.sourceId,
       form: { connector_id: def.id, values: isFile ? {} : formValues(def, values) },
+      display_name: isFile ? (file.draft.file?.name ?? PASTED_DISPLAY_NAME) : sourceDisplayName(def, values),
     });
   }
 

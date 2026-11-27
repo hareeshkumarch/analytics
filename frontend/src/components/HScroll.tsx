@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export function HScroll({
   children,
@@ -16,15 +16,19 @@ export function HScroll({
   const ref = useRef<HTMLDivElement>(null);
   const [edges, setEdges] = useState({ left: false, right: false });
 
+  const update = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const left = el.scrollLeft > 2;
+    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+    setEdges((prev) => (prev.left === left && prev.right === right ? prev : { left, right }));
+  }, []);
+
+  useLayoutEffect(update);
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const update = () =>
-      setEdges({
-        left: el.scrollLeft > 2,
-        right: el.scrollLeft + el.clientWidth < el.scrollWidth - 2,
-      });
-    update();
     el.addEventListener("scroll", update, { passive: true });
     const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
     ro?.observe(el);
@@ -33,7 +37,7 @@ export function HScroll({
       el.removeEventListener("scroll", update);
       ro?.disconnect();
     };
-  }, []);
+  }, [update]);
 
   const scrollable = edges.left || edges.right;
 

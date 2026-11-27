@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isSampleDataset } from "@/lib/sample";
-import { providerLabel, sortSnapshotsNewestFirst, type SnapshotSummary } from "@/lib/workspace";
+import { datasetLabel, datasetTables, providerLabel, sortSnapshotsNewestFirst, type SnapshotSummary } from "@/lib/workspace";
 
 const snap = (id: string, created_at: string | null, tables = ["t"]): SnapshotSummary => ({
   snapshot_id: id,
@@ -37,5 +37,14 @@ describe("providerLabel", () => {
     expect(providerLabel("xai")).toBe("xAI");
     expect(providerLabel("nvidia_nim")).toBe("NVIDIA NIM");
     expect(providerLabel("anthropic")).toBe("Anthropic");
+  });
+});
+
+describe("datasetLabel", () => {
+  it("prefers the display name and keeps the table list as secondary text", () => {
+    const named = { ...snap("s1", null, ["fees", "orders", "payouts"]), display_name: "Sample shop payments (INR)" };
+    expect(datasetLabel(named)).toBe("Sample shop payments (INR)");
+    expect(datasetTables(named)).toBe("fees +2 more");
+    expect(datasetLabel({ ...named, display_name: null })).toBe("fees +2 more");
   });
 });

@@ -844,6 +844,17 @@ export function initialValues(def: ConnectorDef): Values {
   return out;
 }
 
+export function sourceDisplayName(def: ConnectorDef, values: Values): string {
+  let host = "";
+  try {
+    host = str(values.url) ? new URL(str(values.url)).hostname : "";
+  } catch {
+    host = "";
+  }
+  const detail = str(values.database) || host;
+  return detail ? `${def.label} · ${detail}` : def.label;
+}
+
 export function toPayload(def: ConnectorDef, values: Values): SourcePayload {
   const config: Record<string, unknown> = { ...(def.fixedConfig ?? {}) };
   const credentials: Record<string, string> = {};

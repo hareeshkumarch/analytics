@@ -15,6 +15,7 @@ import { Badge, Details, Notice, SearchInput, Spinner, btn, btnSm, cx, inputBase
 import {
   RunLimits,
   datasetLabel,
+  datasetTables,
   humanize,
   relativeTime,
   useHealth,
@@ -841,7 +842,9 @@ export function AskView() {
                 options={snapshots.map((s) => ({
                   value: s.snapshot_id,
                   label: `${datasetLabel(s)} · v${s.version}`,
-                  sublabel: s.approved ? `${s.total_rows.toLocaleString()} rows` : "Needs approval on the Data page",
+                  sublabel: s.approved
+                    ? `${s.display_name ? `${datasetTables(s)} · ` : ""}${s.total_rows.toLocaleString()} rows`
+                    : "Needs approval on the Data page",
                   badge: s.approved ? undefined : "Draft",
                   disabled: !s.approved,
                 }))}

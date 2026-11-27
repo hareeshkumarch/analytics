@@ -170,6 +170,7 @@ class SnapshotOut(ApiResponse):
     version: int
     total_rows: int
     tables: list[str]
+    display_name: str | None = None
     semantic_version_id: str | None = None
     approved: bool | None = None
     created_at: str | None = None

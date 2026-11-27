@@ -23,11 +23,24 @@ class TestSampleData(unittest.TestCase):
         listed = self.client.get("/api/v1/workspaces/ws1/snapshots").json()["snapshots"]
         self.assertTrue(next(s for s in listed if s["snapshot_id"] == snap["snapshot_id"])["approved"])
         self.assertEqual(sorted(snap["tables"]), ["fees", "orders", "payouts", "refunds"])
+        self.assertEqual(snap["display_name"], "Sample shop payments (INR)")
         orders = next(t for t in snap["table_details"] if t["name"] == "orders")
         order_id = next(c for c in orders["columns"] if c["name"] == "order_id")
         self.assertTrue(order_id["leading_zero_id"])
         again = self.client.post("/api/v1/workspaces/ws1/samples/inr_acceptance/import").json()["snapshot"]
         self.assertEqual((again["source_id"], again["version"]), (snap["source_id"], 2))
+
+    def test_uploads_keep_the_name_the_client_sends(self) -> None:
+        def extract(name: str | None) -> dict:
+            body = {"family": "uploaded_file", "config": {"format": "csv", "raw_base64": "YSxiCjEsMgo=", "table_name": "t"}, "selected_tables": ["t"]}
+            res = self.client.post("/api/v1/workspaces/ws1/connectors/extract", json={**body, **({"display_name": name} if name is not None else {})})
+            self.assertEqual(res.status_code, 201, res.text)
+            return res.json()["snapshot"]
+
+        self.assertEqual(extract("  march   orders.csv ")["display_name"], "march orders.csv")
+        self.assertIsNone(extract(None)["display_name"])
+        listed = self.client.get("/api/v1/workspaces/ws1/snapshots").json()["snapshots"]
+        self.assertIn("march orders.csv", [s.get("display_name") for s in listed])
 
     def test_unknown_samples_and_client_supplied_files_are_rejected(self) -> None:
         self.assertEqual(self.client.post("/api/v1/workspaces/ws1/samples/..%2Fetc/import").status_code, 404)

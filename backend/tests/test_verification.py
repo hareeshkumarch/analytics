@@ -40,6 +40,11 @@ class TestUngroundedFigures(unittest.TestCase):
         ):
             self.assertEqual(ungrounded_figures(text, evidence), [], text)
 
+    def test_zero_padded_identifiers_are_not_figures(self) -> None:
+        self.assertEqual(ungrounded_figures(f"Order 00102 appears twice [{EV}].", EVIDENCE), [])
+        self.assertEqual(ungrounded_figures(f"Customer 0042 paid 999.99 [{EV}].", EVIDENCE), ["999.99"])
+        self.assertEqual(ungrounded_figures("Churn was 0.5 overall.", EVIDENCE), ["0.5"])
+
     def test_indian_grouped_currency_formats(self) -> None:
         evidence = [{"evidence_id": EV, "rows": [[100000, 1234567.89]]}]
         self.assertEqual(ungrounded_figures(f"Revenue was ₹1,00,000 [{EV}] and ₹12,34,567.89 [{EV}].", evidence), [])

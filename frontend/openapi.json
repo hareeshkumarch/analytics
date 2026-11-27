@@ -184,6 +184,18 @@
             "title": "Credentials",
             "type": "object"
           },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
           "family": {
             "$ref": "#/components/schemas/ConnectorFamily"
           },
@@ -1558,6 +1570,17 @@
               }
             ],
             "title": "Created At"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
           },
           "reimport": {
             "anyOf": [

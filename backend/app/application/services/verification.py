@@ -49,6 +49,11 @@ def _plain_integer(symbol: str, suffix: str, digits: str) -> bool:
     return not (symbol or suffix or "," in digits or "." in digits)
 
 
+def _is_identifier(digits: str) -> bool:
+    unsigned = digits.lstrip("-")
+    return len(unsigned) > 1 and unsigned.startswith("0")
+
+
 def _is_year(value: Decimal, before: str, after: str) -> bool:
     return YEAR_MIN <= value <= YEAR_MAX and bool(
         _YEAR_BEFORE.search(before) or _MONTH_OR_QUARTER_BEFORE.search(before) or _YEAR_RANGE_AFTER.match(after) or _MONTH_AFTER.match(after)
@@ -65,7 +70,7 @@ def _figures(segment: str) -> list[_Figure]:
         mantissa = Decimal(digits.replace(",", ""))
         decimals = len(digits.split(".")[1]) if "." in digits else 0
         if _plain_integer(symbol, suffix, digits) and (
-            _is_year(mantissa, before, after) or _STRUCTURAL_BEFORE.search(before) or _YEAR_RANGE_BEFORE.search(before)
+            _is_identifier(digits) or _is_year(mantissa, before, after) or _STRUCTURAL_BEFORE.search(before) or _YEAR_RANGE_BEFORE.search(before)
         ):
             continue
         figures.append(_Figure(match.group(0).strip(), mantissa, decimals, _SCALE.get(suffix, Decimal(1)), suffix == "%"))

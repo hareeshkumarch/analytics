@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CONNECTOR_BY_ID, detectFileFormat, initialValues, isFieldVisible, sheetsLinkLacksTab, toPayload, toSheetsCsvUrl } from "@/lib/connectors";
+import { CONNECTOR_BY_ID, detectFileFormat, initialValues, isFieldVisible, sheetsLinkLacksTab, sourceDisplayName, toPayload, toSheetsCsvUrl } from "@/lib/connectors";
 
 describe("toSheetsCsvUrl", () => {
   it("turns sharing links into CSV export links", () => {
@@ -60,5 +60,14 @@ describe("detectFileFormat", () => {
     expect(detectFileFormat("Orders.CSV")?.format).toBe("csv");
     expect(detectFileFormat("data.sqlite")?.family).toBe("uploaded_sqlite");
     expect(detectFileFormat("notes.txt")).toBeNull();
+  });
+});
+
+describe("sourceDisplayName", () => {
+  it("names a source by connector and database or host", () => {
+    const mysql = CONNECTOR_BY_ID.get("mysql")!;
+    expect(sourceDisplayName(mysql, { database: " shop " })).toBe(`${mysql.label} · shop`);
+    expect(sourceDisplayName(mysql, {})).toBe(mysql.label);
+    expect(sourceDisplayName(mysql, { url: "https://api.example.com/v1/x" })).toBe(`${mysql.label} · api.example.com`);
   });
 });

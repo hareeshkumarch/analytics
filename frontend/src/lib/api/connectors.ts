@@ -22,7 +22,7 @@ export interface ExtractResult {
   semantics: SemanticVersion;
 }
 
-export type ImportLineage = Pick<ConnectorExtractRequest, "source_id" | "form">;
+export type ImportLineage = Pick<ConnectorExtractRequest, "source_id" | "form" | "display_name">;
 
 type ExtractRequest = ConnectorExtractRequest & SourcePayload & { selected_tables: string[] };
 

@@ -2,7 +2,7 @@ from typing import Any, Literal, Union
 from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.domain.limits import DEFAULT_GLOBAL_LIMITS, IDENTIFIER_CHARS, MAX_CONNECTOR_FIELDS, MAX_CONNECTOR_VALUE_CHARS
+from app.domain.limits import DEFAULT_GLOBAL_LIMITS, DISPLAY_NAME_CHARS, IDENTIFIER_CHARS, MAX_CONNECTOR_FIELDS, MAX_CONNECTOR_VALUE_CHARS
 from app.domain.models import ConnectorFamily, RunMode
 from app.domain.providers import ProviderId, RoutingPreset
 from app.domain.query_ir import (
@@ -235,6 +235,7 @@ class ConnectorExtractRequest(StrictApiModel):
     selected_tables: list[str] = Field(default_factory=list)
     selected_columns: dict[str, list[str]] = Field(default_factory=dict)
     form: ImportForm | None = None
+    display_name: str | None = Field(default=None, max_length=DISPLAY_NAME_CHARS)
 
 
 class ApproveSemanticsRequest(StrictApiModel):

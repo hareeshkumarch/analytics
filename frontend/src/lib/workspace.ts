@@ -64,9 +64,13 @@ export function sortSnapshotsNewestFirst<T extends SnapshotSummary>(list: T[]): 
 }
 
 /** Human name for a dataset: its first table, plus how many more. */
-export function datasetLabel(s: Pick<SnapshotSummary, "tables" | "source_id">): string {
+export function datasetTables(s: Pick<SnapshotSummary, "tables" | "source_id">): string {
   if (!s.tables.length) return s.source_id;
   return s.tables.length === 1 ? s.tables[0] : `${s.tables[0]} +${s.tables.length - 1} more`;
+}
+
+export function datasetLabel(s: Pick<SnapshotSummary, "tables" | "source_id" | "display_name">): string {
+  return s.display_name?.trim() || datasetTables(s);
 }
 
 function selectSortedSnapshots<T extends SnapshotSummary>(data: { snapshots: T[] }): { snapshots: T[] } {

@@ -740,6 +740,8 @@ export interface components {
             credentials?: {
                 [key: string]: string;
             };
+            /** Display Name */
+            display_name?: string | null;
             family: components["schemas"]["ConnectorFamily"];
             form?: components["schemas"]["ImportForm"] | null;
             /** Selected Columns */
@@ -1217,6 +1219,8 @@ export interface components {
             consistency_level?: string | null;
             /** Created At */
             created_at?: string | null;
+            /** Display Name */
+            display_name?: string | null;
             reimport?: components["schemas"]["ReimportOut"] | null;
             /** Semantic Version Id */
             semantic_version_id?: string | null;
