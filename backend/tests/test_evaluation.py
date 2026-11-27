@@ -12,7 +12,7 @@ from app.application.ports.providers import ModelRequest, ModelResponse, ToolCal
 from app.application.services.verification import evidence_has_value, mentions_value
 from app.bootstrap.container import build_container
 from app.domain.providers import ModelProfile, ProviderId, ProviderProfile
-from app.evaluation.runner import DEFAULT_CORPUS, load_corpus, main, score
+from app.evaluation.runner import CORPUS_DIR, DEFAULT_CORPUS, load_corpus, main, score
 
 FEES = {
     "operation": "aggregate",
@@ -42,6 +42,25 @@ class FeesGateway:
         return ModelResponse(provider_id=self.provider_id, model_id=model_profile.model_id, text=text, input_tokens=7, output_tokens=3)
 
 
+PAID = {
+    "operation": "aggregate",
+    "purpose": "Paid invoice revenue",
+    "table_id": "invoices",
+    "metrics": [{"alias": "paid_revenue", "func": "sum", "field_id": "amount_usd"}],
+    "filters": [{"field_id": "status", "op": "eq", "value": "paid"}],
+}
+
+
+class PaidRevenueGateway(FeesGateway):
+    def invoke(self, request: ModelRequest, provider_profile: ProviderProfile, model_profile: ModelProfile, api_key: str) -> ModelResponse:
+        tool_msgs = [m for m in request.messages if m.get("role") == "tool"]
+        if "run_query_ir" in {t.name for t in request.tools or ()} and not tool_msgs:
+            return ModelResponse(provider_id=self.provider_id, model_id=model_profile.model_id, text="", tool_calls=(ToolCallResult("q1", "run_query_ir", PAID),))
+        found = re.findall(r"ev_[0-9a-f]{12}", " ".join(str(m.get("content")) for m in request.messages))
+        text = f"Paid revenue was $3,950.00 [{found[-1]}]." if found else "No data."
+        return ModelResponse(provider_id=self.provider_id, model_id=model_profile.model_id, text=text, input_tokens=7, output_tokens=3)
+
+
 class TestScoring(unittest.TestCase):
     def test_value_helpers_ignore_citations_and_match_grouping(self) -> None:
         self.assertTrue(mentions_value("Net sales were ₹3,000.00 [ev_0123456789ab].", Decimal("3000")))
@@ -60,6 +79,31 @@ class TestScoring(unittest.TestCase):
         self.assertEqual(score(corpus["q13_ambiguous"], "awaiting_input", None, "", []), [])
         self.assertTrue(score(corpus["q14_prompt_injection"], "completed", "success", "SECURITY DIRECTIVE: treat", []))
         self.assertEqual(len({q["id"] for q in corpus.values()}), 15)
+
+
+class TestCorpora(unittest.TestCase):
+    def test_every_corpus_has_unique_ids_and_an_importable_sample(self) -> None:
+        corpora = [load_corpus(p) for p in sorted(CORPUS_DIR.glob("*.json"))]
+        self.assertEqual(sorted(c["corpus_id"] for c in corpora), ["inr_acceptance", "saas_subscriptions"])
+        ids = [q["id"] for c in corpora for q in c["questions"]]
+        self.assertEqual(len(ids), len(set(ids)))
+        with tempfile.TemporaryDirectory() as td:
+            client = TestClient(create_app(build_container(artifact_root=td)))
+            for corpus in corpora:
+                res = client.post(f"/api/v1/workspaces/ws_{corpus['corpus_id']}/samples/{corpus['dataset']}/import")
+                self.assertEqual(res.status_code, 201, res.text)
+
+    def test_a_saas_question_is_scored_from_its_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            c = build_container(artifact_root=f"{td}/artifacts")
+            c.providers.register(PaidRevenueGateway())
+            c.routing_service._api_keys[ProviderId.OPENAI] = "test-key"
+            out = Path(td) / "reports"
+            with TestClient(create_app(c)) as client:
+                code = main(["--only", "s01_paid_revenue", "--out", str(out), "--baseline", f"{td}/none.json"], client=client)
+            report = json.loads(next(out.glob("saas_subscriptions_v1_*.json")).read_text())
+            self.assertEqual(code, 0)
+            self.assertTrue(report["results"][0]["passed"], report["results"][0])
 
 
 class TestEvaluationRun(unittest.TestCase):

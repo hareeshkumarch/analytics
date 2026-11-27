@@ -91,7 +91,7 @@ def _materialized_connector_config(
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-SAMPLE_DATASETS = {"inr_acceptance": "Sample shop payments (INR)"}
+SAMPLE_DATASETS = {"inr_acceptance": "Sample shop payments (INR)", "saas_subscriptions": "Sample SaaS subscriptions (USD)"}
 
 
 def _sample_dir(name: str) -> Path:

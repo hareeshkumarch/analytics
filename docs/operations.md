@@ -11,12 +11,13 @@
 4. Run `make smoke` to verify `/api/v1/health`. `/api/v1/ready` also checks the database and Redis; incident steps, metrics and the operator switches are in [`runbook.md`](runbook.md).
 
 ## Evaluation
-`make eval` runs the questions in `backend/app/evaluation/corpus/inr_v1.json` against the INR sample dataset in an isolated in-process app, using the provider keys in the environment (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, ...). Each question is scored from its answer and evidence rows: expected figures must appear in the answer and in a cited evidence row, and the run must not need review. Ambiguous, unanswerable and prompt-injection questions have their own checks.
+`make eval` runs every corpus in `backend/app/evaluation/corpus/` against its sample dataset in an isolated in-process app: `inr_v1.json` (15 questions on shop payments in INR) and `saas_v1.json` (12 questions on SaaS subscriptions in USD). Each corpus gets its own report and baseline. It uses the provider keys in the environment (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, ...). Each question is scored from its answer and evidence rows: expected figures must appear in the answer and in a cited evidence row, and the run must not need review. Ambiguous, unanswerable and prompt-injection questions have their own checks.
 
 The JSON and Markdown report goes to `backend/eval/reports/` with per-question pass/fail, route, tokens, cached tokens, cost, model calls and latency, plus totals and deltas against `backend/eval/baselines/<corpus>_v<version>.json`. The command exits non-zero when the pass rate drops by more than `--pass-margin` (default 0.1) or cost per verified completion rises by more than `--cost-margin` (default 0.25).
 
 - Pick a model for every role: `make eval EVAL_ARGS="--model gpt-6.1-terra"`
-- Run a few questions: `make eval EVAL_ARGS="--only q01_net_sales q12_profit"`
+- Run one corpus: `make eval EVAL_ARGS="--corpus app/evaluation/corpus/saas_v1.json"`
+- Run a few questions: `make eval EVAL_ARGS="--only q01_net_sales s10_cac"`
 - Save a passing report as the new baseline: `make eval EVAL_ARGS="--update-baseline"`
 
 The `Evaluation` workflow runs the corpus nightly, on demand, and on pull requests that change prompts, services, orchestration, providers, the query layer, the evaluation code or the model config. A pull request is compared against the last passing baseline from `main` and fails on a regression; the report is in the job summary. Only runs on `main` update the baseline. The workflow is skipped, with a notice, when no provider key secret (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY` or `GEMINI_API_KEY`) is available, which includes pull requests from forks.

@@ -1,0 +1,7 @@
+customer_id,plan,region,signup_date
+C01,starter,Europe,2026-07-03
+C02,pro,North America,2026-07-10
+C03,pro,Europe,2026-08-01
+C04,enterprise,North America,2026-08-15
+C05,starter,Asia Pacific,2026-09-02
+C06,pro,Asia Pacific,2026-09-20

@@ -256,19 +256,7 @@ def render_markdown(report: dict[str, Any], problems: list[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def main(argv: list[str] | None = None, client: TestClient | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m app.evaluation", description="Run the evaluation corpus and compare with the baseline.")
-    parser.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
-    parser.add_argument("--model", help="Model id to route every role to, from config/models.yaml; default is the workspace routing")
-    parser.add_argument("--only", nargs="*", help="Question ids to run")
-    parser.add_argument("--out", type=Path, default=DEFAULT_REPORT_DIR)
-    parser.add_argument("--baseline", type=Path, help="Baseline report; default eval/baselines/<corpus>_v<version>.json")
-    parser.add_argument("--update-baseline", action="store_true", help="Save this report as the new baseline unless it regressed")
-    parser.add_argument("--pass-margin", type=float, default=0.1, help="Allowed drop in pass rate")
-    parser.add_argument("--cost-margin", type=float, default=0.25, help="Allowed rise in cost per verified completion")
-    args = parser.parse_args(argv)
-
-    corpus = load_corpus(args.corpus)
+def _evaluate(corpus: dict[str, Any], args: argparse.Namespace, only: set[str], client: TestClient | None) -> bool:
     baseline_path = args.baseline or DEFAULT_BASELINE_DIR / f"{corpus['corpus_id']}_v{corpus['version']}.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8")) if baseline_path.exists() else None
     if client is None:
@@ -276,9 +264,9 @@ def main(argv: list[str] | None = None, client: TestClient | None = None) -> int
         from app.bootstrap.container import build_container
 
         with tempfile.TemporaryDirectory() as td, TestClient(create_app(build_container(artifact_root=td))) as fresh:
-            results = run_corpus(fresh, corpus, args.model, set(args.only or ()))
+            results = run_corpus(fresh, corpus, args.model, only)
     else:
-        results = run_corpus(client, corpus, args.model, set(args.only or ()))
+        results = run_corpus(client, corpus, args.model, only)
 
     report = build_report(corpus, results, args.model, baseline)
     problems = regressions(report, args.pass_margin, args.cost_margin)
@@ -296,4 +284,28 @@ def main(argv: list[str] | None = None, client: TestClient | None = None) -> int
         baseline_path.parent.mkdir(parents=True, exist_ok=True)
         baseline_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     sys.stdout.write(markdown)
-    return 1 if problems else 0
+    return bool(problems)
+
+
+def main(argv: list[str] | None = None, client: TestClient | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="python -m app.evaluation", description="Run the evaluation corpora and compare each with its baseline.")
+    parser.add_argument("--corpus", type=Path, nargs="*", help="Corpus files; default every file in app/evaluation/corpus")
+    parser.add_argument("--model", help="Model id to route every role to, from config/models.yaml; default is the workspace routing")
+    parser.add_argument("--only", nargs="*", help="Question ids to run")
+    parser.add_argument("--out", type=Path, default=DEFAULT_REPORT_DIR)
+    parser.add_argument("--baseline", type=Path, help="Baseline report for a single corpus; default eval/baselines/<corpus>_v<version>.json")
+    parser.add_argument("--update-baseline", action="store_true", help="Save each report as the new baseline unless it regressed")
+    parser.add_argument("--pass-margin", type=float, default=0.1, help="Allowed drop in pass rate")
+    parser.add_argument("--cost-margin", type=float, default=0.25, help="Allowed rise in cost per verified completion")
+    args = parser.parse_args(argv)
+
+    only = set(args.only or ())
+    corpora = [load_corpus(path) for path in (args.corpus or sorted(CORPUS_DIR.glob("*.json")))]
+    if only:
+        corpora = [c for c in corpora if any(q["id"] in only for q in c["questions"])]
+    if not corpora:
+        parser.error("No corpus has questions to run")
+    if args.baseline and len(corpora) > 1:
+        parser.error("--baseline needs a single corpus; pass --corpus or --only")
+    regressed = [c["corpus_id"] for c in corpora if _evaluate(c, args, only, client)]
+    return 1 if regressed else 0
