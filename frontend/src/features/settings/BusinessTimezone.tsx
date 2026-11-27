@@ -2,7 +2,7 @@
 
 import React, { useId, useState } from "react";
 import { errorMessage } from "@/lib/api/client";
-import { Badge, Notice, cardCls, cx } from "@/components/ui";
+import { Badge, Notice, cardCls, cx, sectionTitleCls } from "@/components/ui";
 import { RichSelect } from "@/components/RichSelect";
 import { timeZoneOptions, useWorkspaceSettings } from "@/lib/workspaceSettings";
 
@@ -15,7 +15,7 @@ export function BusinessTimezone({ workspaceId }: { workspaceId: string }) {
     <section aria-labelledby={`${id}-title`} className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 id={`${id}-title`} className="font-display text-lg font-semibold leading-snug tracking-[-0.01em] text-ink">
+          <h2 id={`${id}-title`} className={sectionTitleCls}>
             Business time zone
           </h2>
           <p className="mt-1 text-xs text-secondary">

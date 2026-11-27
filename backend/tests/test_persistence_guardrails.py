@@ -49,6 +49,7 @@ class TestDatabaseErrorsAreReported(unittest.TestCase):
     def test_reads_fail_instead_of_serving_memory(self) -> None:
         with patch.object(self.app.state.repo_runs, "list_runs", _db_down):
             self._assert_unavailable(self.client.get("/api/v1/workspaces/ws1/runs"))
+        with patch.object(self.app.state.repo_runs, "usage_rows", _db_down):
             self._assert_unavailable(self.client.get("/api/v1/workspaces/ws1/usage"))
         with patch.object(self.app.state.repo_pins, "list_pins", _db_down):
             self._assert_unavailable(self.client.get("/api/v1/workspaces/ws1/pins"))

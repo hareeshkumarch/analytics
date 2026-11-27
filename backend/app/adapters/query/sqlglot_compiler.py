@@ -241,6 +241,16 @@ class SqlGlotQueryCompiler:
                 clauses.append(f"{col_sql} {sql_op} ?")
         return " WHERE " + " AND ".join(clauses)
 
+    @staticmethod
+    def _require_numeric(schema: TableSchema, func: AggregateFunction, field_id: str, key: str) -> None:
+        """Catch a sum or average of text before it runs, so the model gets a named, free-to-fix error."""
+        if func in (AggregateFunction.SUM, AggregateFunction.AVG) and not _is_numeric(schema, field_id):
+            raise QueryValidationError(
+                f"{func.value} needs a numeric column, but {field_id!r} is {_arrow_type(schema, field_id) or 'not numeric'}. "
+                "Use count or count_distinct for text columns.",
+                failed_fields=(key,),
+            )
+
     def _compile_agg_expr(
         self, func: AggregateFunction, col_sql: str, alias: str
     ) -> str:
@@ -267,6 +277,7 @@ class SqlGlotQueryCompiler:
             select_parts = [self._validate_field(ir.table_id, g, schemas) for g in ir.group_by]
             for m in ir.metrics:
                 col_sql = self._validate_field(ir.table_id, m.field_id, schemas)
+                self._require_numeric(schemas[ir.table_id], m.func, m.field_id, "metrics")
                 select_parts.append(self._compile_agg_expr(m.func, col_sql, m.alias))
             where_sql = self._compile_filters(ir.table_id, ir.filters, schemas, params)
             group_sql = (
@@ -311,6 +322,7 @@ class SqlGlotQueryCompiler:
             if not _is_temporal(schemas[ir.table_id], ir.date_field):
                 date_sql = f"TRY_CAST({date_sql} AS TIMESTAMP)"
             metric_col = self._validate_field(ir.table_id, ir.metric.field_id, schemas)
+            self._require_numeric(schemas[ir.table_id], ir.metric.func, ir.metric.field_id, "metric")
             agg_fn = ir.metric.func.value.upper()
             if ir.metric.func == AggregateFunction.COUNT_DISTINCT:
                 raise QueryValidationError(
@@ -336,6 +348,7 @@ class SqlGlotQueryCompiler:
             tbl_sql = _quote_ident(ir.table_id)
             dim_sql = self._validate_field(ir.table_id, ir.dimension_field, schemas)
             metric_col = self._validate_field(ir.table_id, ir.metric.field_id, schemas)
+            self._require_numeric(schemas[ir.table_id], ir.metric.func, ir.metric.field_id, "metric")
             agg_sql = self._compile_agg_expr(ir.metric.func, metric_col, ir.metric.alias)
             where_sql = self._compile_filters(ir.table_id, ir.filters, schemas, params)
             sql = (

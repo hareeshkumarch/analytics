@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api/client";
+import { ApiError, apiFetch } from "@/lib/api/client";
 import { useUiStore } from "@/lib/store";
 import type { ColumnDetailOut, ModelStatusOut, ProviderStatusOut, ProvidersOut, SnapshotOut } from "@/lib/api/types";
 
@@ -34,7 +34,32 @@ export function useHealth() {
     queryKey: ["health"],
     queryFn: () => apiFetch<HealthResponse>("/health"),
     staleTime: 5 * 60 * 1000,
+    // While the API is unreachable, keep checking so the app recovers on its own.
+    refetchInterval: (query) => (isUnreachable(query.state.error) ? 10_000 : false),
   });
+}
+
+/** The API did not answer at all, or the proxy in front of it failed. A 4xx is an answer, so it doesn't count. */
+function isUnreachable(error: unknown): boolean {
+  return error instanceof ApiError && (error.isNetwork || error.status >= 500);
+}
+
+/** Readiness also checks the database (and the queue), which the static health endpoint does not. */
+export function useReady() {
+  return useQuery({
+    queryKey: ["ready"],
+    queryFn: () => apiFetch<{ status: string }>("/ready"),
+    staleTime: 60_000,
+    retry: false,
+    refetchInterval: (query) => (isUnreachable(query.state.error) ? 10_000 : 60_000),
+  });
+}
+
+/** True when the API or its database can't be reached. Pages hide their own load errors and let the shell explain. */
+export function useServerDown(): boolean {
+  const healthError = useHealth().error;
+  const readyError = useReady().error;
+  return isUnreachable(healthError) || isUnreachable(readyError);
 }
 
 export type ColumnDetail = ColumnDetailOut;

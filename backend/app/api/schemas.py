@@ -284,6 +284,11 @@ class UpdatePinRequest(StrictApiModel):
     auto_refresh: bool
 
 
+class RefreshPinsRequest(StrictApiModel):
+    # Omit to re-run every pin whose dataset has a newer approved version.
+    pin_ids: list[str] | None = Field(default=None, max_length=200)
+
+
 class CreateExportRequest(StrictApiModel):
     format: Literal["csv", "html", "pdf", "docx"] = "html"
     run_id: str = ""

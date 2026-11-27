@@ -113,6 +113,7 @@ def load_yaml_configs(config_dir: Path) -> tuple[dict[ProviderId, ProviderProfil
             input_price_per_1m=Decimal(str(m["input_price_per_1m"])) if m.get("input_price_per_1m") else None,
             output_price_per_1m=Decimal(str(m["output_price_per_1m"])) if m.get("output_price_per_1m") else None,
             verification_date=str(m["verification_date"]),
+            reasoning_effort=str(m["reasoning_effort"]) if m.get("reasoning_effort") else None,
             enabled=bool(m.get("enabled", True)),
         )
 

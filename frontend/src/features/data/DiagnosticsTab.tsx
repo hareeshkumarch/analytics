@@ -28,8 +28,8 @@ function FactList({ facts }: { facts: [string, string][] }) {
     <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
       {facts.map(([label, value]) => (
         <div key={label} className="min-w-0">
-          <dt className="text-[11px] uppercase tracking-[0.05em] text-secondary">{label}</dt>
-          <dd className="mt-0.5 break-words text-[13px] text-ink">{value}</dd>
+          <dt className="text-xs text-secondary">{label}</dt>
+          <dd className="mt-0.5 break-words text-sm text-ink">{value}</dd>
         </div>
       ))}
     </dl>
@@ -93,15 +93,15 @@ export function DiagnosticsTab({ snapshot }: { snapshot: SnapshotSummary }) {
       <FactList facts={facts} />
       {d && (
         <div className="space-y-1.5">
-          <h4 className="text-[13px] font-semibold text-ink">Warnings</h4>
+          <h4 className="text-sm font-semibold text-ink">Warnings</h4>
           {warnings.length ? (
-            <ul className="list-disc space-y-1 pl-5 text-[13px] text-body">
+            <ul className="list-disc space-y-1 pl-5 text-sm text-body">
               {warnings.map((w, i) => (
                 <li key={i}>{typeof w === "string" ? w : JSON.stringify(w)}</li>
               ))}
             </ul>
           ) : (
-            <p className="text-[13px] text-secondary">No warnings.</p>
+            <p className="text-sm text-secondary">No warnings.</p>
           )}
         </div>
       )}

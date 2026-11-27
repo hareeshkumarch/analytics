@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { Icon } from "@/components/Icon";
 import { Badge } from "@/components/ui";
 import type { CriterionOut } from "@/lib/api/types";
 
@@ -16,6 +17,7 @@ const STATUS_LABELS: Record<string, string> = {
   verified: "Verified",
   failed: "Failed",
   blocked: "Not checked",
+  unreviewed: "Not reviewed",
   not_applicable: "Not applicable",
 };
 
@@ -23,19 +25,21 @@ export function AnswerVerification({ outcome, criteria }: { outcome: string | nu
   const shown = outcome ? OUTCOMES[outcome] : undefined;
   if (!shown) return null;
   const passed = criteria.filter((c) => c.status === "verified").length;
+  // Criteria nobody reviewed (Quick mode has no evidence review) are reported apart from the checks that ran.
+  const unreviewed = criteria.filter((c) => c.status === "unreviewed").length;
+  const checked = criteria.length - unreviewed;
   return (
     <section aria-label="Answer verification" className="mt-4">
-      <details open={passed < criteria.length || undefined} className="group text-[12.5px]">
+      <details open={passed < checked || undefined} className="group text-sm">
         <summary className="flex min-h-[32px] cursor-pointer list-none items-center gap-2 text-secondary hover:text-ink [&::-webkit-details-marker]:hidden">
           <Badge tone={shown.tone} dot>
             {shown.label}
           </Badge>
           <span>
-            {passed} of {criteria.length} checks passed
+            {passed} of {checked} checks passed
+            {unreviewed > 0 ? `, ${unreviewed} not reviewed` : ""}
           </span>
-          <svg aria-hidden="true" className="h-3.5 w-3.5 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="m6 9 6 6 6-6" />
-          </svg>
+          <Icon name="chevron-down" className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
         </summary>
         <ul className="mt-1.5 space-y-1">
           {criteria.map((c) => (

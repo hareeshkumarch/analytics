@@ -252,10 +252,42 @@ def _purpose(payload: dict[str, Any]) -> str:
     return value[:PUBLIC_ERROR_CHARS] if isinstance(value, str) else ""
 
 
+_COMMON_KEYS = frozenset({"operation", "purpose", "filters", "limit"})
+SUPPORTED_KEYS: dict[str, frozenset[str]] = {
+    "aggregate": frozenset({"table_id", "metrics", "group_by", "order_by"}),
+    "detail": frozenset({"table_id", "select_fields", "order_by"}),
+    "compare_periods": frozenset(
+        {"table_id", "date_field", "metric", "current_start", "current_end", "previous_start", "previous_end", "group_by"}
+    ),
+    "contribution_breakdown": frozenset({"table_id", "metric", "dimension_field"}),
+    "distribution": frozenset({"table_id", "field_id", "buckets"}),
+    "reconciliation_lookup": frozenset(
+        {"left_table_id", "right_table_id", "left_key", "right_key", "left_amount_field", "right_amount_field"}
+    ),
+}
+
+
+def _reject_unsupported(payload: dict[str, Any], operation: str) -> None:
+    """Fail on parameters this operation ignores, so the model is never left believing a sort or grouping applied.
+
+    Empty values are let through: models often send `"group_by": []` or null for parameters they are not using.
+    """
+    supported = SUPPORTED_KEYS[operation] | _COMMON_KEYS
+    extra = sorted(key for key, value in payload.items() if key not in supported and value not in (None, "", [], {}))
+    if extra:
+        raise QueryIRParseError(
+            f"{operation} does not support {', '.join(repr(k) for k in extra)}. "
+            f"It accepts: {', '.join(sorted(SUPPORTED_KEYS[operation] | {'filters', 'limit'}))}",
+            failed_fields=tuple(extra),
+        )
+
+
 def parse_query_ir(payload: dict[str, Any]) -> QueryIR:
     if not isinstance(payload, dict):
         raise QueryIRParseError("query must be a JSON object")
     operation = payload.get("operation")
+    if isinstance(operation, str) and operation in SUPPORTED_KEYS:
+        _reject_unsupported(payload, operation)
     if operation == "aggregate":
         metrics_raw = payload.get("metrics") or []
         if not isinstance(metrics_raw, list) or not metrics_raw:

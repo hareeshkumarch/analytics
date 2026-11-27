@@ -4,99 +4,77 @@
 
 :root {
   color-scheme: light;
-  --canvas: 250 250 250;
-  --sidebar: 244 244 245;
-  --panel: 244 244 245;
+  --canvas: 255 255 255;
+  --sidebar: 250 250 250;
+  --panel: 243 243 243;
   --surface: 255 255 255;
-  --bubble: 239 239 241;
-  --ink: 24 24 27;
-  --body: 63 63 70;
-  --muted: 105 105 114;
-  --border: 228 228 231;
-  --border-strong: 140 140 150;
-  --accent: 24 24 27;
-  --accent-hover: 63 63 70;
-  --accent-soft: 238 238 240;
-  --clay: 113 113 122;
+  --bubble: 239 239 239;
+  --ink: 25 25 25;
+  --body: 56 56 56;
+  --muted: 102 102 102;
+  --border: 235 235 235;
+  --border-strong: 224 224 224;
+  --accent: 25 25 25;
+  --accent-hover: 60 60 60;
+  --accent-soft: 242 242 242;
   --on-accent: 255 255 255;
-  --ok: 63 63 70;
-  --ok-soft: 241 241 243;
-  --ok-dot: 22 163 74;
+  --ok: 0 108 16;
+  --ok-soft: 202 236 200;
+  --ok-dot: 16 161 34;
   /* Amber, so "needs your attention" never looks the same as "done". */
-  --warn: 146 64 14;
-  --warn-soft: 255 247 230;
-  --warn-dot: 217 119 6;
-  --err: 185 28 28;
-  --err-soft: 254 242 242;
-  --err-dot: 220 38 38;
-  --shadow: 24 24 27;
-  --data-1: 27 110 156;
+  --warn: 121 76 2;
+  --warn-soft: 249 220 164;
+  --warn-dot: 174 115 3;
+  --err: 164 37 40;
+  --err-soft: 251 212 212;
+  --err-dot: 220 60 61;
+  --shadow: 0 0 0;
+  /* Menus and the composer sit on their own surface (same as the page in light, lifted in dark). */
+  --popover: 255 255 255;
+  /* Clay: the send button and the logo. */
+  --brand: 198 97 63;
+  --brand-hover: 217 119 87;
+  /* Blue: focus rings, checked boxes, links that need colour. */
+  --focus: 37 125 224;
+  --selection: 204 227 253;
+  --data-1: 37 125 224;
   --data-2: 194 101 42;
   --data-3: 176 64 122;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --canvas: 18 18 20;
-    --sidebar: 24 24 27;
-    --panel: 38 38 43;
-    --surface: 28 28 31;
-    --bubble: 48 48 54;
-    --ink: 244 244 245;
-    --body: 212 212 216;
-    --muted: 161 161 170;
-    --border: 56 56 62;
-    --border-strong: 113 113 122;
-    --accent: 244 244 245;
-    --accent-hover: 212 212 216;
-    --accent-soft: 52 52 58;
-    --clay: 161 161 170;
-    --on-accent: 24 24 27;
-    --ok: 212 212 216;
-    --ok-soft: 39 39 44;
-    --ok-dot: 74 222 128;
-    --warn: 252 211 77;
-    --warn-soft: 51 38 12;
-    --warn-dot: 251 191 36;
-    --err: 252 165 165;
-    --err-soft: 69 26 26;
-    --err-dot: 248 113 113;
-    --shadow: 0 0 0;
-    --data-1: 61 153 204;
-    --data-2: 217 119 58;
-    --data-3: 210 96 154;
-  }
-}
-
+/* theme.ts always sets data-theme (resolving "system" itself), so dark tokens live in one place. */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --canvas: 18 18 20;
-  --sidebar: 24 24 27;
-  --panel: 38 38 43;
-  --surface: 28 28 31;
-  --bubble: 48 48 54;
-  --ink: 244 244 245;
-  --body: 212 212 216;
-  --muted: 161 161 170;
-  --border: 56 56 62;
-  --border-strong: 113 113 122;
-  --accent: 244 244 245;
-  --accent-hover: 212 212 216;
-  --accent-soft: 52 52 58;
-  --clay: 161 161 170;
-  --on-accent: 24 24 27;
-  --ok: 212 212 216;
-  --ok-soft: 39 39 44;
-  --ok-dot: 74 222 128;
-  --warn: 252 211 77;
-  --warn-soft: 51 38 12;
-  --warn-dot: 251 191 36;
-  --err: 252 165 165;
-  --err-soft: 69 26 26;
-  --err-dot: 248 113 113;
+  --canvas: 25 25 25;
+  --sidebar: 31 31 31;
+  --panel: 38 38 38;
+  --surface: 31 31 31;
+  --bubble: 48 48 48;
+  --ink: 239 239 239;
+  --body: 194 194 194;
+  --muted: 156 156 156;
+  --border: 43 43 43;
+  --border-strong: 53 53 53;
+  --accent: 239 239 239;
+  --accent-hover: 215 215 215;
+  --accent-soft: 59 59 59;
+  --on-accent: 25 25 25;
+  --ok: 144 218 142;
+  --ok-soft: 18 59 19;
+  --ok-dot: 10 172 35;
+  --warn: 251 179 21;
+  --warn-soft: 68 40 0;
+  --warn-dot: 210 142 5;
+  --err: 247 167 167;
+  --err-soft: 96 19 20;
+  --err-dot: 236 70 71;
   --shadow: 0 0 0;
-  --data-1: 61 153 204;
+  --popover: 48 48 48;
+  --brand: 198 97 63;
+  --brand-hover: 217 119 87;
+  --focus: 37 125 224;
+  --selection: 6 49 103;
+  --data-1: 81 156 237;
   --data-2: 217 119 58;
   --data-3: 210 96 154;
 }
@@ -109,6 +87,8 @@ body {
   background-color: rgb(var(--canvas));
   color: rgb(var(--ink));
   font-family: var(--font-inter), Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
   font-feature-settings: "cv11", "ss01", "tnum" 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -121,8 +101,7 @@ td {
 }
 
 ::selection {
-  background: rgb(var(--accent-soft));
-  color: rgb(var(--ink));
+  background: rgb(var(--selection));
 }
 
 /* Thin, themed scrollbars so scrollable lists are visible and draggable with a mouse. */
@@ -150,8 +129,8 @@ td {
 }
 
 :focus-visible {
-  outline: 2px solid rgb(var(--accent));
-  outline-offset: 2px;
+  outline: 2px solid rgb(var(--focus));
+  outline-offset: 1px;
 }
 
 .overflow-x-auto:focus-visible,

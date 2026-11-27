@@ -136,12 +136,12 @@ export function DatasetPanel({
   }
 
   return (
-    <div className="space-y-4 border-t border-border pt-5">
+    <div className="space-y-4 border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
           <ConnectorLogo id={logoIdForFamily(snapshot.source_family) ?? "file"} size="md" />
           <div className="min-w-0">
-            <h3 ref={headingRef} tabIndex={-1} className="break-words font-display text-[17px] font-semibold leading-snug text-ink outline-none">
+            <h3 ref={headingRef} tabIndex={-1} className="break-words text-[17px] font-semibold leading-snug text-ink outline-none">
               {datasetLabel(snapshot)}
             </h3>
             <p className="mt-0.5 text-xs text-secondary">{meta.join(" · ")}</p>
@@ -250,12 +250,12 @@ export function DatasetPanel({
                 onClick={() => onTabChange(t.id)}
                 onKeyDown={(e) => handleTabKey(e, i)}
                 className={cx(
-                  "-mb-px inline-flex min-h-[40px] items-center gap-1.5 border-b-2 px-3.5 text-[13px] transition-colors",
-                  active ? "border-ink font-medium text-ink" : "border-transparent text-secondary hover:text-ink"
+                  "-mb-px inline-flex min-h-[40px] items-center gap-1.5 border-b-2 px-3.5 text-sm transition-colors",
+                  active ? "border-accent font-medium text-ink" : "border-transparent text-secondary hover:text-ink"
                 )}
               >
                 {t.label}
-                {t.id === "versions" && versions.length > 1 && <span className="tabular-nums text-[11px] text-secondary">{versions.length}</span>}
+                {t.id === "versions" && versions.length > 1 && <span className="tabular-nums text-2xs text-secondary">{versions.length}</span>}
               </button>
             );
           })}

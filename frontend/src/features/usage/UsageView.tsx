@@ -1,16 +1,16 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { anyText, useUrlState } from "@/lib/url";
 import { apiFetch, errorMessage } from "@/lib/api/client";
 import { RichSelect, RichOption } from "@/components/RichSelect";
 import { PageHeader } from "@/components/PageHeader";
-import { HScroll } from "@/components/HScroll";
-import { EmptyState, FilterChips, Notice, SearchInput, btn, cardCls, cx } from "@/components/ui";
-import { providerLabel, relativeTime, useWorkspace } from "@/lib/workspace";
+import { DataTable, SortDir } from "@/features/data/DataTable";
+import { Details, EmptyState, Skeleton, SkeletonRows, FilterChips, Notice, SearchInput, btn, btnSm, cardCls, cx, sectionTitleCls } from "@/components/ui";
+import { providerLabel, relativeTime, useServerDown, useWorkspace } from "@/lib/workspace";
 import type { ModelUsageOut, RunUsageOut, ToolUsageOut, UsageOut } from "@/lib/api/types";
 
 type RunUsageItem = RunUsageOut;
@@ -19,6 +19,7 @@ type UsageResponse = UsageOut;
 
 type WindowKey = "24h" | "7d" | "30d" | "90d" | "all";
 type Metric = "tokens" | "cost" | "runs";
+type RunSortKey = "when" | "calls" | "tokens" | "cost";
 
 
 const UsageBarChart = dynamic(() => import("@/features/usage/UsageBarChart").then((m) => m.UsageBarChart), { ssr: false });
@@ -34,21 +35,25 @@ const WINDOW_OPTIONS: { value: WindowKey; label: string }[] = [
 
 const HOUR_MS = 3600 * 1000;
 const RUN_TABLE_ROWS = 100;
+// The API returns at most this many questions per request.
+const RUN_TABLE_MAX = 500;
 const WINDOW_HOURS: Record<WindowKey, number | null> = { "24h": 24, "7d": 168, "30d": 720, "90d": 2160, all: null };
 
+const statusDot = (tone: string) => <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${tone}`} />;
+
 const STATUS_OPTIONS: RichOption[] = [
-  { value: "all", label: "All statuses" },
-  { value: "completed", label: "Completed" },
-  { value: "running", label: "Running" },
-  { value: "queued", label: "Queued" },
-  { value: "failed", label: "Failed" },
-  { value: "cancelled", label: "Cancelled" },
+  { value: "all", label: "All statuses", sublabel: "Every question in the time window" },
+  { value: "completed", label: "Completed", sublabel: "Finished with an answer", icon: statusDot("bg-ok-dot") },
+  { value: "running", label: "Running", sublabel: "Being answered now", icon: statusDot("bg-warn-dot") },
+  { value: "queued", label: "Queued", sublabel: "Waiting for a free slot", icon: statusDot("bg-warn-dot") },
+  { value: "failed", label: "Failed", sublabel: "Stopped with an error", icon: statusDot("bg-err-dot") },
+  { value: "cancelled", label: "Cancelled", sublabel: "Stopped by someone", icon: statusDot("bg-secondary") },
 ];
 
 const MODE_OPTIONS: RichOption[] = [
-  { value: "all", label: "All modes" },
-  { value: "quick", label: "Quick" },
-  { value: "deep", label: "Deep" },
+  { value: "all", label: "All modes", sublabel: "Quick and Deep questions" },
+  { value: "quick", label: "Quick", sublabel: "One focused analysis step" },
+  { value: "deep", label: "Deep", sublabel: "Several steps with an evidence review" },
 ];
 
 const isWindowKey = (value: string): value is WindowKey => WINDOW_OPTIONS.some((o) => o.value === value);
@@ -76,8 +81,8 @@ function Stat({ label, value, hint, loading }: { label: string; value: string; h
   return (
     <div className="min-w-0 px-5 py-4">
       <dt className="text-xs font-medium text-secondary">{label}</dt>
-      <dd className="mt-1.5 truncate font-display text-[1.6rem] font-semibold leading-tight tracking-[-0.02em] tabular-nums text-ink">
-        {loading ? <span className="inline-block h-7 w-16 animate-pulse bg-panel align-middle" /> : value}
+      <dd className="mt-1.5 truncate text-[1.6rem] font-semibold leading-tight tracking-[-0.02em] tabular-nums text-ink">
+        {loading ? <span className="inline-block h-7 w-16 animate-pulse rounded bg-panel align-middle" /> : value}
       </dd>
       <dd className="mt-1 truncate text-xs text-secondary">{hint}</dd>
     </div>
@@ -110,48 +115,33 @@ function ModelUsage({
     <section aria-labelledby="usage-models" className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
-          <h2 id="usage-models" className="font-display text-lg font-semibold tracking-[-0.01em]">
+          <h2 id="usage-models" className={sectionTitleCls}>
             By model
           </h2>
           <p className="mt-0.5 text-xs text-secondary">All model calls in the last {windowLabel.toLowerCase()} across all modes and statuses. Bars show {barLabel}.</p>
         </div>
         {providers.length > 1 && (
-          <div role="group" aria-label="Provider" className="flex flex-wrap gap-1.5">
-            {["all", ...providers].map((p) => (
-              <button
-                key={p}
-                type="button"
-                aria-pressed={active === p}
-                onClick={() => onProvider(p)}
-                className={cx(
-                  "min-h-[32px] border px-3 text-[12.5px] transition-colors",
-                  active === p ? "border-ink bg-ink text-canvas" : "border-border bg-surface text-body hover:border-ink"
-                )}
-              >
-                {p === "all" ? "All providers" : providerLabel(p)}
-              </button>
-            ))}
-          </div>
+          <FilterChips
+            label="Provider"
+            value={active}
+            onChange={onProvider}
+            options={[{ value: "all", label: "All providers" }, ...providers.map((p) => ({ value: p, label: providerLabel(p) }))]}
+          />
         )}
       </div>
-      {shown.length === 0 ? (
-        <EmptyState title={loading ? "Loading…" : "No model calls in this window"} />
+      {loading ? (
+        <SkeletonRows rows={3} />
+      ) : shown.length === 0 ? (
+        <EmptyState title="No model calls in this window" />
       ) : (
-        <HScroll className="border border-border" label="Usage by model">
-          <table className="w-full min-w-[720px] border-collapse text-left text-[13px]">
-            <thead>
-              <tr className="bg-panel text-[11px] uppercase tracking-[0.05em] text-secondary">
-                <th className="px-3.5 py-2.5 font-medium">Model</th>
-                <th className="w-[28%] px-3.5 py-2.5 font-medium">
-                  <span className="sr-only">Share of {barLabel}</span>
-                </th>
-                <th className="px-3.5 py-2.5 text-right font-medium">Calls</th>
-                <th className="px-3.5 py-2.5 text-right font-medium">Tokens</th>
-                <th className="px-3.5 py-2.5 text-right font-medium">Cost</th>
-                <th className="px-3.5 py-2.5 text-right font-medium">Avg latency</th>
-              </tr>
-            </thead>
-            <tbody>
+        <DataTable label="Usage by model" minWidth="min-w-[720px]" head={[
+            "Model",
+            { label: `Share of ${barLabel}`, srOnly: true, className: "w-[28%]" },
+            { label: "Calls", align: "right" },
+            { label: "Tokens", align: "right" },
+            { label: "Cost", align: "right" },
+            { label: "Avg latency", align: "right" },
+          ]}>
               {shown.map((m) => (
                 <tr key={`${m.provider_id}:${m.model_id}`} className="border-t border-border">
                   <td className="px-3.5 py-3">
@@ -159,8 +149,8 @@ function ModelUsage({
                     <span className="block text-xs text-secondary">{providerLabel(m.provider_id)}</span>
                   </td>
                   <td className="px-3.5 py-3">
-                    <div className="h-2 overflow-hidden bg-panel" aria-hidden="true">
-                      <div className="h-full bg-data-1" style={{ width: `${(value(m) / max) * 100}%` }} />
+                    <div className="h-2 overflow-hidden rounded-full bg-panel" aria-hidden="true">
+                      <div className="h-full rounded-full bg-data-1" style={{ width: `${(value(m) / max) * 100}%` }} />
                     </div>
                   </td>
                   <td className="px-3.5 py-3 text-right tabular-nums">
@@ -186,9 +176,7 @@ function ModelUsage({
                   </td>
                 </tr>
               ))}
-            </tbody>
-          </table>
-        </HScroll>
+            </DataTable>
       )}
     </section>
   );
@@ -202,32 +190,18 @@ const TOOL_LABELS: Record<string, string> = {
 
 function ToolUsage({ tools, loading }: { tools: ToolUsageOut[]; loading: boolean }) {
   return (
-    <section aria-labelledby="usage-tools" className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
-      <div>
-        <h2 id="usage-tools" className="font-display text-lg font-semibold tracking-[-0.01em]">
-          Tool calls
-        </h2>
-        <p className="mt-0.5 text-xs text-secondary">Every data tool the agents called, with how often a call was invalid, repeated, timed out or answered from the query cache.</p>
-      </div>
-      {tools.length === 0 ? (
-        <EmptyState title={loading ? "Loading…" : "No tool calls in this window"} />
+    <section aria-label="Tool calls" className={cx(cardCls, "px-5 py-3 sm:px-6")}>
+      <Details summary="Technical details: tool calls">
+        <p className="mb-3 text-xs text-secondary">Every data tool the agents called, with how often a call was invalid, repeated, timed out or answered from the query cache.</p>
+      {loading ? (
+        <SkeletonRows rows={3} />
+      ) : tools.length === 0 ? (
+        <EmptyState title="No tool calls in this window" />
       ) : (
-        <HScroll className="border border-border" label="Tool calls">
-          <table className="w-full min-w-[720px] border-collapse text-left text-[13px]">
-            <thead>
-              <tr className="bg-panel text-[11px] uppercase tracking-[0.05em] text-secondary">
-                <th className="px-3.5 py-2.5 font-medium">Tool</th>
-                <th className="px-3.5 py-2.5 text-right font-medium">Calls</th>
-                <th className="px-3.5 py-2.5 text-right font-medium">Per step</th>
-                <th className="px-3.5 py-2.5 text-right font-medium">Failed</th>
-                <th className="px-3.5 py-2.5 text-right font-medium">Invalid</th>
-                <th className="px-3.5 py-2.5 text-right font-medium">Repeated</th>
-                <th className="px-3.5 py-2.5 text-right font-medium">Timed out</th>
-                <th className="px-3.5 py-2.5 text-right font-medium">Cached</th>
-                <th className="px-3.5 py-2.5 text-right font-medium">Avg time</th>
-              </tr>
-            </thead>
-            <tbody>
+        <DataTable label="Tool calls" minWidth="min-w-[720px]" head={[
+            "Tool",
+            ...["Calls", "Per step", "Failed", "Invalid", "Repeated", "Timed out", "Cached", "Avg time"].map((label) => ({ label, align: "right" as const })),
+          ]}>
               {tools.map((t) => (
                 <tr key={t.tool} className="border-t border-border">
                   <td className="px-3.5 py-3 font-medium text-ink">{TOOL_LABELS[t.tool] ?? t.tool}</td>
@@ -241,10 +215,9 @@ function ToolUsage({ tools, loading }: { tools: ToolUsageOut[]; loading: boolean
                   <td className="px-3.5 py-3 text-right tabular-nums text-body">{t.avg_duration_ms.toLocaleString()} ms</td>
                 </tr>
               ))}
-            </tbody>
-          </table>
-        </HScroll>
+            </DataTable>
       )}
+      </Details>
     </section>
   );
 }
@@ -274,6 +247,7 @@ function bucketRuns(runs: RunUsageItem[], windowKey: WindowKey) {
 
 export function UsageView() {
   const ws = useWorkspace();
+  const serverDown = useServerDown();
   const [windowFilter, setWindowFilter] = useUrlState<WindowKey>("window", "7d", isWindowKey);
   const [statusFilter, setStatusFilter] = useUrlState("status", "all", isStatusFilter);
   const [modeFilter, setModeFilter] = useUrlState("mode", "all", isModeFilter);
@@ -282,35 +256,55 @@ export function UsageView() {
   const [providerFilter, setProviderFilter] = useUrlState("provider", "all", anyText);
 
 
+  const [sort, setSort] = useState<{ key: RunSortKey; dir: SortDir }>({ key: "when", dir: "desc" });
+  const [rowLimit, setRowLimit] = useState(RUN_TABLE_ROWS);
+  // Wait for a pause in typing before asking the server to search.
+  const [searchTerm, setSearchTerm] = useState(search);
+  useEffect(() => {
+    const id = window.setTimeout(() => setSearchTerm(search.trim()), 300);
+    return () => window.clearTimeout(id);
+  }, [search]);
+
   const windowHours = WINDOW_HOURS[windowFilter];
   const since =
     windowHours === null ? null : new Date((Math.floor(Date.now() / HOUR_MS) - windowHours) * HOUR_MS).toISOString();
-  const { data, isLoading, error, dataUpdatedAt } = useQuery({
-    queryKey: ["usage", ws.id, since],
-    queryFn: () => apiFetch<UsageResponse>(ws.path(since ? `/usage?since=${encodeURIComponent(since)}` : "/usage")),
+  // The server filters, sorts and pages over every question in the window, and totals the chart.
+  const params = new URLSearchParams({
+    sort: sort.key,
+    order: sort.dir,
+    limit: String(rowLimit),
+    bucket: windowFilter === "24h" ? "hour" : "day",
+    tz_offset_minutes: String(-new Date().getTimezoneOffset()),
+  });
+  if (since) params.set("since", since);
+  if (statusFilter !== "all") params.set("status", statusFilter);
+  if (modeFilter !== "all") params.set("mode", modeFilter);
+  if (searchTerm) params.set("q", searchTerm);
+  const queryString = params.toString();
+  const { data, isLoading, error, dataUpdatedAt, refetch } = useQuery({
+    queryKey: ["usage", ws.id, queryString],
+    queryFn: () => apiFetch<UsageResponse>(ws.path(`/usage?${queryString}`)),
     refetchInterval: REFRESH_MS,
+    // Keep the current rows on screen while a new sort or filter loads.
+    placeholderData: keepPreviousData,
   });
 
-  const runs = useMemo(() => {
-    const hours = WINDOW_HOURS[windowFilter];
-    const start = hours === null ? null : Date.now() - hours * 3600 * 1000;
-    const q = search.trim().toLowerCase();
-    return (data?.runs ?? [])
-      .filter((r) => {
-        const created = r.created_at ? Date.parse(r.created_at) : NaN;
-        const inWindow = start === null || (!Number.isNaN(created) && created >= start);
-        const modeOk = modeFilter === "all" || (r.mode ?? "quick") === modeFilter;
-        const statusOk = statusFilter === "all" || (r.status ?? "queued") === statusFilter;
-        const searchOk = !q || (r.question ?? "").toLowerCase().includes(q) || r.run_id.toLowerCase().includes(q);
-        return inWindow && modeOk && statusOk && searchOk;
-      })
-      .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
-  }, [data, windowFilter, modeFilter, statusFilter, search]);
+  const runs = useMemo(() => data?.runs ?? [], [data]);
+  const matchedCount = data?.matched_count ?? runs.length;
+  const sortable = (label: string, key: RunSortKey) => ({
+    label,
+    align: key === "when" ? undefined : ("right" as const),
+    sort: {
+      dir: sort.key === key ? sort.dir : null,
+      // A new column starts with its largest values; clicking again flips it.
+      onToggle: () => setSort((s) => ({ key, dir: s.key === key && s.dir === "desc" ? "asc" : "desc" })),
+    },
+  });
 
-  const filtered = modeFilter !== "all" || statusFilter !== "all" || search.trim() !== "";
+  const filtersActive = modeFilter !== "all" || statusFilter !== "all" || search.trim() !== "";
   const totals = useMemo(() => {
     const summary = data?.summary;
-    if (!filtered && summary) {
+    if (summary) {
       return {
         runs: summary.runs,
         attempts: summary.attempts,
@@ -318,44 +312,71 @@ export function UsageView() {
         cost: Number(summary.cost_usd) || 0,
         incomplete: summary.incomplete,
         successRate: summary.finished ? Math.round((summary.completed / summary.finished) * 100) : null,
-        byMode: summary.by_mode.map((m) => ({ mode: m.mode, runs: m.runs, tokens: m.tokens, cost: Number(m.cost_usd) || 0 })),
+        byMode: summary.by_mode.map((m) => ({ mode: m.mode, runs: m.runs })),
       };
     }
+    // Older API responses carry no summary: fall back to the rows we were given.
     const finished = runs.filter((r) => ["completed", "failed", "cancelled"].includes(r.status ?? ""));
     const completed = runs.filter((r) => r.status === "completed").length;
     return {
       runs: runs.length,
-      attempts: runs.reduce((s, r) => s + r.used_attempts, 0),
-      tokens: runs.reduce((s, r) => s + r.total_tokens, 0),
-      cost: runs.reduce((s, r) => s + (Number(r.total_cost_usd) || 0), 0),
+      attempts: runs.reduce((sum, r) => sum + r.used_attempts, 0),
+      tokens: runs.reduce((sum, r) => sum + r.total_tokens, 0),
+      cost: runs.reduce((sum, r) => sum + (Number(r.total_cost_usd) || 0), 0),
       incomplete: runs.filter((r) => r.incomplete).length,
       successRate: finished.length ? Math.round((completed / finished.length) * 100) : null,
-      byMode: Array.from(new Set(["quick", "deep", ...runs.map((r) => r.mode ?? "quick")])).map((mode) => {
-        const subset = runs.filter((r) => (r.mode ?? "quick") === mode);
-        return {
-          mode,
-          runs: subset.length,
-          tokens: subset.reduce((s, r) => s + r.total_tokens, 0),
-          cost: subset.reduce((s, r) => s + (Number(r.total_cost_usd) || 0), 0),
-        };
-      }),
+      byMode: ["quick", "deep"].map((mode) => ({ mode, runs: runs.filter((r) => (r.mode ?? "quick") === mode).length })),
     };
-  }, [runs, data, filtered]);
+  }, [runs, data]);
 
-  const chartData = useMemo(() => bucketRuns(runs, windowFilter), [runs, windowFilter]);
-  const modeMetricVal = (m: (typeof totals.byMode)[number]) => (metric === "cost" ? m.cost : metric === "runs" ? m.runs : m.tokens);
-  const rawMaxMode = Math.max(...totals.byMode.map(modeMetricVal), 0);
-  const maxModeMetric = rawMaxMode > 0 ? rawMaxMode : 1;
-  const filtersActive = statusFilter !== "all" || modeFilter !== "all" || windowFilter !== "7d" || Boolean(search.trim());
+  const chartData = useMemo(() => {
+    const buckets = data?.buckets;
+    if (!buckets?.length) return bucketRuns(runs, windowFilter);
+    const hourly = windowFilter === "24h";
+    return buckets.map((b) => {
+      const start = new Date(b.start);
+      return {
+        key: b.start,
+        label: hourly
+          ? start.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+          : start.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+        tokens: b.tokens,
+        cost: Number(b.cost_usd) || 0,
+        runs: b.runs,
+      };
+    });
+  }, [data, runs, windowFilter]);
   const metricLabel = metric === "tokens" ? "Tokens" : metric === "cost" ? "Cost (USD)" : "Runs";
-  const hasAnyWorkspaceRuns = (data?.runs?.length ?? 0) > 0;
+  const hasAnyWorkspaceRuns = (data?.run_count ?? 0) > 0;
 
   function clearFilters() {
     setStatusFilter("all");
     setModeFilter("all");
-    setWindowFilter("7d");
     setSearch("");
   }
+
+  if (serverDown) {
+    return <PageHeader title="Usage" description="Model calls, tokens and cost for each question, from the budget ledger. Costs we couldn't price are marked." />;
+  }
+
+  const failed = Boolean(error) && !data;
+
+  const runFilters = (
+    <div className="flex flex-wrap items-center gap-2.5" role="group" aria-label="Filter questions">
+      <SearchInput dense className="w-full sm:w-[240px]" label="Search questions" placeholder="Search questions" value={search} onChange={setSearch} />
+      <RichSelect dense triggerClassName="min-w-[148px] whitespace-nowrap" ariaLabel="Run status" value={statusFilter} options={STATUS_OPTIONS} onChange={setStatusFilter} />
+      <RichSelect dense triggerClassName="min-w-[132px] whitespace-nowrap" ariaLabel="Run mode" value={modeFilter} options={MODE_OPTIONS} onChange={setModeFilter} />
+      {filtersActive && (
+        <button
+          type="button"
+          onClick={clearFilters}
+          className={btnSm.ghost}
+        >
+          Reset filters
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -370,42 +391,7 @@ export function UsageView() {
         }
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-4" role="group" aria-label="Filters">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <SearchInput
-            dense
-            className="w-full sm:w-[240px]"
-            label="Search questions"
-            placeholder="Search questions"
-            value={search}
-            onChange={setSearch}
-          />
-          <RichSelect
-            dense
-            triggerClassName="min-w-[148px] whitespace-nowrap"
-            ariaLabel="Run status"
-            value={statusFilter}
-            options={STATUS_OPTIONS}
-            onChange={setStatusFilter}
-          />
-          <RichSelect
-            dense
-            triggerClassName="min-w-[132px] whitespace-nowrap"
-            ariaLabel="Run mode"
-            value={modeFilter}
-            options={MODE_OPTIONS}
-            onChange={setModeFilter}
-          />
-          {filtersActive && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap px-3 text-[13px] text-secondary transition-colors hover:bg-sidebar hover:text-ink"
-            >
-              Reset filters
-            </button>
-          )}
-        </div>
+      <div>
         <div className="hidden sm:block">
           <FilterChips label="Time window" options={WINDOW_OPTIONS} value={windowFilter} onChange={setWindowFilter} />
         </div>
@@ -414,8 +400,21 @@ export function UsageView() {
         </div>
       </div>
 
-      {error && <Notice tone="err" title="Couldn't load usage">{errorMessage(error)}</Notice>}
+      {error && (
+        <Notice
+          tone="err"
+          title="Couldn't load usage"
+          action={
+            <button type="button" className={btn.secondary} onClick={() => void refetch()}>
+              Try again
+            </button>
+          }
+        >
+          {errorMessage(error)}
+        </Notice>
+      )}
 
+      {!failed && (
       <dl
         className={cx(
           cardCls,
@@ -433,8 +432,9 @@ export function UsageView() {
           loading={isLoading}
         />
       </dl>
+      )}
 
-      {!isLoading && !error && data && !hasAnyWorkspaceRuns && !filtersActive ? (
+      {failed ? null : !isLoading && !error && data && !hasAnyWorkspaceRuns ? (
         <div className={cardCls}>
           <EmptyState
             title="No usage recorded yet"
@@ -448,10 +448,9 @@ export function UsageView() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
             <section aria-labelledby="usage-chart" className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 id="usage-chart" className="font-display text-lg font-semibold tracking-[-0.01em]">
+                <h2 id="usage-chart" className={sectionTitleCls}>
                   {metricLabel} per {windowFilter === "24h" ? "hour" : "day"}
                 </h2>
                 <FilterChips
@@ -465,13 +464,10 @@ export function UsageView() {
                   ]}
                 />
               </div>
-              {data?.runs_truncated && (
-                <p className="text-xs text-secondary">The chart shows the newest {data.runs.length.toLocaleString()} of {data.run_count.toLocaleString()} runs.</p>
-              )}
-              {chartData.length === 0 ? (
-                <div className="flex h-56 items-center justify-center bg-panel text-[13.5px] text-secondary">
-                  {isLoading ? "Loading…" : "No runs in this view."}
-                </div>
+              {isLoading ? (
+                <Skeleton className="h-56" />
+              ) : chartData.length === 0 ? (
+                <div className="flex h-56 items-center justify-center rounded-lg bg-panel text-base text-secondary">No questions in this time window.</div>
               ) : (
                 <div className="h-56 w-full" role="img" aria-label={`${metricLabel} per ${windowFilter === "24h" ? "hour" : "day"}; the table below lists every run.`}>
                   <UsageBarChart
@@ -484,29 +480,6 @@ export function UsageView() {
                 </div>
               )}
             </section>
-
-            <section aria-labelledby="usage-modes" className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
-              <h2 id="usage-modes" className="font-display text-lg font-semibold tracking-[-0.01em]">
-                By mode
-              </h2>
-              <ul className="space-y-4">
-                {totals.byMode.map((m) => (
-                  <li key={m.mode} className="space-y-1.5">
-                    <div className="flex items-baseline justify-between gap-3 text-[13.5px]">
-                      <span className="font-medium capitalize">{m.mode}</span>
-                      <span className="tabular-nums text-secondary">
-                        {m.runs} run{m.runs === 1 ? "" : "s"} · {formatCost(m.cost)}
-                      </span>
-                    </div>
-                    <div className="h-2 overflow-hidden bg-panel" aria-hidden="true">
-                      <div className="h-full bg-data-1" style={{ width: `${(modeMetricVal(m) / maxModeMetric) * 100}%` }} />
-                    </div>
-                    <div className="text-xs tabular-nums text-secondary">{m.tokens.toLocaleString()} tokens</div>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          </div>
 
           <ModelUsage
             models={data?.models ?? []}
@@ -521,16 +494,19 @@ export function UsageView() {
 
           <section aria-labelledby="usage-runs" className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
             <div className="flex items-baseline justify-between gap-3">
-              <h2 id="usage-runs" className="font-display text-lg font-semibold tracking-[-0.01em]">
+              <h2 id="usage-runs" className={sectionTitleCls}>
                 Questions
               </h2>
-              <span className="text-xs text-secondary">{runs.length.toLocaleString()} in view</span>
+              <span className="text-xs text-secondary">{matchedCount.toLocaleString()} in view</span>
             </div>
-            {runs.length === 0 ? (
+            {runFilters}
+            {isLoading ? (
+              <SkeletonRows rows={5} />
+            ) : runs.length === 0 ? (
               <EmptyState
-                title={isLoading ? "Loading…" : "No runs match these filters"}
+                title="No questions match these filters"
                 action={
-                  filtersActive && !isLoading ? (
+                  filtersActive ? (
                     <button type="button" className={btn.secondary} onClick={clearFilters}>
                       Reset filters
                     </button>
@@ -538,21 +514,16 @@ export function UsageView() {
                 }
               />
             ) : (
-              <HScroll className="border border-border" label="Runs">
-                <table className="w-full min-w-[720px] border-collapse text-left text-[13px]">
-                  <thead>
-                    <tr className="bg-panel text-[11px] uppercase tracking-[0.05em] text-secondary">
-                      <th className="px-3.5 py-2.5 font-medium">When</th>
-                      <th className="px-3.5 py-2.5 font-medium">Question</th>
-                      <th className="px-3.5 py-2.5 font-medium">Mode</th>
-                      <th className="px-3.5 py-2.5 font-medium">Status</th>
-                      <th className="px-3.5 py-2.5 text-right font-medium">Model calls</th>
-                      <th className="px-3.5 py-2.5 text-right font-medium">Tokens</th>
-                      <th className="px-3.5 py-2.5 text-right font-medium">Cost</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {runs.slice(0, RUN_TABLE_ROWS).map((r) => {
+              <DataTable label="Questions asked" minWidth="min-w-[720px]" head={[
+                  sortable("When", "when"),
+                  "Question",
+                  "Mode",
+                  "Status",
+                  sortable("Model calls", "calls"),
+                  sortable("Tokens", "tokens"),
+                  sortable("Cost", "cost"),
+                ]}>
+                    {runs.map((r) => {
                       const status = r.status ?? "queued";
                       const cost = formatCost(Number(r.total_cost_usd) || 0);
                       return (
@@ -587,15 +558,24 @@ export function UsageView() {
                         </tr>
                       );
                     })}
-                  </tbody>
-                </table>
-              </HScroll>
+                  </DataTable>
             )}
-            {(runs.length > RUN_TABLE_ROWS || data?.runs_truncated) && (
-              <p className="text-xs text-secondary">
-                Showing the {Math.min(runs.length, RUN_TABLE_ROWS).toLocaleString()} most recent of {(filtered ? runs.length : data?.run_count ?? runs.length).toLocaleString()} runs
-                {filtered && data?.runs_truncated ? `, filtered from the newest ${data.runs.length.toLocaleString()}` : ""}.
-              </p>
+            {matchedCount > runs.length && (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-secondary">
+                  Showing {runs.length.toLocaleString()} of {matchedCount.toLocaleString()} questions
+                  {rowLimit >= RUN_TABLE_MAX ? ". Narrow the filters or time window to see the rest." : "."}
+                </p>
+                {rowLimit < RUN_TABLE_MAX && (
+                  <button
+                    type="button"
+                    className={btn.secondary}
+                    onClick={() => setRowLimit((n) => Math.min(n + RUN_TABLE_ROWS, RUN_TABLE_MAX))}
+                  >
+                    Show {Math.min(RUN_TABLE_ROWS, matchedCount - runs.length)} more
+                  </button>
+                )}
+              </div>
             )}
           </section>
         </>

@@ -81,7 +81,7 @@ export function AnswerMenu({
         error && (
           <>
             <span className="flex-1">{error}</span>
-            <button type="button" onClick={() => setError(null)} aria-label="Dismiss export error" className="shrink-0 text-secondary hover:text-ink">
+            <button type="button" onClick={() => setError(null)} aria-label="Dismiss export error" className="shrink-0 rounded-full text-secondary hover:text-ink">
               ×
             </button>
           </>

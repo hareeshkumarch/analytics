@@ -1,6 +1,9 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ConnectorLogo, logoIdForFamily } from "@/components/ConnectorLogo";
+import { toast } from "@/lib/toast";
+import { Icon } from "@/components/Icon";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { API_BASE, apiFetch, cancelRun, clarifyRun, createRun, deleteRun, errorHint, errorMessage, newId } from "@/lib/api/client";
@@ -11,7 +14,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { EvidenceContext, SafeMarkdown } from "@/components/SafeMarkdown";
 import { EvidencePanel } from "@/features/ask/EvidencePanel";
 import { RichSelect } from "@/components/RichSelect";
-import { Badge, Details, Notice, SearchInput, Spinner, btn, btnSm, cx, inputBaseCls, inputCls } from "@/components/ui";
+import { Badge, Details, FilterChips, Notice, SearchInput, SkeletonRows, Spinner, btn, btnSm, cx, inputBaseCls, inputCls, outlineCls } from "@/components/ui";
 import {
   RunLimits,
   datasetLabel,
@@ -19,6 +22,7 @@ import {
   humanize,
   relativeTime,
   useHealth,
+  useServerDown,
   useProviders,
   useSnapshots,
   workspacePath,
@@ -239,11 +243,11 @@ const HistoryItem = React.memo(function HistoryItem({
       type="button"
       aria-current={active ? "true" : undefined}
       onClick={() => onSelect(id, runId)}
-      className={cx("block w-full px-2.5 py-2 text-left transition-colors", active ? "bg-bubble text-ink" : "text-body hover:bg-sidebar")}
+      className={cx("block w-full rounded-md px-2 py-1.5 text-left transition-colors", active ? "bg-ink/[0.05] text-ink dark:bg-ink/[0.15]" : "text-ink hover:bg-ink/[0.05] dark:hover:bg-ink/[0.08]")}
     >
       {followUp && <span className="sr-only">Follow-up: </span>}
-      <span className="line-clamp-2 text-[13px] leading-snug">{question}</span>
-      <span className="mt-1 flex items-center gap-1.5 text-[11px] text-secondary">
+      <span className="line-clamp-2 text-sm leading-snug">{question}</span>
+      <span className="mt-1 flex items-center gap-1.5 text-2xs text-secondary">
         <span
           aria-hidden="true"
           className={cx(
@@ -271,7 +275,7 @@ function RunProgress({ events, workspaceId, runId }: { events: SseEnvelope[]; wo
     <ol className="space-y-1.5" aria-label="Progress">
       {steps.map(({ taskId: t, status: st, queries }) => {
         return (
-          <li key={t} className="flex items-center gap-2.5 text-[13px]">
+          <li key={t} className="flex items-center gap-2.5 text-sm">
             <span
               aria-hidden="true"
               className={cx(
@@ -301,6 +305,7 @@ export function AskView() {
 
   const routing = useRoutingPolicy(activeWorkspaceId);
   const health = useHealth();
+  const serverDown = useServerDown();
   const providers = useProviders();
   const snapshotsQuery = useSnapshots();
   const runsQuery = useQuery({
@@ -800,6 +805,7 @@ export function AskView() {
         } satisfies CreatePinRequest),
       });
       setPinnedRunIds((previous) => new Set(previous).add(runId));
+      toast("Pinned to Dashboard.");
       await queryClient.invalidateQueries({ queryKey: ["pins", activeWorkspaceId] });
     } catch (err) {
       setPinError(errorMessage(err, "Couldn't pin this answer."));
@@ -870,10 +876,10 @@ export function AskView() {
       <form
         onSubmit={handleSubmit}
         className={cx(
-          "flex flex-col gap-2.5 border p-3 transition-shadow sm:px-4 sm:py-3",
+          "flex flex-col gap-2 rounded-xl p-2 transition-shadow",
           canAsk
-            ? "border-border-strong bg-surface shadow-composer focus-within:border-ink focus-within:ring-[3px] focus-within:ring-plum-soft"
-            : "border-border bg-panel/60"
+            ? "bg-popover shadow-composer"
+            : "bg-ink/[0.03] shadow-[inset_0_0_0_1px_rgb(var(--ink)/0.08)]"
         )}
       >
         <textarea
@@ -891,14 +897,14 @@ export function AskView() {
           }}
           placeholder={canAsk ? "Ask about your approved data…" : "Finish setup to start asking questions"}
           className={cx(
-            "min-h-[48px] w-full resize-none bg-transparent px-1 py-0.5 text-[15px] leading-relaxed placeholder:text-secondary focus:outline-none",
+            "min-h-[50px] w-full resize-none bg-transparent px-2 pt-1.5 text-md leading-[21px] placeholder:text-secondary/70 focus:outline-none",
             canAsk ? "text-ink" : "text-secondary"
           )}
         />
 
         <div className="flex items-end justify-between gap-2.5">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-            <div role="group" aria-label="Run mode" className="inline-flex border border-border bg-sidebar p-[2px]">
+            <div role="group" aria-label="Run mode" className="inline-flex h-7 items-center rounded-md bg-ink/[0.05] p-[2px] dark:bg-ink/[0.08]">
               {(["quick", "deep"] as const).map((mode) => (
                 <button
                   key={mode}
@@ -907,8 +913,8 @@ export function AskView() {
                   onClick={() => setRunMode(mode)}
                   title={mode === "quick" ? "One focused analysis step" : "Plans several steps and reviews the evidence"}
                   className={cx(
-                    "min-h-[30px] px-3.5 text-[13px] capitalize transition-colors",
-                    runMode === mode ? "bg-surface font-medium text-ink shadow-card" : "text-body hover:text-ink"
+                    "h-6 rounded px-2.5 text-sm font-medium capitalize transition-colors",
+                    runMode === mode ? "bg-popover text-ink shadow-[0_0_0_1px_rgb(var(--ink)/0.08)]" : "text-secondary hover:text-ink"
                   )}
                 >
                   {mode}
@@ -931,7 +937,9 @@ export function AskView() {
                     : "Needs approval on the Data page",
                   badge: s.approved ? undefined : "Draft",
                   disabled: !s.approved,
+                  icon: <ConnectorLogo id={logoIdForFamily(s.source_family) ?? "file"} />,
                 }))}
+                searchable={snapshots.length > 8}
                 disabled={approvedSnapshots.length === 0}
                 onChange={setChosenSnapshot}
               />
@@ -939,9 +947,10 @@ export function AskView() {
 
             <Link
               href="/settings"
-              className="inline-flex h-9 shrink-0 items-center whitespace-nowrap px-1.5 text-[12.5px] text-secondary underline decoration-border underline-offset-4 hover:text-ink"
+              className={cx(btnSm.ghost, "whitespace-nowrap")}
               title="Which models answer: applies to every question in this workspace. Change it in Settings."
             >
+              <span className="text-secondary">Models</span>
               {presetSummary ?? (routing.isLoading ? "…" : PRESET_SUMMARY.balanced)}
             </Link>
           </div>
@@ -952,22 +961,20 @@ export function AskView() {
               type="submit"
               aria-label={submitting ? "Starting" : runMode === "quick" ? "Ask (quick)" : "Ask (deep)"}
               disabled={!draftQuestion.trim() || submitting || !canAsk}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center bg-plum text-on-accent transition-colors hover:bg-plum-deep disabled:cursor-not-allowed disabled:bg-plum/35"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
             >
               {submitting ? (
                 <Spinner className="h-4 w-4" />
               ) : (
-                <svg className="h-[17px] w-[17px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
-                  <path d="M12 19V5M5 12l7-7 7 7" />
-                </svg>
+                <Icon name="arrow-up" className="h-[17px] w-[17px]" />
               )}
             </button>
           </div>
         </div>
       </form>
-      {budget && <p className="px-0.5 text-[11.5px] text-secondary">{budget}</p>}
-      {health.isError && (
-        <p className="px-0.5 text-[11.5px] text-secondary">Run limits are unavailable right now; the API health check failed.</p>
+      {budget && <p className="px-0.5 text-xs text-secondary">{budget}</p>}
+      {health.isError && !serverDown && (
+        <p className="px-0.5 text-xs text-secondary">Run limits are unavailable right now; the API health check failed.</p>
       )}
     </div>
   );
@@ -992,46 +999,29 @@ export function AskView() {
       {showHistoryControls && (
         <>
           <SearchInput dense label="Search history" placeholder="Search questions" value={historyQuery} onChange={setHistoryQuery} />
-          <div role="group" aria-label="Filter history" className="flex items-center gap-1">
-            {(
-              [
-                { value: "all", label: "All", count: historyCounts.all },
-                { value: "done", label: "Done", count: historyCounts.done },
-                { value: "running", label: "Running", count: historyCounts.running },
-                { value: "failed", label: "Failed", count: historyCounts.failed },
-              ] as const
-            ).map((o) => {
-              const activeFilter = o.value === historyFilter;
-              return (
-                <button
-                  key={o.value}
-                  type="button"
-                  aria-pressed={activeFilter}
-                  onClick={() => setHistoryFilter(o.value)}
-                  className={cx(
-                    "inline-flex h-7 flex-auto items-center justify-center gap-1 whitespace-nowrap border px-1.5 text-[11.5px] transition-colors",
-                    activeFilter
-                      ? "border-ink bg-ink font-medium text-canvas"
-                      : "border-border bg-surface text-body hover:border-border-strong hover:text-ink"
-                  )}
-                >
-                  <span>{o.label}</span>
-                  <span className={cx("tabular-nums text-[10.5px]", activeFilter ? "text-canvas/70" : "text-secondary")}>
-                    {o.count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <FilterChips
+            fill
+            label="Filter history"
+            value={historyFilter}
+            onChange={setHistoryFilter}
+            options={[
+              { value: "all", label: "All", count: historyCounts.all },
+              { value: "done", label: "Done", count: historyCounts.done },
+              { value: "running", label: "Running", count: historyCounts.running },
+              { value: "failed", label: "Failed", count: historyCounts.failed },
+            ]}
+          />
         </>
       )}
-      {sortedSessions.length === 0 ? (
-        <p className="px-1 py-2 text-xs leading-relaxed text-secondary" role={runsQuery.error ? "alert" : undefined}>
-          {runsQuery.error
+      {sortedSessions.length === 0 && runsQuery.isLoading && !serverDown ? (
+        <SkeletonRows rows={5} rowClassName="h-11" />
+      ) : sortedSessions.length === 0 ? (
+        <p className="px-1 py-2 text-xs leading-relaxed text-secondary" role={runsQuery.error && !serverDown ? "alert" : undefined}>
+          {serverDown
+            ? "History will appear once the server is back."
+            : runsQuery.error
             ? `Couldn't load history: ${errorMessage(runsQuery.error)}`
-            : runsQuery.isLoading
-              ? "Loading history…"
-              : "Your questions will appear here."}
+            : "Your questions will appear here."}
         </p>
       ) : visibleHistory.length === 0 ? (
         <p className="px-1 py-2 text-xs text-secondary">No questions match.</p>
@@ -1073,13 +1063,12 @@ export function AskView() {
       <p className="sr-only" aria-live="polite">
         {liveMessage}
       </p>
+      {active && <h1 className="sr-only">Ask Ledgerline</h1>}
       <div className={cx("min-w-0", active ? "space-y-6" : "space-y-4")}>
-        {active ? (
-          <h1 className="sr-only">Ask Ledgerline</h1>
-        ) : (
-          <header className="flex flex-col items-center gap-2 pt-0 text-center sm:pt-2">
-            <h1 className="font-display text-[1.75rem] font-semibold leading-tight tracking-[-0.025em] sm:text-[2rem]">What would you like to know?</h1>
-            <p className="max-w-[560px] text-[14px] leading-relaxed text-secondary">
+        {!active && (
+          <header className="flex flex-col items-center gap-3 pt-4 text-center sm:pt-[8vh]">
+            <h1 className="font-display text-[28px] font-[360] leading-[1.2] sm:text-[32px]">What would you like to know?</h1>
+            <p className="max-w-[560px] text-base leading-relaxed text-secondary">
               <strong className="font-medium text-ink">Quick</strong> answers one focused question.{" "}
               <strong className="font-medium text-ink">Deep</strong> plans several steps and checks the evidence. Every figure links to the
               query behind it.
@@ -1087,18 +1076,18 @@ export function AskView() {
           </header>
         )}
 
-        {blockers.length > 0 && (
-          <section aria-label="Setup" className="border border-border bg-surface p-3.5 sm:p-4">
-            <h2 className="font-display text-[15px] font-semibold">Before your first question</h2>
+        {blockers.length > 0 && !serverDown && (
+          <section aria-label="Setup" className="rounded-lg border border-border bg-surface p-3.5 sm:p-4">
+            <h2 className="text-md font-semibold">Before your first question</h2>
             <ol className="mt-2.5 space-y-1.5">
               {blockers.map((b, i) => (
-                <li key={b.key} className="flex flex-wrap items-center gap-x-3 gap-y-2.5 bg-panel px-3 py-2.5">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center bg-ink text-[12px] font-semibold text-canvas" aria-hidden="true">
+                <li key={b.key} className="flex flex-wrap items-center gap-x-3 gap-y-2.5 rounded-lg bg-panel px-3 py-2.5">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-on-accent" aria-hidden="true">
                     {i + 1}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[13.5px] font-medium text-ink">{b.title}</span>
-                    <span className="block text-[12px] text-secondary">{b.body}</span>
+                    <span className="block text-base font-medium text-ink">{b.title}</span>
+                    <span className="block text-xs text-secondary">{b.body}</span>
                   </span>
                   <span className="flex basis-full flex-wrap items-center gap-2 pl-9 sm:basis-auto sm:pl-0">
                     {b.sample && (
@@ -1126,7 +1115,7 @@ export function AskView() {
                 <li key={q}>
                   <button
                     type="button"
-                    className="min-h-[36px] border border-border bg-surface px-3 text-left text-[13px] text-body transition-colors hover:border-ink hover:text-ink"
+                    className={cx(outlineCls, "min-h-[40px] rounded-lg px-3.5 py-2 text-left text-base text-body hover:text-ink")}
                     onClick={() => {
                       setDraftQuestion(q);
                       textareaRef.current?.focus();
@@ -1148,10 +1137,10 @@ export function AskView() {
         {active && (
           <article aria-label="Current question" className="space-y-4">
             <div className="flex justify-end">
-              <p className="max-w-[560px] whitespace-pre-wrap break-words bg-bubble px-4 py-3 text-[14.5px] leading-relaxed">{active.question}</p>
+              <p className="max-w-[560px] whitespace-pre-wrap break-words rounded-xl bg-bubble px-4 py-2.5 text-base leading-relaxed">{active.question}</p>
             </div>
 
-            <section aria-label="Answer" aria-busy={isWorking} className="space-y-4 border border-border bg-surface p-5 shadow-card sm:px-6 sm:py-[22px]">
+            <section aria-label="Answer" aria-busy={isWorking} className="space-y-4 rounded-xl border border-border bg-surface p-5 sm:px-6 sm:py-5">
               <div className="flex flex-wrap items-center justify-between gap-2.5">
                 <span className="min-w-0 truncate text-xs text-secondary">
                   {active.mode === "deep" ? "Deep investigation" : "Quick answer"}
@@ -1239,7 +1228,7 @@ export function AskView() {
                   {errorInfo.hint}
                   {errorInfo.title !== active.error && (
                     <Details summary="Details" className="mt-1">
-                      <p className="break-words font-mono text-[11.5px] opacity-80">{active.error}</p>
+                      <p className="break-words font-mono text-xs opacity-80">{active.error}</p>
                     </Details>
                   )}
                 </Notice>
@@ -1260,7 +1249,7 @@ export function AskView() {
               {pinError && <Notice tone="err" title={pinError} />}
 
               {isAwaitingInput && active.clarificationPrompt && (
-                <form onSubmit={handleClarificationSubmit} className="space-y-3 border border-border-strong bg-canvas p-4">
+                <form onSubmit={handleClarificationSubmit} className="space-y-3 rounded-lg border border-border-strong bg-canvas p-4">
                   <Notice tone="warn" title="A detail is needed to continue">
                     {active.clarificationPrompt}
                   </Notice>
@@ -1297,7 +1286,7 @@ export function AskView() {
               {active.answer ? (
                 <ErrorBoundary key={active.id} title="This answer couldn't be shown">
                   {headline && (
-                    <p className="mb-2 font-display text-[32px] font-semibold leading-tight tracking-tight text-ink tabular-nums">{headline}</p>
+                    <p className="mb-2 text-[32px] font-semibold leading-tight tracking-tight text-ink tabular-nums">{headline}</p>
                   )}
                   <EvidenceContext.Provider value={active.runId ? setOpenEvidence : null}>
                     <SafeMarkdown content={active.answer} />
@@ -1308,16 +1297,16 @@ export function AskView() {
               ) : (
                 isWorking && (
                   <div className="space-y-2.5" aria-hidden="true">
-                    <div className="h-3 w-[86%] animate-pulse bg-bubble" />
-                    <div className="h-3 w-[64%] animate-pulse bg-bubble" />
-                    <div className="h-3 w-[72%] animate-pulse bg-bubble" />
+                    <div className="h-3 w-[86%] animate-pulse rounded bg-bubble" />
+                    <div className="h-3 w-[64%] animate-pulse rounded bg-bubble" />
+                    <div className="h-3 w-[72%] animate-pulse rounded bg-bubble" />
                   </div>
                 )
               )}
 
               {nonSchemaTools.length > 0 && (
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-                  <p className="text-[12px] text-secondary">Sources</p>
+                  <p className="text-xs text-secondary">Sources</p>
                   <ul aria-label="Sources" className="flex flex-wrap gap-1.5">
                     {nonSchemaTools.map((evt) => {
                         const p = evt.payload;
@@ -1333,7 +1322,7 @@ export function AskView() {
                               <button
                                 type="button"
                                 onClick={() => setOpenEvidence(evId)}
-                                className="inline-flex min-h-[30px] items-center gap-1.5 border border-border bg-panel px-2 text-[12px] text-body transition-colors hover:border-ink hover:text-ink"
+                                className={cx(btnSm.secondary, "font-normal")}
                               >
                                 <span className="h-1.5 w-1.5 rounded-full bg-ok-dot" aria-hidden="true" />
                                 {label}
@@ -1341,7 +1330,7 @@ export function AskView() {
                             ) : (
                               <span
                                 title={p.ok ? undefined : "This query failed; the model was told and could retry."}
-                                className="inline-flex min-h-[30px] items-center gap-1.5 border border-border px-2 text-[12px] text-secondary"
+                                className="inline-flex min-h-[32px] items-center gap-1.5 rounded-full border border-border px-3 text-sm text-secondary"
                               >
                                 <span className={cx("h-1.5 w-1.5 rounded-full", p.ok ? "bg-secondary" : "bg-err-dot")} aria-hidden="true" />
                                 {p.ok ? label : `${label} · failed`}
@@ -1357,7 +1346,7 @@ export function AskView() {
               {(active.runId || active.events.length > 0) && (
                 <div>
                   <Details summary="Technical details">
-                    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[12px]">
+                    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
                       {active.runId && (
                         <>
                           <dt className="text-secondary">Run</dt>
@@ -1384,7 +1373,7 @@ export function AskView() {
                     {active.events.length > 0 && (
                       <div className="mt-2 max-h-64 space-y-1 overflow-y-auto">
                         {active.events.map((evt) => (
-                          <div key={evt.event_id} className="flex gap-2.5 bg-panel px-2.5 py-[7px] font-mono text-[11.5px] leading-relaxed">
+                          <div key={evt.event_id} className="flex gap-2.5 rounded bg-panel px-2.5 py-[7px] font-mono text-xs leading-relaxed">
                             <span className="shrink-0 text-secondary">#{evt.sequence}</span>
                             <span className="shrink-0 text-ink">{evt.type}</span>
                             <span className="min-w-0 break-all text-secondary">{eventSummary(evt.payload)}</span>
@@ -1407,17 +1396,15 @@ export function AskView() {
                     onChange={(e) => setFollowUpDraft(e.target.value)}
                     placeholder="Ask a follow-up"
                     maxLength={inputLimits?.max_question_chars}
-                    className={cx(inputCls, "min-h-[40px] min-w-0 flex-1")}
+                    className={cx(inputCls, "min-w-0 flex-1")}
                   />
                   <button
                     type="submit"
                     aria-label="Ask follow-up"
                     disabled={submitting || !followUpDraft.trim()}
-                    className={cx(btn.secondary, "w-10 shrink-0 !px-0")}
+                    className={btn.icon}
                   >
-                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 19V5M5 12l7-7 7 7" />
-                    </svg>
+                    <Icon name="arrow-up" className="h-4 w-4" />
                   </button>
                 </form>
               )}
@@ -1428,12 +1415,12 @@ export function AskView() {
 
       <aside className="order-first space-y-3 lg:sticky lg:top-8 lg:order-none">
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={startNew} className={cx(btn.secondary, "flex-1 px-3 font-medium max-lg:min-h-[36px]", !active && "max-lg:hidden")}>
+          <button type="button" onClick={startNew} className={cx(btn.secondary, "flex-1", !active && "max-lg:hidden")}>
             New question
           </button>
           <button
             type="button"
-            className={cx(btn.secondary, "px-3 max-lg:min-h-[36px] lg:hidden")}
+            className={cx(btn.secondary, "lg:hidden")}
             aria-expanded={historyOpen}
             aria-controls="ask-history"
             onClick={() => setHistoryOpen((o) => !o)}

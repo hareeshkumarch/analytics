@@ -42,7 +42,11 @@ def register(ctx: ApiContext) -> None:
         semantic_version_id = str(run_rec.get("semantic_version_id") or "")
 
         def _is_cancelled() -> bool:
-            return run_rec.get("status") == RunStatus.CANCELLED.value
+            # The cancel route (and every read of the run) replaces the entry in app.state.runs with a fresh
+            # record, so the copy this executor captured never changes. Look at the current entry as well.
+            current = app.state.runs.get(run_id) or run_rec
+            cancelled = RunStatus.CANCELLED.value
+            return run_rec.get("status") == cancelled or current.get("status") == cancelled
 
         run_token = run_id_var.set(run_id)
         try:

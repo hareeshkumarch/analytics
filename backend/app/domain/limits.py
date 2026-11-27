@@ -59,6 +59,15 @@ class DataLimits:
 REPLAN_TASKS = 2
 
 MAX_TOOL_ROUNDS = 6
+# A specialist is told to write its answer while this much time is still left, instead of being cut off mid-step.
+WIND_DOWN_SECONDS = 45
+# Model calls a specialist must leave unspent so the final answer can still be composed.
+FINAL_ANSWER_ATTEMPT_RESERVE = 1
+# Rate limits and provider outages: wait and try the same model again when no other model can take over.
+RETRY_BACKOFF_BASE_SECONDS = 1.0
+RETRY_BACKOFF_MAX_SECONDS = 15.0
+# A grouping is treated as row-level data when it has at least this many values and fewer than two rows per value.
+ROW_LEVEL_MIN_GROUPS = 10
 CHARS_PER_TOKEN = 3
 TOKEN_HEADROOM_FACTOR = 2
 STEP_MAX_OUTPUT_TOKENS = 12_000

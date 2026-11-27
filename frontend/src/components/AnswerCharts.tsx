@@ -48,15 +48,15 @@ function ChartCard({ chart, small, showTitle }: { chart: AnswerChart; small: boo
   const label = `${chart.title}: ${chart.y_fields.map(humanize).join(", ")} by ${humanize(chart.x_field)}, ${chart.rows.length} points.`;
 
   return (
-    <figure className="border border-border bg-surface p-3.5">
+    <figure className="rounded-lg border border-border bg-surface p-3.5">
       {(showTitle || keys.length > 1) && (
         <figcaption className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-          {showTitle && <span className="text-[13px] font-medium text-ink">{chart.title}</span>}
+          {showTitle && <span className="text-sm font-medium text-ink">{chart.title}</span>}
           {keys.length > 1 && (
-            <span className="flex flex-wrap gap-3 text-[11.5px] text-secondary">
+            <span className="flex flex-wrap gap-3 text-xs text-secondary">
               {keys.map((key, i) => (
                 <span key={key} className="inline-flex items-center gap-1.5">
-                  <span aria-hidden="true" className="inline-block h-2 w-2" style={{ background: colorFor(i) }} />
+                  <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full" style={{ background: colorFor(i) }} />
                   {names[key]}
                 </span>
               ))}
@@ -68,7 +68,7 @@ function ChartCard({ chart, small, showTitle }: { chart: AnswerChart; small: boo
         <ChartPlot chart={chart} data={data} keys={keys} names={names} colors={palette} formats={formats} />
       </div>
       {!small && (
-        <details className="mt-2 text-[12px] text-secondary">
+        <details className="mt-2 text-xs text-secondary">
           <summary className="cursor-pointer select-none hover:text-ink">Show data</summary>
           <div className="mt-2 max-h-56 overflow-auto">
             <table className="w-full border-collapse text-left">
@@ -97,7 +97,7 @@ function ChartCard({ chart, small, showTitle }: { chart: AnswerChart; small: boo
         </details>
       )}
       {(openEvidence || chart.truncated) && (
-        <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[11px] text-secondary">
+        <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-2xs text-secondary">
           {openEvidence && (
             <button
               type="button"
@@ -120,7 +120,7 @@ export function AnswerCharts({ charts, small = false, contextTitle }: { charts?:
   if (!charts?.length) return null;
   const shown = small ? charts.slice(0, 1) : charts;
   return (
-    <div className={small ? undefined : "mt-4 grid gap-3 lg:grid-cols-2"}>
+    <div className={small ? undefined : shown.length > 1 ? "mt-4 grid gap-3 lg:grid-cols-2" : "mt-4"}>
       {shown.map((chart) => (
         <ChartCard key={chart.chart_id} chart={chart} small={small} showTitle={!contextTitle || !sameTitle(chart.title, contextTitle)} />
       ))}

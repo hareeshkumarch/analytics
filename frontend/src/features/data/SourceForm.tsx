@@ -68,7 +68,7 @@ function Field({ field, id, value, error, disabled, onChange, sheetsHint }: Fiel
   if (field.type === "checkbox") {
     return (
       <div className="space-y-1">
-        <label htmlFor={id} className="flex min-h-[40px] cursor-pointer items-center gap-2.5 text-[13px] text-body">
+        <label htmlFor={id} className="flex min-h-[40px] cursor-pointer items-center gap-2.5 text-sm text-body">
           <input
             id={id}
             type="checkbox"
@@ -77,7 +77,7 @@ function Field({ field, id, value, error, disabled, onChange, sheetsHint }: Fiel
             aria-invalid={Boolean(error)}
             aria-describedby={describe}
             onChange={(e) => onChange(field.key, e.target.checked)}
-            className="h-4 w-4 shrink-0 accent-plum"
+            className="h-4 w-4 shrink-0 accent-focus"
           />
           {field.label}
         </label>
@@ -102,7 +102,7 @@ function Field({ field, id, value, error, disabled, onChange, sheetsHint }: Fiel
 
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-[12.5px] font-medium text-body">
+      <label htmlFor={id} className="block text-sm font-medium text-body">
         {field.label}
       </label>
       {field.type === "textarea" ? (
@@ -125,7 +125,7 @@ function Field({ field, id, value, error, disabled, onChange, sheetsHint }: Fiel
             onClick={() => setRevealed((r) => !r)}
             aria-label={revealed ? `Hide ${field.label}` : `Show ${field.label}`}
             aria-pressed={revealed}
-            className="absolute right-1.5 top-1/2 flex h-8 items-center justify-center px-2 text-xs text-secondary transition-colors hover:text-ink"
+            className="absolute right-1.5 top-1/2 flex h-8 items-center justify-center rounded-full px-2 text-xs text-secondary transition-colors hover:text-ink"
           >
             {revealed ? "Hide" : "Show"}
           </button>

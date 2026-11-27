@@ -1,4 +1,5 @@
 import React from "react";
+import { Icon } from "@/components/Icon";
 import { Spinner, cx } from "@/components/ui";
 
 interface Step {
@@ -17,21 +18,19 @@ export function StepProgress({ steps, current, busy, status }: { steps: Step[]; 
             <li
               key={s.key}
               aria-current={active ? "step" : undefined}
-              className={cx("flex items-center gap-2 text-[12.5px]", active ? "font-medium text-ink" : done ? "text-body" : "text-secondary")}
+              className={cx("flex items-center gap-2 text-sm", active ? "font-medium text-ink" : done ? "text-body" : "text-secondary")}
             >
               <span
                 aria-hidden="true"
                 className={cx(
-                  "flex h-5 w-5 shrink-0 items-center justify-center text-[11px] tabular-nums",
-                  done ? "bg-ink text-canvas" : active ? "border border-ink" : "border border-border"
+                  "flex h-5 w-5 shrink-0 rounded-full items-center justify-center text-2xs tabular-nums",
+                  done ? "bg-accent text-on-accent" : active ? "border border-accent text-accent" : "border border-border"
                 )}
               >
                 {active && busy ? (
                   <Spinner className="h-2.5 w-2.5" />
                 ) : done ? (
-                  <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                    <path d="M20 6 9 17l-5-5" />
-                  </svg>
+                  <Icon name="check" className="h-3 w-3" />
                 ) : (
                   i + 1
                 )}

@@ -42,7 +42,7 @@ export function PreviewTab({ snapshot, table }: { snapshot: SnapshotSummary; tab
   if (!rows.length) return <EmptyState title="This table has no rows" body="The import succeeded, but the source table was empty." />;
   return (
     <div className="space-y-3">
-      <p className="text-[13px] text-body">
+      <p className="text-sm text-body">
         First {row_count.toLocaleString()} {total != null ? `of ${total.toLocaleString()} ` : ""}rows
       </p>
       <DataTable label={`Preview of ${table}`} head={columns} rawHead scrollY minWidth="min-w-max">

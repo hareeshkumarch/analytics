@@ -202,7 +202,10 @@ class DeepAgentTaskRunner:
         run_id: str,
         policy: RoutingPolicy,
         deadline: float | None = None,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> tuple[dict[str, Any], str, str]:
+        if should_cancel is not None and should_cancel():
+            raise RuntimeError("The investigation run was cancelled")
         messages = ({"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt})
         remaining = 60 if deadline is None else int(deadline - time.monotonic())
         response = self._routing.execute_step(
@@ -233,7 +236,10 @@ class DeepAgentTaskRunner:
         on_delta: Callable[[str], None],
         on_reset: Callable[[], None],
         deadline: float | None = None,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> tuple[str, str, str]:
+        if should_cancel is not None and should_cancel():
+            raise RuntimeError("The investigation run was cancelled")
         messages = ({"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt})
         remaining = 120 if deadline is None else int(deadline - time.monotonic())
         response = self._routing.execute_step(
@@ -364,6 +370,7 @@ class DeepAgentTaskRunner:
         evidence_lookup: Callable[[str], dict[str, Any] | None] | None = None,
         task_history_loader: Callable[[str], tuple[list[dict[str, Any]], list[dict[str, Any]]]] | None = None,
         token_budget: int | None = None,
+        max_model_attempts: int | None = None,
     ) -> SpecialistOutcome:
         role = role_for_kind(task.kind)
         profile = DEFAULT_HARNESS_PROFILES.get(role)
@@ -442,6 +449,7 @@ class DeepAgentTaskRunner:
         observed: dict[str, str] = {"provider": "none", "model": "setup_required"}
         stopped_early: str | None = None
         error: str | None = None
+        interruption = ""
         review_verdict: ReviewVerdict | None = None
 
         def observe(response: ModelResponse) -> None:
@@ -469,6 +477,10 @@ class DeepAgentTaskRunner:
             timeout_provider=timeout_provider,
             response_observer=observe,
             token_budget=token_budget,
+            attempts_left=(
+                (lambda: max_model_attempts - self._routing.attempts_used(run_id)) if max_model_attempts is not None else None
+            ),
+            seconds_left=lambda: None if deadline is None else deadline - time.monotonic(),
         )
 
         try:
@@ -554,6 +566,7 @@ class DeepAgentTaskRunner:
                                 run_id=run_id,
                                 policy=policy,
                                 deadline=deadline,
+                                should_cancel=should_cancel,
                             )
                         review_verdict, text = _review_verdict(repaired)
                     except Exception:  # noqa: BLE001
@@ -591,12 +604,32 @@ class DeepAgentTaskRunner:
                 stopped_early = "cancelled"
             elif deadline is not None and time.monotonic() >= deadline:
                 stopped_early = "deadline_exceeded"
+            elif evidence:
+                stopped_early = "interrupted"
             text = ""
+            if evidence and stopped_early != "cancelled":
+                # The queries that already ran are real results. Keep them as an unfinished step
+                # instead of failing it, which would also fail every step that depends on it.
+                interruption, error = error, None
 
         if stopped_early:
-            reason = "the run was cancelled" if stopped_early == "cancelled" else "the time budget expired"
-            note = f"_This step stopped early ({reason}) after {len(trace)} queries; the figures below are partial._"
-            text = f"{note}\n\n{text}".strip() if text.strip() else note
+            reason = {
+                "cancelled": "the run was cancelled",
+                "deadline_exceeded": "the time budget expired",
+            }.get(stopped_early, f"a model call failed: {interruption}")
+            if text.strip():
+                note = f"_This step stopped early ({reason}) after {len(trace)} queries; the figures below are partial._"
+                text = f"{note}\n\n{text}".strip()
+            else:
+                gathered = [
+                    f"- {clip_statement(str(item.get('purpose') or item.get('operation') or 'Query'), CLAIM_STATEMENT_CHARS)} [{item['evidence_id']}]"
+                    for item in evidence
+                    if item.get("evidence_id")
+                ]
+                text = (
+                    f"_This step stopped early ({reason}) after {len(trace)} queries and did not write a conclusion._"
+                    + ("\n\nEvidence it gathered before stopping:\n" + "\n".join(gathered) if gathered else "")
+                )
 
         evidence_ids = tuple(dict.fromkeys(str(e["evidence_id"]) for e in evidence if e.get("evidence_id")))
         payload = {

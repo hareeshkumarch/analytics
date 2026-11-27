@@ -21,9 +21,10 @@ from app.domain.errors import (
     QueryValidationError,
     SecurityPolicyError,
 )
-from app.domain.limits import DEFAULT_GLOBAL_LIMITS, ERROR_DETAIL_CHARS, LOG_EXCERPT_CHARS, PUBLIC_ERROR_CHARS
+from app.domain.limits import DEFAULT_GLOBAL_LIMITS, ERROR_DETAIL_CHARS, LOG_EXCERPT_CHARS, PUBLIC_ERROR_CHARS, ROW_LEVEL_MIN_GROUPS
 from app.domain.timezone import DEFAULT_BUSINESS_TIMEZONE
 from app.domain.query_ir import (
+    AggregateQueryIR,
     MAX_BUCKETS,
     MAX_QUERY_ROWS,
     AggregateFunction,
@@ -206,7 +207,24 @@ RUN_QUERY_TOOL = ToolDefinition(
     description=(
         "Run a read-only, typed query against the bound dataset snapshot and get the result rows plus an "
         "evidence_id. Use only table and column names returned by inspect_schema. Raw SQL is not accepted. "
-        "Row values from detail queries may be withheld by the data policy; use aggregates for figures."
+        "Row-level values (detail queries, or grouping by an identifier such as an email) may be withheld by the "
+        "data policy; use aggregates over categories or periods for figures.\n"
+        "Each operation accepts only its own parameters, plus filters, limit and purpose; anything else is rejected:\n"
+        "- aggregate: table_id, metrics, group_by, order_by\n"
+        "- detail: table_id, select_fields, order_by\n"
+        "- compare_periods: table_id, date_field, metric, current_start, current_end, previous_start, previous_end, group_by\n"
+        "- contribution_breakdown: table_id, metric, dimension_field\n"
+        "- distribution: table_id, field_id, buckets\n"
+        "- reconciliation_lookup: left_table_id, right_table_id, left_key, right_key, left_amount_field, right_amount_field\n"
+        "sum and avg need a numeric column. count counts the rows where field_id is not null.\n"
+        "Example, revenue by region, largest first: "
+        '{"operation": "aggregate", "purpose": "Revenue by region", "table_id": "orders", '
+        '"metrics": [{"alias": "revenue", "func": "sum", "field_id": "amount"}], "group_by": ["region"], '
+        '"order_by": [{"field_id": "revenue", "direction": "desc"}]}\n'
+        "Example, this March against last March: "
+        '{"operation": "compare_periods", "purpose": "March revenue year on year", "table_id": "orders", '
+        '"date_field": "order_date", "metric": {"alias": "revenue", "func": "sum", "field_id": "amount"}, '
+        '"current_start": "2026-03-01", "current_end": "2026-04-01", "previous_start": "2025-03-01", "previous_end": "2025-04-01"}'
     ),
     parameters_schema=RUN_QUERY_SCHEMA,
     strict=False,
@@ -665,6 +683,58 @@ class AnalyticsToolbox:
             evidence=evidence,
         )
 
+    def _column_type(self, table_id: str, column: str) -> str:
+        for table in (self.snapshot or {}).get("table_details", []):
+            if table.get("name") == table_id:
+                return next((str(c.get("type") or "") for c in table.get("columns", []) if c.get("name") == column), "")
+        return ""
+
+    def _row_level_reason(self, ir: Any, semantic_version_id: str, timeout_seconds: int) -> str:
+        """Why this query's rows count as raw records under the data policy, or "" when they are real aggregates.
+
+        A detail query is raw records by definition. So is grouping by a column that is close to unique
+        (an email, an account number): each "group" is one record. So is MIN/MAX of a text column, which
+        returns a stored value rather than a figure.
+        """
+        if ir.operation == "detail":
+            return "detail queries return individual records."
+        table_id = str(getattr(ir, "table_id", "") or "")
+        metrics = tuple(getattr(ir, "metrics", ()) or ()) + ((ir.metric,) if getattr(ir, "metric", None) is not None else ())
+        for metric in metrics:
+            kind = self._column_type(table_id, metric.field_id).lower()
+            if metric.func in (AggregateFunction.MIN, AggregateFunction.MAX) and any(k in kind for k in ("char", "string", "text", "utf")):
+                return f"the smallest or largest value of the text column {metric.field_id!r} is a stored record value."
+        dimensions = tuple(getattr(ir, "group_by", ()) or ())
+        if getattr(ir, "dimension_field", ""):
+            dimensions += (ir.dimension_field,)
+        for column in dimensions:
+            probe = AggregateQueryIR(
+                table_id=table_id,
+                metrics=(
+                    AggregateMetricSpec("rows_with_value", AggregateFunction.COUNT, column),
+                    AggregateMetricSpec("distinct_values", AggregateFunction.COUNT_DISTINCT, column),
+                ),
+                # Judged over the whole table, not the filtered rows: narrowing a query to a few
+                # customers does not make their emails any less identifying.
+                purpose="data policy check",
+            )
+            try:
+                result, _ = self.engine.run(
+                    self.snapshot or {},
+                    probe,
+                    semantic_version_id,
+                    MAX_QUERY_ROWS,
+                    timeout_seconds=timeout_seconds,
+                    business_timezone=self.business_timezone,
+                )
+                rows_with_value, distinct_values = (int(v or 0) for v in result.rows[0][:2])
+            except Exception:  # noqa: BLE001
+                # If the check itself cannot run, treat the grouping as row-level: the policy fails closed.
+                return f"the grouping column {column!r} could not be checked."
+            if distinct_values >= ROW_LEVEL_MIN_GROUPS and distinct_values * 2 > rows_with_value:
+                return f"grouping by {column!r} gives about one row per value, so each group is an individual record."
+        return ""
+
     def _run_query(self, arguments: dict[str, Any]) -> ToolOutcome:
         assert self.snapshot is not None
         spec = TOOL_SPECS[RUN_QUERY_TOOL.name]
@@ -727,7 +797,8 @@ class AnalyticsToolbox:
         shown = result.rows[: min(self.max_rows_to_model, spec.max_inline_rows)]
         evidence["columns"] = list(result.columns)
         evidence["rows"] = json.loads(json.dumps([list(r) for r in shown], default=str))
-        withheld = ir.operation == "detail" and not self.raw_record_egress
+        withheld_reason = "" if self.raw_record_egress else self._row_level_reason(ir, semantic_version_id, spec.timeout_seconds)
+        withheld = bool(withheld_reason)
         if not withheld:
             self._calculable[evidence_id] = {"columns": evidence["columns"], "rows": evidence["rows"]}
         rows_shown = 0 if withheld else len(shown)
@@ -752,8 +823,9 @@ class AnalyticsToolbox:
         if withheld:
             payload["rows_withheld"] = True
             notes.append(
-                "The data policy keeps raw row values from detail queries out of the model. The user can see these "
-                f"rows in evidence {evidence_id}; cite it, and never guess values. Use aggregate queries for figures."
+                f"The data policy keeps row-level values out of the model: {withheld_reason} The user can see these "
+                f"rows in evidence {evidence_id}; cite it, and never guess values. Use aggregate queries over "
+                "categories, periods or other coarse groupings for figures."
             )
         if result.truncated:
             notes.append(

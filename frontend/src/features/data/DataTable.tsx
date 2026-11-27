@@ -1,9 +1,24 @@
 import React from "react";
 import { HScroll } from "@/components/HScroll";
-import { cx } from "@/components/ui";
+import { Icon } from "@/components/Icon";
+import { cx, tableHeadCls } from "@/components/ui";
 
 export const rowCls = "border-t border-border align-top";
 export const cellCls = "px-3.5 py-2.5";
+
+export type SortDir = "asc" | "desc";
+
+/** A column header: plain text, or an object when it is right-aligned, hidden, or sortable. */
+export type HeadCell =
+  | string
+  | {
+      label: string;
+      align?: "right";
+      srOnly?: boolean;
+      className?: string;
+      /** `dir` is null when another column is the active sort. */
+      sort?: { dir: SortDir | null; onToggle: () => void };
+    };
 
 export function DataTable({
   label,
@@ -14,28 +29,57 @@ export function DataTable({
   children,
 }: {
   label: string;
-  head: string[];
+  head: HeadCell[];
   minWidth?: string;
   rawHead?: boolean;
   scrollY?: boolean;
   children: React.ReactNode;
 }) {
   const table = (
-    <HScroll className={scrollY ? "" : "border border-border"} label={label}>
-      <table className={cx("w-full border-collapse text-left text-[13px]", minWidth)}>
+    <HScroll className={scrollY ? "" : "rounded-lg border border-border"} label={label}>
+      <table className={cx("w-full border-collapse text-left text-sm", minWidth)}>
         <caption className="sr-only">{label}</caption>
         <thead>
-          <tr className={cx("bg-panel text-secondary", rawHead ? "font-mono text-[11.5px]" : "text-[11px] uppercase tracking-[0.05em]")}>
-            {head.map((h) => (
-              <th key={h} scope="col" className="whitespace-nowrap px-3.5 py-2.5 font-medium">
-                {h}
-              </th>
-            ))}
+          <tr className={rawHead ? "bg-panel font-mono text-xs text-secondary" : tableHeadCls}>
+            {head.map((h) => {
+              const cell = typeof h === "string" ? { label: h } : h;
+              const right = cell.align === "right";
+              return (
+                <th
+                  key={cell.label}
+                  scope="col"
+                  aria-sort={cell.sort ? (cell.sort.dir === "asc" ? "ascending" : cell.sort.dir === "desc" ? "descending" : "none") : undefined}
+                  className={cx("whitespace-nowrap px-3.5 py-2.5 font-medium", right && "text-right", cell.className)}
+                >
+                  {cell.srOnly ? (
+                    <span className="sr-only">{cell.label}</span>
+                  ) : cell.sort ? (
+                    <button
+                      type="button"
+                      onClick={cell.sort.onToggle}
+                      className={cx(
+                        "-mx-1.5 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-medium transition-colors hover:text-ink",
+                        cell.sort.dir && "text-ink"
+                      )}
+                    >
+                      {cell.label}
+                      <Icon
+                        name={cell.sort.dir === "asc" ? "arrow-up" : "arrow-down"}
+                        className={cx("h-3 w-3", !cell.sort.dir && "opacity-30")}
+                        strokeWidth={2.25}
+                      />
+                    </button>
+                  ) : (
+                    cell.label
+                  )}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>{children}</tbody>
       </table>
     </HScroll>
   );
-  return scrollY ? <div className="max-h-[480px] overflow-y-auto border border-border">{table}</div> : table;
+  return scrollY ? <div className="max-h-[480px] overflow-y-auto rounded-lg border border-border">{table}</div> : table;
 }

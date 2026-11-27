@@ -94,7 +94,7 @@ class NvidiaNimAdapter:
                 f"{provider_profile.base_url.rstrip('/')}/chat/completions", json=payload, headers=headers
             )
         if resp.status_code >= 400:
-            raise classify_http_error(resp.status_code, resp.text, "NVIDIA NIM")
+            raise classify_http_error(resp.status_code, resp.text, "NVIDIA NIM", resp.headers.get("retry-after"))
 
         data = read_json_body(resp, "NVIDIA NIM")
         choice = (data.get("choices") or [{}])[0]

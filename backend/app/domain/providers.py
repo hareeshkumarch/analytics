@@ -72,6 +72,9 @@ class ModelProfile:
     output_price_per_1m: Decimal | None
     verification_date: str
     enabled: bool = True
+    # Optional reasoning level sent to providers that take one (Anthropic output_config.effort,
+    # OpenAI reasoning.effort). Unset leaves the provider's own default in place.
+    reasoning_effort: str | None = None
     contract_tested: bool = False
     live_verified: bool = False
 

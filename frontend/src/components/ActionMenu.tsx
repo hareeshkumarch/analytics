@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Icon } from "@/components/Icon";
 import { btn } from "@/components/ui";
 
 const MENU_WIDTH_PX = 220;
 const ITEM_CLS =
-  "block w-full px-3.5 py-2.5 text-left text-[13px] text-body hover:bg-sidebar hover:text-ink focus:bg-sidebar focus:text-ink focus:outline-none";
+  "block w-full rounded-md px-2 py-1.5 text-left text-base text-ink hover:bg-ink/[0.05] focus:bg-ink/[0.05] focus:outline-none dark:hover:bg-ink/[0.08] dark:focus:bg-ink/[0.08]";
 
 export interface MenuAction {
   label: string;
@@ -98,9 +99,7 @@ export function ActionMenu({
           className={btn.ghost}
         >
           {triggerText}
-          <svg aria-hidden="true" viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6">
-            <path d="M4 6l4 4 4-4" />
-          </svg>
+          <Icon name="chevron-down" className="h-3.5 w-3.5" />
         </button>
       )}
       {open && (
@@ -109,19 +108,19 @@ export function ActionMenu({
           tabIndex={-1}
           aria-label={menuLabel}
           onKeyDown={onMenuKey}
-          className={`absolute top-full z-30 mt-1 min-w-[220px] border border-border-strong bg-surface py-1 shadow-pop ${
+          className={`absolute top-full z-30 mt-1 min-w-[200px] rounded-xl border border-ink/[0.08] bg-popover p-1 shadow-pop ${
             alignRight ? "right-0" : "left-0"
           }`}
         >
           {safe.map(item)}
-          {danger.length > 0 && safe.length > 0 && <div role="separator" className="my-1 border-t border-border" />}
+          {danger.length > 0 && safe.length > 0 && <div role="separator" className="-mx-1 my-1 border-t border-ink/[0.08]" />}
           {danger.map(item)}
         </div>
       )}
       {notice && (
         <div
           role="alert"
-          className={`absolute top-full z-20 mt-1 flex w-max max-w-[min(280px,calc(100vw-2rem))] items-start gap-2 border border-border-strong bg-surface px-3 py-2 text-[12px] text-err shadow-pop ${
+          className={`absolute top-full z-20 mt-1 flex w-max max-w-[min(280px,calc(100vw-2rem))] items-start gap-2 rounded-lg border border-border-strong bg-surface px-3 py-2 text-xs text-err shadow-pop ${
             alignRight ? "right-0" : "left-0"
           }`}
         >

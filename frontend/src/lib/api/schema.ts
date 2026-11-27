@@ -209,6 +209,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/pins/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Pins */
+        post: operations["refresh_pins_api_v1_workspaces__workspace_id__pins_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/pins/{pin_id}": {
         parameters: {
             query?: never;
@@ -864,7 +881,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "verified" | "failed" | "blocked" | "not_applicable";
+            status: "verified" | "failed" | "blocked" | "unreviewed" | "not_applicable";
         } & {
             [key: string]: unknown;
         };
@@ -1009,16 +1026,59 @@ export interface components {
             created_at: string;
             /** Latest Run Id */
             latest_run_id?: string | null;
+            /** Latest Run Status */
+            latest_run_status?: string | null;
+            /** Newer Version */
+            newer_version?: number | null;
             /** Pin Id */
             pin_id: string;
             /** Question Text */
             question_text: string;
             /** Run Id */
             run_id: string;
+            shown_run?: components["schemas"]["RunOut"] | null;
+            snapshot?: components["schemas"]["SnapshotOut"] | null;
             /** Title */
             title: string;
             /** Version */
             version: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PinRefreshBatchOut */
+        PinRefreshBatchOut: {
+            /**
+             * Failed
+             * @default []
+             */
+            failed?: components["schemas"]["PinRefreshFailureOut"][];
+            /** Refreshed */
+            refreshed: components["schemas"]["PinRefreshOut"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** PinRefreshFailureOut */
+        PinRefreshFailureOut: {
+            /** Detail */
+            detail: string;
+            /** Pin Id */
+            pin_id: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PinRefreshOut */
+        PinRefreshOut: {
+            /**
+             * Already Running
+             * @default false
+             */
+            already_running?: boolean;
+            /** Pin Id */
+            pin_id: string;
+            /** Refresh Run Id */
+            refresh_run_id: string;
+            /** Status */
+            status: string;
         } & {
             [key: string]: unknown;
         };
@@ -1070,6 +1130,11 @@ export interface components {
             workspace_id: string;
         } & {
             [key: string]: unknown;
+        };
+        /** RefreshPinsRequest */
+        RefreshPinsRequest: {
+            /** Pin Ids */
+            pin_ids?: string[] | null;
         };
         /** ReimportOut */
         ReimportOut: {
@@ -1403,8 +1468,28 @@ export interface components {
             /** Business Timezone */
             business_timezone: string;
         };
+        /** UsageBucketOut */
+        UsageBucketOut: {
+            /** Cost Usd */
+            cost_usd: string;
+            /** Runs */
+            runs: number;
+            /** Start */
+            start: string;
+            /** Tokens */
+            tokens: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** UsageOut */
         UsageOut: {
+            /**
+             * Buckets
+             * @default []
+             */
+            buckets?: components["schemas"]["UsageBucketOut"][];
+            /** Matched Count */
+            matched_count?: number | null;
             /** Models */
             models: components["schemas"]["ModelUsageOut"][];
             /** Run Count */
@@ -1849,6 +1934,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PinOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_pins_api_v1_workspaces__workspace_id__pins_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshPinsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinRefreshBatchOut"];
                 };
             };
             /** @description Validation Error */
@@ -2927,6 +3047,15 @@ export interface operations {
         parameters: {
             query?: {
                 since?: string | null;
+                sort?: "when" | "calls" | "tokens" | "cost";
+                order?: "asc" | "desc";
+                status?: string | null;
+                mode?: string | null;
+                q?: string | null;
+                limit?: number | null;
+                offset?: number;
+                bucket?: "hour" | "day";
+                tz_offset_minutes?: number;
             };
             header?: never;
             path: {

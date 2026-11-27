@@ -107,7 +107,7 @@ class ChartOut(ApiResponse):
 
 class CriterionOut(ApiResponse):
     criterion: str
-    status: Literal["verified", "failed", "blocked", "not_applicable"]
+    status: Literal["verified", "failed", "blocked", "unreviewed", "not_applicable"]
     evidence_ids: list[str] = []
     detail: str = ""
 
@@ -197,10 +197,32 @@ class PinOut(ApiResponse):
     created_at: str
     auto_refresh: bool = False
     latest_run_id: str | None = None
+    # Present on the pin list, so a dashboard card needs no further requests.
+    shown_run: RunOut | None = None
+    latest_run_status: str | None = None
+    snapshot: SnapshotOut | None = None
+    newer_version: int | None = None
 
 
 class PinListOut(ApiResponse):
     pins: list[PinOut]
+
+
+class PinRefreshOut(ApiResponse):
+    pin_id: str
+    refresh_run_id: str
+    status: str
+    already_running: bool = False
+
+
+class PinRefreshFailureOut(ApiResponse):
+    pin_id: str
+    detail: str
+
+
+class PinRefreshBatchOut(ApiResponse):
+    refreshed: list[PinRefreshOut]
+    failed: list[PinRefreshFailureOut] = []
 
 
 class RunUsageOut(ApiResponse):
@@ -257,11 +279,21 @@ class UsageSummaryOut(ApiResponse):
     by_mode: list[ModeUsageOut]
 
 
+class UsageBucketOut(ApiResponse):
+    start: str
+    runs: int
+    tokens: int
+    cost_usd: str
+
+
 class UsageOut(ApiResponse):
     workspace_id: str
     run_count: int
     runs: list[RunUsageOut]
     runs_truncated: bool = False
+    # Runs matching the status, mode and search filters, before limit and offset.
+    matched_count: int | None = None
+    buckets: list[UsageBucketOut] = []
     summary: UsageSummaryOut | None = None
     models: list[ModelUsageOut]
     tools: list[ToolUsageOut] = []

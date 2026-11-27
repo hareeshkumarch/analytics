@@ -500,6 +500,54 @@ class PgRunRepository:
                 stmt = stmt.where(RunRow.created_at >= since)
             return [(str(r), str(m), str(s)) for r, m, s in db.execute(stmt).all()]
 
+    def usage_rows(self, workspace_id: str, since: datetime | None = None) -> list[dict[str, Any]]:
+        """One light row per run in the window: enough to filter, sort and bucket usage without loading answers."""
+        with self._sf() as db:
+            stmt = select(
+                RunRow.run_id,
+                RunRow.mode,
+                RunRow.status,
+                RunRow.created_at,
+                RunRow.answer_json["question"].as_string(),
+                RunRow.answer_json["error"].as_string(),
+            ).where(RunRow.workspace_id == workspace_id)
+            if since is not None:
+                stmt = stmt.where(RunRow.created_at >= since)
+            return [
+                {
+                    "run_id": str(run_id),
+                    "mode": str(mode),
+                    "status": str(status),
+                    "created_at": created_at.isoformat(),
+                    "question": str(question or ""),
+                    "error": error or None,
+                }
+                for run_id, mode, status, created_at, question, error in db.execute(stmt).all()
+            ]
+
+    def get_runs_by_ids(self, run_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """Several runs in one query, keyed by id. Missing ids are simply absent."""
+        if not run_ids:
+            return {}
+        with self._sf() as db:
+            rows = db.scalars(select(RunRow).where(RunRow.run_id.in_(run_ids))).all()
+            return {
+                row.run_id: {
+                    "run_id": row.run_id,
+                    "workspace_id": row.workspace_id,
+                    "conversation_id": row.conversation_id,
+                    "mode": row.mode,
+                    "status": row.status,
+                    "outcome": row.outcome,
+                    "snapshot_id": row.snapshot_id,
+                    "question": (row.answer_json or {}).get("question", ""),
+                    "answer": row.answer_json or {},
+                    "error": (row.answer_json or {}).get("error"),
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in rows
+            }
+
     def run_ids_since(self, workspace_id: str, since: datetime) -> list[str]:
         with self._sf() as db:
             return list(

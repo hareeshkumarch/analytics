@@ -14,13 +14,19 @@ test("pins show their latest re-run and can opt into automatic re-runs", async (
     { run_id: "run_fees", snapshot_id: "snap_1", status: "completed", answer: { summary_markdown: "Fees were 100." } },
     { run_id: "run_busy", status: "running", answer: null },
   ];
+  // The pin list carries what each card shows: the newest finished answer, its dataset and the re-run's status.
+  const describe = (pin: (typeof pins)[number]) => {
+    const latest = runs.find((r) => r.run_id === pin.latest_run_id);
+    const shown = latest?.status === "completed" ? latest : runs.find((r) => r.run_id === pin.run_id);
+    return { ...pin, shown_run: { ...shown, workspace_id: "default" }, latest_run_status: latest?.status ?? null, snapshot: SNAPSHOT, newer_version: null };
+  };
   await page.route("**/api/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (route.request().method() === "PATCH") {
       patches.push(JSON.parse(route.request().postData() ?? "{}"));
       return route.fulfill({ json: { ...pins[0], auto_refresh: true } });
     }
-    if (path.endsWith("/pins")) return route.fulfill({ json: { pins } });
+    if (path.endsWith("/pins")) return route.fulfill({ json: { pins: pins.map(describe) } });
     if (path.endsWith("/runs")) return route.fulfill({ json: { runs, next_before: null } });
     if (path.endsWith("/snapshots")) return route.fulfill({ json: { snapshots: [SNAPSHOT] } });
     return route.fulfill({ status: 404, json: { detail: "not mocked" } });

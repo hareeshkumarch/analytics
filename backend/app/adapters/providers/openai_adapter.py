@@ -41,6 +41,8 @@ class OpenAiResponsesAdapter:
             payload["tool_choice"] = request.tool_choice
         if request.tools and not model.capabilities.sampling_params:
             payload["include"] = ["reasoning.encrypted_content"]
+        if model.reasoning_effort:
+            payload["reasoning"] = {"effort": model.reasoning_effort}
         if request.structured_schema:
             payload["text"] = {
                 "format": {
@@ -96,7 +98,7 @@ class OpenAiResponsesAdapter:
         with httpx.Client(timeout=request.timeout_seconds, transport=self._transport) as client:
             resp = client.post(f"{provider_profile.base_url.rstrip('/')}/responses", json=payload, headers=headers)
         if resp.status_code >= 400:
-            raise classify_http_error(resp.status_code, resp.text, "OpenAI")
+            raise classify_http_error(resp.status_code, resp.text, "OpenAI", resp.headers.get("retry-after"))
 
         data = read_json_body(resp, "OpenAI")
         text_parts: list[str] = []
@@ -129,6 +131,9 @@ class OpenAiResponsesAdapter:
             else None
         )
         usage = data.get("usage", {})
+        # OpenAI's output_tokens already includes the reasoning tokens. Report them apart, so the
+        # router's input + output + reasoning adds up to what was billed instead of counting them twice.
+        reasoning_tokens = int((usage.get("output_tokens_details") or {}).get("reasoning_tokens") or 0)
         return ModelResponse(
             provider_id=self.provider_id,
             model_id=model_profile.model_id,
@@ -139,7 +144,7 @@ class OpenAiResponsesAdapter:
             refusal_reason=refusal,
             input_tokens=int(usage.get("input_tokens", 0)),
             cached_input_tokens=int((usage.get("input_tokens_details") or {}).get("cached_tokens", 0)),
-            output_tokens=int(usage.get("output_tokens", 0)),
+            output_tokens=max(0, int(usage.get("output_tokens", 0)) - reasoning_tokens),
             continuation_state={"output": data.get("output", [])} if tool_calls else None,
-            reasoning_tokens=int(usage.get("output_tokens_details", {}).get("reasoning_tokens", 0)),
+            reasoning_tokens=reasoning_tokens,
         )

@@ -7,6 +7,8 @@ from app.application.services.text_utils import CITATION_GROUP_RE as _CITATION, 
 from app.domain.models import CriterionResult, RunOutcome
 
 GROUNDING_CRITERION = "Every figure in the answer matches the evidence it cites"
+NO_EVIDENCE_DETAIL = "No query results were collected, so the answer could not be checked against data"
+UNREVIEWED_DETAIL = "Not independently reviewed; only Deep mode runs an evidence review"
 
 _DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?)?\b")
 _LIST_MARKER = re.compile(r"^\s*\d+[.)]\s", re.MULTILINE)
@@ -137,20 +139,29 @@ def assess_answer(
 ) -> tuple[str, tuple[CriterionResult, ...]]:
     cited = tuple(dict.fromkeys(_EVIDENCE_ID.findall(answer_markdown)))
     missing = ungrounded_figures(answer_markdown, evidence)
-    grounding = CriterionResult(
-        GROUNDING_CRITERION,
-        "failed" if missing else "verified",
-        cited,
-        f"Not found in the cited evidence: {', '.join(missing[:5])}" if missing else "",
-    )
+    if missing:
+        grounding = CriterionResult(GROUNDING_CRITERION, "failed", cited, f"Not found in the cited evidence: {', '.join(missing[:5])}")
+    elif not evidence:
+        # Nothing was queried, so there is nothing the answer could have been checked against.
+        grounding = CriterionResult(GROUNDING_CRITERION, "blocked", cited, NO_EVIDENCE_DETAIL)
+    else:
+        grounding = CriterionResult(GROUNDING_CRITERION, "verified", cited)
     incomplete = steps_failed or stopped_early
+    planned_detail = ""
     if missing or review_contradictions:
         planned_status = "failed"
     elif review_approved is False or incomplete:
         planned_status = "blocked"
+    elif review_approved is None:
+        # No evidence review ran (Quick mode), so nothing checked these criteria one by one.
+        # Say so instead of reporting them as verified.
+        planned_status, planned_detail = "unreviewed", UNREVIEWED_DETAIL
     else:
         planned_status = "verified"
-    results = (grounding, *(CriterionResult(text, planned_status, cited) for text in dict.fromkeys(criteria)))
+    results = (
+        grounding,
+        *(CriterionResult(text, planned_status, cited, planned_detail) for text in dict.fromkeys(criteria)),
+    )
     if any(r.status == "failed" for r in results):
         outcome = RunOutcome.NEEDS_REVIEW
     elif any(r.status == "blocked" for r in results):

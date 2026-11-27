@@ -65,8 +65,8 @@ export function DatasetList({
   return (
     <div className="space-y-3">
       {snapshots.length > 5 && (
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-          <SearchInput className="lg:w-[240px]" label="Search datasets" placeholder="Search datasets" value={query} onChange={setQuery} />
+        <div className="flex flex-col gap-2">
+          <SearchInput label="Search datasets" placeholder="Search datasets" value={query} onChange={setQuery} />
           <FilterChips
             label="Dataset status"
             value={status}
@@ -80,9 +80,9 @@ export function DatasetList({
         </div>
       )}
       {visible.length === 0 ? (
-        <p className="text-[13px] text-secondary">No datasets match.</p>
+        <p className="text-sm text-secondary">No datasets match.</p>
       ) : (
-        <ul role="list" aria-label="Datasets" className="max-h-[320px] space-y-1.5 overflow-y-auto">
+        <ul role="list" aria-label="Datasets" className="max-h-[320px] space-y-1.5 overflow-y-auto lg:max-h-[calc(100vh-15rem)]">
           {visible.map((s) => {
             const active = s.snapshot_id === selectedId;
             return (
@@ -92,31 +92,33 @@ export function DatasetList({
                   aria-current={active ? "true" : undefined}
                   onClick={() => onSelect(s.snapshot_id)}
                   className={cx(
-                    "flex w-full items-center gap-3 border px-3 py-2.5 text-left transition-colors",
-                    active ? "border-ink bg-plum-soft" : "border-border bg-surface hover:border-border-strong"
+                    "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
+                    active ? "border-border-strong bg-ink/[0.05]" : "border-border bg-surface hover:bg-sidebar"
                   )}
                 >
                   <ConnectorLogo id={logoIdForFamily(s.source_family) ?? "file"} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13.5px] font-medium text-ink">{datasetLabel(s)}</span>
-                    <span className="block truncate text-xs text-secondary">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="truncate text-base font-medium text-ink">{datasetLabel(s)}</span>
+                      {s.unavailable_tables?.length ? (
+                        <Badge tone="err" dot>
+                          Files missing
+                        </Badge>
+                      ) : s.approved ? (
+                        <Badge tone="ok" dot>
+                          Approved
+                        </Badge>
+                      ) : (
+                        <Badge tone="warn" dot>
+                          Needs approval
+                        </Badge>
+                      )}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-secondary">
                       {s.display_name ? `${datasetTables(s)} · ` : ""}v{s.version} · {s.total_rows.toLocaleString()} rows ·{" "}
                       {relativeTime(s.created_at)}
                     </span>
                   </span>
-                  {s.unavailable_tables?.length ? (
-                    <Badge tone="err" dot>
-                      Files missing
-                    </Badge>
-                  ) : s.approved ? (
-                    <Badge tone="ok" dot>
-                      Approved
-                    </Badge>
-                  ) : (
-                    <Badge tone="warn" dot>
-                      Needs approval
-                    </Badge>
-                  )}
                 </button>
               </li>
             );

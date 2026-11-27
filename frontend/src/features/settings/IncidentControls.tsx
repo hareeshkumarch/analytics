@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useId, useState } from "react";
+import { Icon } from "@/components/Icon";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, errorMessage } from "@/lib/api/client";
-import { Badge, Notice, btnSm, cardCls, cx, inputCls } from "@/components/ui";
+import { Badge, Notice, btnSm, cardCls, cx, inputCls, sectionTitleCls } from "@/components/ui";
 import { providerLabel } from "@/lib/workspace";
 import type { OpsSwitchListOut, OpsSwitchOut, SetOpsSwitchRequest } from "@/lib/api/types";
 
@@ -68,7 +69,7 @@ export function PauseControl({ switchId, data }: { switchId: string; data: OpsSw
 
   return (
     <form onSubmit={submit} className="flex w-full min-w-[240px] flex-col gap-2 text-left">
-      <label htmlFor={`${id}-reason`} className="text-[12.5px] font-medium text-ink">
+      <label htmlFor={`${id}-reason`} className="text-sm font-medium text-ink">
         {current ? `Why resume ${label.toLowerCase()}?` : `Why pause ${label.toLowerCase()}?`}
       </label>
       <input
@@ -111,7 +112,7 @@ export function IncidentControls() {
       <details open={Boolean(runsPaused) || undefined} className="group">
         <summary className="flex min-h-[40px] cursor-pointer list-none items-center justify-between gap-3">
           <span>
-            <h2 id={`${id}-title`} className="font-display text-lg font-semibold leading-snug tracking-[-0.01em] text-ink">
+            <h2 id={`${id}-title`} className={sectionTitleCls}>
               Incident controls
             </h2>
             <span className="mt-1 block text-xs text-secondary">
@@ -124,22 +125,13 @@ export function IncidentControls() {
                 Questions paused
               </Badge>
             )}
-            <svg
-              aria-hidden="true"
-              className="h-4 w-4 text-secondary transition-transform group-open:rotate-180"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
+            <Icon name="chevron-down" className="h-4 w-4 text-secondary transition-transform group-open:rotate-180" />
           </span>
         </summary>
         <div className="mt-4 space-y-4">
-          {query.isLoading && <div className="h-16 animate-pulse bg-panel" aria-hidden="true" />}
+          {query.isLoading && <div className="h-16 animate-pulse rounded bg-panel" aria-hidden="true" />}
           {query.data?.available.includes(RUNS_SWITCH) && (
-            <div className="flex flex-wrap items-start justify-between gap-3 border border-border px-3.5 py-3 text-[13px]">
+            <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border px-3.5 py-3 text-sm">
               <div className="min-w-0">
                 <span className="font-medium text-ink">Pause new questions</span>
                 <p className="mt-0.5 text-xs text-secondary">
@@ -151,7 +143,7 @@ export function IncidentControls() {
           )}
           {query.data && query.data.history.length > 0 && (
             <details className="text-xs text-secondary">
-              <summary className="cursor-pointer text-[13px] text-ink">Recent changes</summary>
+              <summary className="cursor-pointer text-sm text-ink">Recent changes</summary>
               <ul className="mt-2 space-y-1">
                 {query.data.history.slice(0, 10).map((h, i) => (
                   <li key={`${h.switch_id}-${h.changed_at}-${i}`}>

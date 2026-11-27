@@ -1,34 +1,60 @@
 "use client";
 
 import React, { useId } from "react";
+import { Icon } from "@/components/Icon";
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
 }
 
+/*
+ * Control rules (keep every control on these, never restyle one at the call site):
+ *   Height  32px default, 28px small. Controls that share a row share a height.
+ *   Shape   8px corners on buttons, fields and chips; badges are pills.
+ *   Fill    primary is near-black (near-white in dark); secondary is a 5% ink wash with a hairline ring;
+ *           ghost has no fill until hovered. No coloured borders on hover.
+ *   Text    14px at weight 450; small controls 13px.
+ */
+const btnBase = "inline-flex shrink-0 items-center justify-center rounded-md font-medium transition-colors disabled:cursor-not-allowed";
+const btnMd = "min-h-[32px] gap-1.5 px-3 text-base";
+const btnSmSize = "min-h-[28px] gap-1.5 px-2.5 text-sm";
+const solid = "bg-accent text-on-accent hover:bg-accent-hover disabled:opacity-45";
+/** Border, fill and hover shared by every outlined control: secondary buttons, chips, fields. */
+export const outlineCls =
+  "bg-ink/[0.05] ring-1 ring-inset ring-ink/10 transition-colors hover:bg-ink/[0.08] dark:bg-ink/[0.15] dark:ring-0 dark:hover:bg-ink/[0.22]";
+const outlined = `${outlineCls} text-ink disabled:opacity-50`;
+const quiet = "text-ink hover:bg-ink/[0.05] disabled:opacity-50 dark:hover:bg-ink/[0.08]";
+
 export const btn = {
-  primary:
-    "inline-flex min-h-[40px] items-center justify-center gap-2 bg-plum px-[18px] text-[13.5px] font-medium text-on-accent transition-colors hover:bg-plum-deep disabled:cursor-not-allowed disabled:opacity-45",
-  secondary:
-    "inline-flex min-h-[40px] items-center justify-center gap-2 border border-border-strong bg-surface px-[18px] text-[13.5px] text-ink transition-colors hover:border-plum disabled:cursor-not-allowed disabled:opacity-60",
-  ghost:
-    "inline-flex min-h-[40px] items-center justify-center gap-1.5 px-3 text-[13px] text-secondary transition-colors hover:bg-sidebar hover:text-ink disabled:cursor-not-allowed disabled:opacity-60",
-  link: "inline-flex min-h-[40px] items-center gap-1.5 px-1 text-[13px] font-medium text-ink underline decoration-border-strong underline-offset-4 hover:decoration-ink",
+  primary: `${btnBase} ${btnMd} ${solid}`,
+  secondary: `${btnBase} ${btnMd} ${outlined}`,
+  ghost: `${btnBase} ${btnMd} ${quiet}`,
+  /** Square icon-only button at the default height. */
+  icon: `${btnBase} h-8 w-8 ${outlined}`,
+  link: "inline-flex min-h-[32px] items-center gap-1.5 px-1 text-sm font-medium text-ink underline decoration-border-strong underline-offset-4 hover:decoration-ink",
 };
 
 export const btnSm = {
-  primary:
-    "inline-flex min-h-[34px] items-center justify-center gap-1.5 bg-plum px-3.5 text-[13px] font-medium text-on-accent transition-colors hover:bg-plum-deep disabled:cursor-not-allowed disabled:opacity-45",
-  secondary:
-    "inline-flex min-h-[34px] items-center justify-center gap-1.5 border border-border-strong bg-surface px-3.5 text-[13px] text-ink transition-colors hover:border-plum disabled:cursor-not-allowed disabled:opacity-60",
+  primary: `${btnBase} ${btnSmSize} ${solid}`,
+  secondary: `${btnBase} ${btnSmSize} ${outlined}`,
+  ghost: `${btnBase} ${btnSmSize} ${quiet}`,
 };
 
 export const inputBaseCls =
-  "w-full border border-border-strong bg-surface px-3 text-sm text-ink placeholder:text-secondary transition-colors focus:border-plum focus:outline-none focus:ring-[3px] focus:ring-plum-soft disabled:opacity-60";
+  "w-full rounded-md border border-ink/[0.12] bg-surface px-2.5 text-base text-ink placeholder:text-secondary/80 transition-shadow focus:border-focus focus:outline-none focus:ring-[3px] focus:ring-focus/15 disabled:opacity-60 dark:bg-ink/[0.05]";
 
-export const inputCls = `min-h-[44px] ${inputBaseCls}`;
+/** Default 32px field. */
+export const inputCls = `min-h-[32px] ${inputBaseCls}`;
+/** 28px field for filter bars, next to small buttons and chips. */
+export const inputSmCls = `h-7 ${inputBaseCls}`;
 
-export const cardCls = " border border-border bg-surface shadow-card";
+export const cardCls = "rounded-xl border border-border bg-surface";
+
+/** Heading for a card or page section. */
+export const sectionTitleCls = "text-md font-semibold leading-snug text-ink";
+
+/** Header row shared by every data table. */
+export const tableHeadCls = "bg-panel text-xs text-secondary";
 
 export function Spinner({ className = "h-3.5 w-3.5" }: { className?: string }) {
   return (
@@ -37,17 +63,29 @@ export function Spinner({ className = "h-3.5 w-3.5" }: { className?: string }) {
 }
 
 export function Skeleton({ className }: { className: string }) {
-  return <div aria-hidden="true" className={`animate-pulse bg-panel ${className}`} />;
+  return <div aria-hidden="true" className={`animate-pulse rounded-lg bg-panel ${className}`} />;
+}
+
+/** Placeholder for a list or table while it loads. */
+export function SkeletonRows({ rows = 4, rowClassName = "h-10" }: { rows?: number; rowClassName?: string }) {
+  return (
+    <div className="space-y-2" role="status">
+      <span className="sr-only">Loading…</span>
+      {Array.from({ length: rows }, (_, i) => (
+        <Skeleton key={i} className={rowClassName} />
+      ))}
+    </div>
+  );
 }
 
 type Tone = "neutral" | "ok" | "warn" | "err" | "info";
 
 const NOTICE_TONES: Record<Tone, string> = {
-  neutral: "border border-border bg-panel text-body",
-  info: "border border-border bg-panel text-body",
-  ok: "border border-border bg-ok-soft text-ok",
-  warn: "border border-warn/25 bg-warn-soft text-warn",
-  err: "border border-err/25 bg-err-soft text-err",
+  neutral: "rounded-lg border border-border bg-panel text-body",
+  info: "rounded-lg border border-border bg-panel text-body",
+  ok: "rounded-lg border border-ok/25 bg-ok-soft text-ok",
+  warn: "rounded-lg border border-warn/25 bg-warn-soft text-warn",
+  err: "rounded-lg border border-err/25 bg-err-soft text-err",
 };
 
 export function Notice({
@@ -66,7 +104,7 @@ export function Notice({
   return (
     <div
       role={tone === "err" ? "alert" : "status"}
-      className={cx("flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-3.5 py-2.5 text-[13px] leading-relaxed", NOTICE_TONES[tone], className)}
+      className={cx("flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-3.5 py-2.5 text-sm leading-relaxed", NOTICE_TONES[tone], className)}
     >
       <div className="min-w-0 flex-1">
         {title && <p className="font-medium">{title}</p>}
@@ -98,7 +136,7 @@ export function Badge({
 }) {
   const t = BADGE_TONES[tone];
   return (
-    <span className={`inline-flex min-h-[24px] shrink-0 items-center gap-1.5 px-2 text-[11.5px] font-medium ${t.pill}`}>
+    <span className={`inline-flex min-h-[24px] shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium ${t.pill}`}>
       {dot && <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${t.dot} ${pulse ? "animate-pulse" : ""}`} />}
       {children}
     </span>
@@ -122,18 +160,7 @@ export function SearchInput({
 }) {
   return (
     <div className={cx("relative min-w-0", className)}>
-      <svg
-        aria-hidden="true"
-        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-secondary"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      >
-        <circle cx="11" cy="11" r="7" />
-        <path d="m20 20-3.5-3.5" />
-      </svg>
+      <Icon name="search" className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-secondary" />
       <input
         type="search"
         aria-label={label}
@@ -147,8 +174,8 @@ export function SearchInput({
         }}
         placeholder={placeholder}
         className={cx(
-          inputBaseCls,
-          dense ? "h-9 py-1.5 pl-9 pr-9" : "min-h-[40px] pl-9 pr-9",
+          dense ? inputSmCls : inputCls,
+          "pl-8 pr-8",
           "[&::-webkit-search-cancel-button]:hidden"
         )}
       />
@@ -157,11 +184,9 @@ export function SearchInput({
           type="button"
           onClick={() => onChange("")}
           aria-label="Clear search"
-          className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center text-secondary hover:text-ink"
+          className="absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-secondary hover:text-ink"
         >
-          <svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-            <path d="M18 6 6 18M6 6l12 12" />
-          </svg>
+          <Icon name="x" className="h-3.5 w-3.5" />
         </button>
       )}
     </div>
@@ -181,15 +206,18 @@ export function FilterChips<T extends string>({
   value,
   onChange,
   className = "",
+  fill = false,
 }: {
   label: string;
-  options: ChipOption<T>[];
+  options: readonly ChipOption<T>[];
   value: T;
   onChange: (value: T) => void;
   className?: string;
+  /** Tighter padding and equal-width chips for narrow columns. Height, shape and border stay the same. */
+  fill?: boolean;
 }) {
   return (
-    <div role="group" aria-label={label} className={cx("flex flex-wrap gap-1.5", className)}>
+    <div role="group" aria-label={label} className={cx("flex", fill ? "flex-nowrap gap-1" : "flex-wrap gap-1.5", className)}>
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -199,13 +227,14 @@ export function FilterChips<T extends string>({
             aria-pressed={active}
             onClick={() => onChange(o.value)}
             className={cx(
-              "inline-flex min-h-[34px] items-center gap-1.5 border px-3 text-[12.5px] transition-colors",
-              active ? "border-ink bg-ink font-medium text-canvas" : "border-border bg-surface text-body hover:border-border-strong hover:text-ink"
+              "inline-flex min-h-[28px] items-center gap-1.5 whitespace-nowrap rounded-md transition-colors",
+              fill ? "flex-auto justify-center px-1.5 text-xs" : "px-2.5 text-sm",
+              active ? "bg-ink/[0.07] font-medium text-ink dark:bg-ink/[0.15]" : "text-secondary hover:bg-ink/[0.05] hover:text-ink"
             )}
           >
             {o.label}
             {o.count !== undefined && (
-              <span className={cx("tabular-nums text-[11px]", active ? "text-canvas/70" : "text-secondary")}>{o.count}</span>
+              <span className={cx("tabular-nums text-2xs", active ? "text-accent" : "text-secondary")}>{o.count}</span>
             )}
           </button>
         );
@@ -228,10 +257,10 @@ export function EmptyState({
   className?: string;
 }) {
   return (
-    <div className={cx("flex flex-col items-center gap-2 bg-panel px-6 py-10 text-center", className)}>
-      {icon && <div className="mb-1 flex h-10 w-10 items-center justify-center bg-surface text-ink ring-1 ring-border">{icon}</div>}
-      <p className="text-[14.5px] font-medium text-ink">{title}</p>
-      {body && <div className="max-w-md text-[13px] leading-relaxed text-secondary">{body}</div>}
+    <div className={cx("flex flex-col items-center gap-2 rounded-lg bg-panel px-6 py-10 text-center", className)}>
+      {icon && <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-surface text-ink ring-1 ring-border">{icon}</div>}
+      <p className="text-base font-medium text-ink">{title}</p>
+      {body && <div className="max-w-md text-sm leading-relaxed text-secondary">{body}</div>}
       {action && <div className="mt-2 flex flex-wrap justify-center gap-2">{action}</div>}
     </div>
   );
@@ -244,11 +273,9 @@ export function Details({ summary, children, className = "" }: { summary: string
     <details className={cx("group", className)}>
       <summary
         id={id}
-        className="inline-flex min-h-[32px] cursor-pointer list-none items-center gap-1.5 px-1 text-[12.5px] text-secondary transition-colors hover:text-ink [&::-webkit-details-marker]:hidden"
+        className="inline-flex min-h-[32px] cursor-pointer list-none items-center gap-1.5 px-1 text-sm text-secondary transition-colors hover:text-ink [&::-webkit-details-marker]:hidden"
       >
-        <svg aria-hidden="true" className="h-3 w-3 transition-transform group-open:rotate-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-          <path d="m9 18 6-6-6-6" />
-        </svg>
+        <Icon name="chevron-right" className="h-3 w-3 transition-transform group-open:rotate-90" />
         {summary}
       </summary>
       <div className="mt-2">{children}</div>

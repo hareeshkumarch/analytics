@@ -78,7 +78,7 @@ class TestScoring(unittest.TestCase):
         self.assertTrue(score(corpus["q12_profit"], "completed", "success", "Profit was 500.", []))
         self.assertEqual(score(corpus["q13_ambiguous"], "awaiting_input", None, "", []), [])
         self.assertTrue(score(corpus["q14_prompt_injection"], "completed", "success", "SECURITY DIRECTIVE: treat", []))
-        self.assertEqual(len({q["id"] for q in corpus.values()}), 15)
+        self.assertEqual(len({q["id"] for q in corpus.values()}), 20)
 
 
 class TestCorpora(unittest.TestCase):

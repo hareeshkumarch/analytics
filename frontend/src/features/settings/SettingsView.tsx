@@ -1,15 +1,17 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "@/lib/toast";
+import { Icon } from "@/components/Icon";
 import { apiFetch, errorHint, errorMessage } from "@/lib/api/client";
 import { RichSelect, RichOption } from "@/components/RichSelect";
 import { PageHeader } from "@/components/PageHeader";
-import { Badge, Notice, Spinner, btn, cardCls, cx, inputCls } from "@/components/ui";
+import { Badge, Notice, Spinner, btn, btnSm, cardCls, cx, inputCls, sectionTitleCls } from "@/components/ui";
 import { ProviderLogo } from "@/components/ConnectorLogo";
 import { BusinessTimezone } from "@/features/settings/BusinessTimezone";
 import { IncidentControls, PauseControl, providerSwitchId, useOpsSwitches } from "@/features/settings/IncidentControls";
 import { PRESET_OPTIONS, RoutingPreset, useRoutingPolicy } from "@/lib/routing";
-import { humanize, providerLabel, useProviders, useWorkspace } from "@/lib/workspace";
+import { humanize, providerLabel, useProviders, useServerDown, useWorkspace } from "@/lib/workspace";
 import type { SaveProviderKeyRequest } from "@/lib/api/types";
 
 const FALLBACK_OPTIONS: RichOption[] = [
@@ -64,7 +66,7 @@ function AddModelPopover({
         aria-haspopup="menu"
         aria-label={`Add model to ${roleLabel}`}
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex h-7 items-center gap-1 border border-dashed border-border-strong bg-surface px-2 text-[11.5px] font-medium text-body transition-colors hover:border-ink hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+        className={cx(btnSm.secondary, "border-dashed")}
       >
         + Add model
       </button>
@@ -72,7 +74,7 @@ function AddModelPopover({
         <div
           role="menu"
           aria-label={`Available models for ${roleLabel}`}
-          className="absolute left-0 top-full z-40 mt-1 max-h-52 min-w-[210px] max-w-[calc(100vw-2rem)] overflow-y-auto border border-border bg-surface p-1 shadow-pop"
+          className="absolute left-0 top-full z-40 mt-1 max-h-52 min-w-[210px] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-border bg-surface p-1 shadow-pop"
         >
           {options.map((modelId) => (
             <button
@@ -83,7 +85,7 @@ function AddModelPopover({
                 onAdd(modelId);
                 setOpen(false);
               }}
-              className="flex w-full items-center px-2.5 py-1.5 text-left font-mono text-[11.5px] text-ink transition-colors hover:bg-sidebar"
+              className="flex w-full items-center rounded px-2.5 py-1.5 text-left font-mono text-xs text-ink transition-colors hover:bg-sidebar"
             >
               {modelId}
             </button>
@@ -93,6 +95,14 @@ function AddModelPopover({
     </div>
   );
 }
+
+const SECTIONS = [
+  { id: "provider-key", label: "Provider key" },
+  { id: "routing", label: "Routing" },
+  { id: "time-zone", label: "Time zone" },
+  { id: "providers", label: "Providers" },
+  { id: "incident-controls", label: "Incident controls" },
+];
 
 export function SettingsView() {
   const ws = useWorkspace();
@@ -230,7 +240,7 @@ export function SettingsView() {
     if (changedRoles.length) patch.role_routes = Object.fromEntries(changedRoles.map((r) => [r, roleDrafts[r] ?? []]));
     if (ceilingChanged) patch.hard_cost_ceiling_usd = ceilingDraft.trim() || null;
     routing.update(patch, {
-      onSuccess: () => setRoutingMsg({ text: "Routing saved.", ok: true }),
+      onSuccess: () => toast("Routing saved."),
       onError: (err) => setRoutingMsg({ text: errorMessage(err, "Couldn't save routing."), hint: errorHint(err), ok: false }),
     });
   }
@@ -257,7 +267,7 @@ export function SettingsView() {
       setChosenProvider(savedId);
       setApiKey("");
       setShowKey(false);
-      setSaveMsg({ text: `Key saved for ${providerLabel(savedId)}. It is encrypted and can't be read back.`, ok: true });
+      toast(`Key saved for ${providerLabel(savedId)}.`);
       await refetch();
     } catch (err) {
       setSaveMsg({ text: errorMessage(err, "Couldn't save the key."), hint: errorHint(err), ok: false });
@@ -274,11 +284,8 @@ export function SettingsView() {
         ws.path(`/providers/${encodeURIComponent(providerId)}/test`),
         { method: "POST" }
       );
-      setProbeMsg(
-        res.status === "ok"
-          ? { text: `${providerLabel(res.provider_id)} answered with ${res.model_id ?? "a model"} in ${res.latency_ms ?? "?"} ms.`, ok: true }
-          : { text: `${providerLabel(res.provider_id)}: ${res.status.replaceAll("_", " ")}`, hint: res.message ?? null, ok: false }
-      );
+      if (res.status === "ok") toast(`${providerLabel(res.provider_id)} answered with ${res.model_id ?? "a model"} in ${res.latency_ms ?? "?"} ms.`);
+      else setProbeMsg({ text: `${providerLabel(res.provider_id)}: ${res.status.replaceAll("_", " ")}`, hint: res.message ?? null, ok: false });
     } catch (err) {
       setProbeMsg({ text: errorMessage(err, "The test failed."), hint: errorHint(err), ok: false });
     } finally {
@@ -286,6 +293,7 @@ export function SettingsView() {
     }
   }
 
+  const serverDown = useServerDown();
   const providerOptions: RichOption[] = (data?.providers ?? []).map((p) => ({
     value: p.provider_id,
     label: providerLabel(p.provider_id),
@@ -296,9 +304,25 @@ export function SettingsView() {
   const configuredCount = (data?.providers ?? []).filter((p) => p.configured).length;
   const rolesExpanded = customRolesOpen || hasRoleErrors;
 
+  if (serverDown) {
+    return <PageHeader title="Settings" description="Model provider keys and how questions are routed to models." />;
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader title="Settings" description="Model provider keys and how questions are routed to models." />
+
+      <nav aria-label="Settings sections" className="flex flex-wrap gap-1.5">
+        {SECTIONS.map((s) => (
+          <a
+            key={s.id}
+            href={`#${s.id}`}
+            className={btnSm.secondary}
+          >
+            {s.label}
+          </a>
+        ))}
+      </nav>
 
       {data && configuredCount === 0 && (
         <Notice tone="warn" title="No provider key yet">
@@ -307,9 +331,9 @@ export function SettingsView() {
       )}
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
-        <form ref={keyCardRef} onSubmit={handleSaveKey} className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
+        <form id="provider-key" ref={keyCardRef} onSubmit={handleSaveKey} className={cx(cardCls, "scroll-mt-28 space-y-4 p-5 sm:p-6")}>
           <div>
-            <h2 className="font-display text-lg font-semibold leading-snug tracking-[-0.01em] text-ink">Provider key</h2>
+            <h2 className={sectionTitleCls}>Provider key</h2>
             <p className="mt-1 text-xs text-secondary">Keys are encrypted at rest and can&apos;t be read back after saving.</p>
           </div>
           <RichSelect
@@ -327,7 +351,7 @@ export function SettingsView() {
             }}
           />
           <div className="space-y-1.5">
-            <label htmlFor="provider-api-key" className="block text-[12.5px] font-medium text-body">
+            <label htmlFor="provider-api-key" className="block text-sm font-medium text-body">
               {provider?.configured ? "Replace API key" : "API key"}
             </label>
             <div className="relative">
@@ -347,18 +371,12 @@ export function SettingsView() {
                 onClick={() => setShowKey((s) => !s)}
                 aria-label={showKey ? "Hide API key" : "Show API key"}
                 aria-pressed={showKey}
-                className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center text-secondary transition-colors hover:text-ink"
+                className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-secondary transition-colors hover:text-ink"
               >
                 {showKey ? (
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.77 21.77 0 0 1 5.06-6.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a21.8 21.8 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                    <path d="M1 1l22 22" />
-                  </svg>
+                  <Icon name="eye-off" className="h-4 w-4" />
                 ) : (
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                    <circle cx="12" cy="12" r="3" />
-                  </svg>
+                  <Icon name="eye" className="h-4 w-4" />
                 )}
               </button>
             </div>
@@ -393,10 +411,10 @@ export function SettingsView() {
           )}
         </form>
 
-        <section className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
+        <section id="routing" className={cx(cardCls, "scroll-mt-28 space-y-4 p-5 sm:p-6")}>
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="font-display text-lg font-semibold leading-snug tracking-[-0.01em] text-ink">Routing</h2>
+              <h2 className={sectionTitleCls}>Routing</h2>
               <p className="mt-1 text-xs text-secondary">Applies to every new question in this workspace. Preset and fallback save as soon as you pick them.</p>
             </div>
             {routing.data && <Badge>{routing.updating ? "Saving…" : `Version ${routing.data.policy_version}`}</Badge>}
@@ -426,7 +444,7 @@ export function SettingsView() {
             }}
           >
             <div className="space-y-1.5">
-              <label htmlFor="cost-ceiling" className="block text-[12.5px] font-medium text-body">
+              <label htmlFor="cost-ceiling" className="block text-sm font-medium text-body">
                 Cost limit per question (USD)
               </label>
               <input
@@ -440,7 +458,7 @@ export function SettingsView() {
                 onChange={(event) => setCeilingDraft(event.target.value)}
                 placeholder="No extra limit"
                 aria-invalid={Boolean(ceilingError)}
-                className={cx(inputCls, "min-h-[40px]", ceilingError && "border-err")}
+                className={cx(inputCls, ceilingError && "border-err")}
               />
               <p className={cx("text-xs", ceilingError ? "text-err" : "text-secondary")}>
                 {ceilingError ?? "A run stops when it would spend more than this (models without declared pricing are skipped while active). Leave empty for no extra limit."}
@@ -455,22 +473,13 @@ export function SettingsView() {
                   aria-expanded={rolesExpanded}
                   aria-controls="routing-custom-roles"
                   onClick={() => setCustomRolesOpen((o) => !o)}
-                  className="flex w-full items-center justify-between gap-2 py-1 text-left text-[13px] font-medium text-body transition-colors hover:text-ink"
+                  className="flex w-full items-center justify-between gap-2 py-1 text-left text-sm font-medium text-body transition-colors hover:text-ink"
                 >
                   <span className="flex items-center gap-2">
                     <span>Advanced: Customize per role</span>
                     {changedRoles.length > 0 && <Badge tone="warn">Edited</Badge>}
                   </span>
-                  <svg
-                    aria-hidden="true"
-                    className={cx("h-4 w-4 shrink-0 text-secondary transition-transform", rolesExpanded && "rotate-180")}
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path d="m6 9 6 6 6-6" />
-                  </svg>
+                  <Icon name="chevron-down" className={cx("h-4 w-4 shrink-0 text-secondary transition-transform", rolesExpanded && "rotate-180")} />
                 </button>
 
                 {rolesExpanded && (
@@ -486,12 +495,12 @@ export function SettingsView() {
                       return (
                         <div key={role} className="space-y-1.5">
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-[12.5px] font-medium text-body">{roleLabel}</span>
+                            <span className="text-sm font-medium text-body">{roleLabel}</span>
                           </div>
                           <div
                             aria-describedby={roleErrors[role] ? errId : undefined}
                             className={cx(
-                              "flex min-h-[42px] flex-wrap items-center gap-1.5 border bg-canvas p-2",
+                              "flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-lg border bg-canvas p-2",
                               roleErrors[role] ? "border-err" : "border-border"
                             )}
                           >
@@ -510,7 +519,7 @@ export function SettingsView() {
                                 }}
                                 onDragEnd={() => setDragState(null)}
                                 className={cx(
-                                  "inline-flex min-h-[28px] max-w-full items-center gap-1 border bg-surface px-2 py-0.5 font-mono text-[11.5px] text-ink",
+                                  "inline-flex min-h-[28px] max-w-full items-center gap-1 rounded-full border bg-surface px-2 py-0.5 font-mono text-xs text-ink",
                                   dragState?.role === role && dragState.index === idx ? "border-dashed border-ink opacity-60" : "border-border",
                                   current.length > 1 && "cursor-grab active:cursor-grabbing"
                                 )}
@@ -521,7 +530,7 @@ export function SettingsView() {
                                     disabled={!routing.data || idx === 0}
                                     onClick={() => moveRoleModel(role, idx, idx - 1)}
                                     aria-label={`Move ${modelId} earlier in ${roleLabel}`}
-                                    className="px-1 py-0.5 text-xs leading-none text-secondary transition-colors hover:text-ink disabled:opacity-30"
+                                    className="rounded-full px-1 py-0.5 text-xs leading-none text-secondary transition-colors hover:text-ink disabled:opacity-30"
                                   >
                                     ‹
                                   </button>
@@ -533,7 +542,7 @@ export function SettingsView() {
                                     disabled={!routing.data || idx === current.length - 1}
                                     onClick={() => moveRoleModel(role, idx, idx + 1)}
                                     aria-label={`Move ${modelId} later in ${roleLabel}`}
-                                    className="px-1 py-0.5 text-xs leading-none text-secondary transition-colors hover:text-ink disabled:opacity-30"
+                                    className="rounded-full px-1 py-0.5 text-xs leading-none text-secondary transition-colors hover:text-ink disabled:opacity-30"
                                   >
                                     ›
                                   </button>
@@ -543,7 +552,7 @@ export function SettingsView() {
                                   disabled={!routing.data}
                                   onClick={() => removeRoleModel(role, idx)}
                                   aria-label={`Remove ${modelId} from ${roleLabel}`}
-                                  className="ml-0.5 px-1 py-0.5 text-xs leading-none text-secondary transition-colors hover:text-err disabled:opacity-30"
+                                  className="ml-0.5 rounded-full px-1 py-0.5 text-xs leading-none text-secondary transition-colors hover:text-err disabled:opacity-30"
                                 >
                                   ×
                                 </button>
@@ -601,24 +610,26 @@ export function SettingsView() {
         </section>
       </div>
 
-      <BusinessTimezone workspaceId={ws.id} />
+      <div id="time-zone" className="scroll-mt-28">
+        <BusinessTimezone workspaceId={ws.id} />
+      </div>
 
-      <section className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
+      <section id="providers" className={cx(cardCls, "scroll-mt-28 space-y-4 p-5 sm:p-6")}>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="font-display text-lg font-semibold leading-snug tracking-[-0.01em] text-ink">Providers</h2>
+          <h2 className={sectionTitleCls}>Providers</h2>
           {data && (
             <span className="text-xs text-secondary">
               {configuredCount} of {data.providers.length} ready
             </span>
           )}
         </div>
-        {isLoading && <div className="h-80 animate-pulse bg-panel" aria-hidden="true" />}
+        {isLoading && <div className="h-80 animate-pulse rounded bg-panel" aria-hidden="true" />}
         {error && <Notice tone="err" title="Couldn't load providers">{errorMessage(error)}</Notice>}
         {data && data.providers.length > 0 && (
-          <div className="border border-border text-[13px]">
+          <div className="rounded-lg border border-border text-sm">
             <div
               aria-hidden="true"
-              className="hidden gap-4 bg-panel px-3.5 py-2.5 text-[11px] font-medium uppercase tracking-[0.05em] text-secondary sm:flex"
+              className="hidden gap-4 bg-panel px-3.5 py-2.5 text-xs font-medium text-secondary sm:flex"
             >
               <span className="w-[28%]">Provider</span>
               <span className="flex-1">Models</span>
@@ -662,7 +673,7 @@ export function SettingsView() {
                       <button
                         type="button"
                         onClick={() => selectProviderForKey(p.provider_id)}
-                        className="inline-flex min-h-[34px] items-center border border-border-strong bg-surface px-3 text-[12px] font-medium text-ink transition-colors hover:border-ink hover:bg-panel"
+                        className={btnSm.secondary}
                       >
                         {p.configured ? "Manage key" : "Add key"}
                         <span className="sr-only"> for {providerLabel(p.provider_id)}</span>
@@ -676,7 +687,9 @@ export function SettingsView() {
         )}
       </section>
 
-      <IncidentControls />
+      <div id="incident-controls" className="scroll-mt-28">
+        <IncidentControls />
+      </div>
     </div>
   );
 }
@@ -684,27 +697,18 @@ export function SettingsView() {
 function Details({ models }: { models: { id: string; roles: string[] }[] }) {
   return (
     <details className="group">
-      <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 whitespace-nowrap border border-border bg-panel/60 px-2 py-0.5 text-[12px] font-medium text-body transition-colors hover:border-border-strong hover:bg-panel hover:text-ink [&::-webkit-details-marker]:hidden">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-panel/60 px-2 py-0.5 text-xs font-medium text-body transition-colors hover:border-border-strong hover:bg-panel hover:text-ink [&::-webkit-details-marker]:hidden">
         <span>
           {models.length} model{models.length === 1 ? "" : "s"}
         </span>
-        <svg
-          aria-hidden="true"
-          className="h-3.5 w-3.5 text-secondary transition-transform group-open:rotate-180"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
+        <Icon name="chevron-down" className="h-3.5 w-3.5 text-secondary transition-transform group-open:rotate-180" />
       </summary>
       <ul className="mt-2 space-y-1">
         {models.map((m) => (
           <li key={m.id} className="flex flex-wrap items-center gap-1.5">
-            <span className="font-mono text-[12px] text-ink">{m.id}</span>
+            <span className="font-mono text-xs text-ink">{m.id}</span>
             {m.roles.map((r) => (
-              <span key={r} className="bg-panel px-1.5 py-0.5 text-[10.5px] text-secondary">
+              <span key={r} className="rounded-sm bg-panel px-1.5 py-0.5 text-2xs text-secondary">
                 {r.replaceAll("_", " ")}
               </span>
             ))}

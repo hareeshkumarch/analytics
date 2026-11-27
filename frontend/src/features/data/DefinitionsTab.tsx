@@ -33,7 +33,7 @@ export function DefinitionsTab({ snapshotId }: { snapshotId: string }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[13px] text-body">
+        <p className="text-sm text-body">
           {count} proposed metric{count === 1 ? "" : "s"} · definitions version {data.version}
         </p>
         {data.approved ? (
@@ -88,8 +88,8 @@ export function DefinitionsTab({ snapshotId }: { snapshotId: string }) {
           {data.metrics.map((m) => (
             <tr key={m.metric_id} className={rowCls}>
               <td className={cx(cellCls, "font-medium text-ink")}>{m.display_name}</td>
-              <td className={cx(cellCls, "font-mono text-[12px] text-body")}>{m.expression}</td>
-              <td className={cx(cellCls, "font-mono text-[12px] text-secondary")}>{m.grain}</td>
+              <td className={cx(cellCls, "font-mono text-xs text-body")}>{m.expression}</td>
+              <td className={cx(cellCls, "font-mono text-xs text-secondary")}>{m.grain}</td>
               <td className={cx(cellCls, "text-secondary")}>{m.currency ?? m.unit}</td>
             </tr>
           ))}

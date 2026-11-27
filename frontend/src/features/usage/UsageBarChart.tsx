@@ -31,9 +31,9 @@ export function UsageBarChart({
         <Tooltip
           cursor={{ fill: gridColor, fillOpacity: 0.45 }}
           formatter={(value) => [formatValue(Number(value)), seriesLabel]}
-          contentStyle={{ borderRadius: 0, border: `1px solid ${gridColor}`, background: surfaceColor, color: inkColor, fontSize: 12 }}
+          contentStyle={{ borderRadius: 8, border: `1px solid ${gridColor}`, background: surfaceColor, color: inkColor, fontSize: 12 }}
         />
-        <Bar dataKey={dataKey} fill={barColor} maxBarSize={36} isAnimationActive={false} />
+        <Bar dataKey={dataKey} fill={barColor} maxBarSize={36} radius={[4, 4, 0, 0]} isAnimationActive={false} />
       </BarChart>
     </ResponsiveContainer>
   );

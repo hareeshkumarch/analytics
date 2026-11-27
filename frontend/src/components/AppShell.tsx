@@ -1,13 +1,18 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { Icon, IconName } from "@/components/Icon";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { shouldRetry } from "@/lib/api/client";
 import { useUiStore } from "@/lib/store";
 import { HScroll } from "@/components/HScroll";
+import { LogoMark } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { Toaster } from "@/components/Toaster";
+import { Notice, Spinner, btn } from "@/components/ui";
+import { useHealth, useReady, useServerDown } from "@/lib/workspace";
 
 // Order follows the user journey: ask, bring in data, keep answers, watch spend, configure.
 const NAV = [
@@ -20,68 +25,10 @@ const NAV = [
 
 const COLLAPSE_KEY = "ledgerline.sidebarCollapsed";
 
-function NavIcon({ name, className = "h-[18px] w-[18px]" }: { name: string; className?: string }) {
-  const props = {
-    className: `${className} shrink-0`,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.7,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-    "aria-hidden": true,
-  };
-  switch (name) {
-    case "grid":
-      return (
-        <svg {...props}>
-          <rect x="3" y="3" width="7" height="7" rx="1.5" />
-          <rect x="14" y="3" width="7" height="7" rx="1.5" />
-          <rect x="3" y="14" width="7" height="7" rx="1.5" />
-          <rect x="14" y="14" width="7" height="7" rx="1.5" />
-        </svg>
-      );
-    case "chat":
-      return (
-        <svg {...props}>
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        </svg>
-      );
-    case "db":
-      return (
-        <svg {...props}>
-          <ellipse cx="12" cy="5" rx="9" ry="3" />
-          <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-          <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3" />
-        </svg>
-      );
-    case "gauge":
-      return (
-        <svg {...props}>
-          <path d="m12 14 4-4" />
-          <path d="M3.34 19a10 10 0 1 1 17.32 0" />
-        </svg>
-      );
-    default:
-      return (
-        <svg {...props}>
-          <path d="M4 9h16M4 15h16" />
-          <circle cx="8" cy="9" r="2" />
-          <circle cx="16" cy="15" r="2" />
-        </svg>
-      );
-  }
-}
+const NAV_ICONS: Record<string, IconName> = { chat: "chat", db: "database", grid: "grid", gauge: "gauge", sliders: "sliders" };
 
-function BrandMark({ size = "h-8 w-8 text-[17px]" }: { size?: string }) {
-  return (
-    <div
-      aria-hidden="true"
-      className={`${size} flex shrink-0 items-center justify-center bg-plum font-display font-bold leading-none text-on-accent`}
-    >
-      L
-    </div>
-  );
+function NavIcon({ name, className = "h-4 w-4" }: { name: string; className?: string }) {
+  return <Icon name={NAV_ICONS[name] ?? "sliders"} className={className} />;
 }
 
 function RailTip({ show, children }: { show: boolean; children: React.ReactNode }) {
@@ -89,10 +36,47 @@ function RailTip({ show, children }: { show: boolean; children: React.ReactNode 
   return (
     <span
       role="tooltip"
-      className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 whitespace-nowrap bg-ink px-2.5 py-1.5 text-xs font-medium text-canvas opacity-0 shadow-pop transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+      className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 whitespace-nowrap rounded-md bg-ink px-2.5 py-1.5 text-xs font-medium text-canvas opacity-0 shadow-pop transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
     >
       {children}
     </span>
+  );
+}
+
+/** One explanation for the whole app when the API is unreachable, instead of an error per request. */
+function ServerDownNotice() {
+  const health = useHealth();
+  const ready = useReady();
+  const qc = useQueryClient();
+  const down = useServerDown();
+  const wasDown = useRef(false);
+
+  useEffect(() => {
+    if (wasDown.current && !down) void qc.invalidateQueries();
+    wasDown.current = down;
+  }, [down, qc]);
+
+  if (!down) return null;
+  const checking = health.isFetching || ready.isFetching;
+  return (
+    <Notice
+      tone="err"
+      title="Can't reach the Ledgerline server"
+      className="mb-6"
+      action={
+        <button type="button" className={btn.secondary} disabled={checking}
+          onClick={() => {
+            void health.refetch();
+            void ready.refetch();
+          }}
+        >
+          {checking && <Spinner />}
+          Try again
+        </button>
+      }
+    >
+      Your data and answers will appear once the server is running again. This page checks every few seconds.
+    </Notice>
   );
 }
 
@@ -150,15 +134,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <a
         href="#main"
-        className="sr-only z-[60] bg-ink px-4 py-2 text-[13px] font-medium text-canvas focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
+        className="sr-only z-[60] rounded-full bg-ink px-4 py-2 text-sm font-medium text-canvas focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
       >
         Skip to content
       </a>
       <div className="flex min-h-screen flex-col bg-canvas text-ink md:flex-row">
         <header className="sticky top-0 z-30 border-b border-border bg-canvas/95 px-4 pb-2.5 pt-3 backdrop-blur-md md:hidden">
           <div className="flex items-center gap-2.5">
-            <BrandMark size="h-7 w-7 text-[15px]" />
-            <span className="flex-1 font-display text-[17px] font-bold tracking-[-0.01em]">Ledgerline</span>
+            <LogoMark className="h-7 w-7" />
+            <span className="flex-1 font-display text-[20px] font-semibold tracking-[-0.01em]">Ledgerline</span>
             <ThemeToggle compact />
           </div>
           <HScroll className="-mx-1 mt-2.5 hidden sm:block" fadeFrom="from-canvas">
@@ -170,8 +154,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   key={item.href}
                   href={item.href}
                   aria-current={active ? "page" : undefined}
-                  className={`inline-flex min-h-[40px] shrink-0 items-center px-3.5 text-[13px] transition-colors ${
-                    active ? "bg-ink font-medium text-canvas" : "text-body hover:bg-sidebar"
+                  className={`inline-flex min-h-[32px] shrink-0 items-center rounded-md px-3 text-base transition-colors ${
+                    active ? "bg-ink/[0.05] font-medium text-ink dark:bg-ink/[0.15]" : "text-ink hover:bg-ink/[0.05]"
                   }`}
                 >
                   {item.label}
@@ -185,28 +169,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <aside
           aria-label="Workspace Navigation"
           className={`${
-            collapsed ? "md:w-[68px]" : "md:w-[248px]"
+            collapsed ? "md:w-[52px]" : "md:w-[288px]"
           } sticky top-0 z-20 hidden h-screen shrink-0 flex-col border-r border-border bg-sidebar py-4 md:flex ${
             animate ? "transition-[width] duration-200 ease-out" : ""
           } ${
-            collapsed ? "px-2.5" : "px-3.5"
+            collapsed ? "px-2" : "px-2"
           }`}
         >
           <Link
             href="/ask"
             aria-label="Ledgerline home"
-            className={`group relative mb-6 flex items-center gap-2.5 ${collapsed ? "justify-center py-1" : "px-1.5 py-1"}`}
+            className={`group relative mb-3 flex h-10 items-center gap-2 ${collapsed ? "justify-center" : "px-2"}`}
           >
-            <BrandMark />
+            <LogoMark className="h-6 w-6" />
             {!collapsed && (
               <span className="min-w-0">
-                <span className="block font-display text-[18px] font-bold leading-none tracking-[-0.01em]">Ledgerline</span>
-                <span className="mt-1 block text-[11px] text-secondary">Local analytics</span>
+                <span className="block font-display text-[19px] font-medium leading-none tracking-[-0.01em]">Ledgerline</span>
               </span>
             )}
           </Link>
 
-          <nav aria-label="Primary Navigation" className="flex flex-col gap-1">
+          <nav aria-label="Primary Navigation" className="flex flex-col gap-0.5">
             {NAV.map((item) => {
               const active = isActive(item.href);
               return (
@@ -215,15 +198,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   href={item.href}
                   aria-label={collapsed ? item.label : undefined}
                   aria-current={active ? "page" : undefined}
-                  className={`group relative flex min-h-[42px] items-center gap-3 border text-[13.5px] transition-colors focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong ${
-                    collapsed ? "justify-center" : "px-2.5"
+                  className={`group relative flex h-8 items-center gap-2.5 rounded-md text-base font-medium transition-colors focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong ${
+                    collapsed ? "justify-center" : "px-2"
                   } ${
-                    active
-                      ? "border-border bg-surface font-medium text-ink"
-                      : "border-transparent text-body hover:bg-surface/70 hover:text-ink"
+                    active ? "bg-ink/[0.05] text-ink dark:bg-ink/[0.15]" : "text-ink hover:bg-ink/[0.05] dark:hover:bg-ink/[0.08]"
                   }`}
                 >
-                  <span className={active ? "text-plum" : ""}>
+                  <span className="text-ink">
                     <NavIcon name={item.icon} />
                   </span>
                   {!collapsed && <span className="truncate">{item.label}</span>}
@@ -247,27 +228,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               onClick={toggle}
               aria-expanded={!collapsed}
               aria-label={collapsed ? `Expand sidebar (${isMac ? "⌘ B" : "Ctrl+B"})` : `Collapse sidebar (${isMac ? "⌘ B" : "Ctrl+B"})`}
-              className={`group relative flex min-h-[40px] w-full items-center gap-2.5 text-[13px] text-secondary transition-colors hover:bg-surface hover:text-ink ${
-                collapsed ? "justify-center" : "px-2.5"
+              className={`group relative flex h-8 w-full items-center gap-2.5 rounded-md text-base text-secondary transition-colors hover:bg-ink/[0.05] hover:text-ink dark:hover:bg-ink/[0.08] ${
+                collapsed ? "justify-center" : "px-2"
               }`}
             >
-              <svg
-                className={`h-[18px] w-[18px] shrink-0 transition-transform duration-200 ${collapsed ? "rotate-180" : ""}`}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <rect x="3" y="4" width="18" height="16" rx="2.5" />
-                <path d="M9 4v16M15.5 10 13.5 12l2 2" />
-              </svg>
+              <Icon name="panel-left" className={`h-4 w-4 shrink-0 transition-transform duration-200 ${collapsed ? "rotate-180" : ""}`} />
               {!collapsed && (
                 <>
                   <span className="flex-1 text-left">Collapse</span>
-                  <kbd className="border border-border bg-surface px-1.5 py-0.5 font-sans text-[10.5px] text-secondary">
+                  <kbd className="rounded-sm border border-border bg-canvas px-1.5 py-0.5 font-sans text-2xs text-secondary">
                     {isMac ? "⌘ B" : "Ctrl B"}
                   </kbd>
                 </>
@@ -282,7 +251,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           tabIndex={-1}
           className="min-w-0 flex-1 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-6 focus:outline-none sm:px-5 sm:pb-6 md:px-6 md:py-8 lg:px-8"
         >
-          <div className="mx-auto w-full max-w-[1480px]">{children}</div>
+          <div className="mx-auto w-full max-w-[1480px]">
+            <ServerDownNotice />
+            {children}
+          </div>
         </main>
 
         <nav
@@ -296,11 +268,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`flex min-h-[56px] flex-col items-center justify-center gap-1 text-[11px] transition-colors ${
+                className={`flex min-h-[56px] flex-col items-center justify-center gap-1 text-2xs transition-colors ${
                   active ? "font-semibold text-ink" : "text-secondary hover:text-ink"
                 }`}
               >
-                <span className={`flex h-6 w-10 items-center justify-center ${active ? "bg-ink text-canvas" : ""}`}>
+                <span className={`flex h-6 w-10 items-center justify-center rounded-full ${active ? "bg-ink/[0.08] text-ink" : ""}`}>
                   <NavIcon name={item.icon} className="h-[17px] w-[17px]" />
                 </span>
                 {item.label}
@@ -309,6 +281,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
       </div>
+      <Toaster />
     </QueryClientProvider>
   );
 }

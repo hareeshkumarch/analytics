@@ -35,7 +35,7 @@ export function TableSelector({
     <fieldset disabled={disabled} className="min-w-0 space-y-3">
       <legend className="sr-only">Tables to import</legend>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[13px] text-body">
+        <p className="text-sm text-body">
           {selected.length} of {tables.length} table{tables.length === 1 ? "" : "s"} selected
           {hiddenSelected > 0 && <span className="text-secondary"> ({hiddenSelected} outside filter)</span>}
         </p>
@@ -49,7 +49,7 @@ export function TableSelector({
         </div>
       </div>
       {tables.length > 8 && <SearchInput label="Search tables" placeholder="Search tables" value={query} onChange={setQuery} />}
-      <ul className="max-h-[360px] divide-y divide-border overflow-y-auto border border-border">
+      <ul className="max-h-[360px] divide-y divide-border overflow-y-auto rounded-lg border border-border">
         {visible.map((t) => (
           <li key={t.name}>
             <label className="flex min-h-[44px] cursor-pointer items-center gap-3 px-3.5 py-2">
@@ -57,16 +57,16 @@ export function TableSelector({
                 type="checkbox"
                 checked={chosen.has(t.name)}
                 onChange={(e) => onChange(e.target.checked ? [...selected, t.name] : selected.filter((n) => n !== t.name))}
-                className="h-4 w-4 shrink-0 accent-plum"
+                className="h-4 w-4 shrink-0 accent-focus"
               />
               <span className="min-w-0 flex-1">
-                <span className="block truncate font-mono text-[12.5px] text-ink">{t.name}</span>
+                <span className="block truncate font-mono text-sm text-ink">{t.name}</span>
                 <span className="block text-xs text-secondary">{tableMeta(t)}</span>
               </span>
             </label>
           </li>
         ))}
-        {visible.length === 0 && <li className="px-3.5 py-3 text-[13px] text-secondary">No tables match.</li>}
+        {visible.length === 0 && <li className="px-3.5 py-3 text-sm text-secondary">No tables match.</li>}
       </ul>
     </fieldset>
   );

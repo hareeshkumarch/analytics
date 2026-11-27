@@ -48,7 +48,7 @@ export function ChartPlot({
       key="tip"
       cursor={chart.chart_type === "line" ? { stroke: gridColor } : { fill: gridColor, fillOpacity: 0.45 }}
       formatter={(value, key) => [value === null ? "—" : formats.value.format(Number(value)), names[String(key)] ?? String(key)]}
-      contentStyle={{ borderRadius: 0, border: `1px solid ${gridColor}`, background: surfaceColor, color: inkColor, fontSize: 12 }}
+      contentStyle={{ borderRadius: 8, border: `1px solid ${gridColor}`, background: surfaceColor, color: inkColor, fontSize: 12 }}
     />
   ];
 
@@ -65,7 +65,7 @@ export function ChartPlot({
         <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -8 }} barCategoryGap={chart.chart_type === "histogram" ? 1 : "20%"}>
           {axes}
           {keys.map((key, i) => (
-            <Bar key={key} dataKey={key} fill={colorFor(i)} maxBarSize={chart.chart_type === "histogram" ? undefined : 36} isAnimationActive={false} />
+            <Bar key={key} dataKey={key} fill={colorFor(i)} radius={[3, 3, 0, 0]} maxBarSize={chart.chart_type === "histogram" ? undefined : 36} isAnimationActive={false} />
           ))}
         </BarChart>
       )}

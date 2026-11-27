@@ -131,12 +131,12 @@ export function FileSource({
             if (!disabled && e.dataTransfer.files[0]) source.chooseFile(e.dataTransfer.files[0]);
           }}
           className={cx(
-            "flex min-h-[128px] flex-col items-center justify-center gap-1 border border-dashed bg-panel px-4 py-6 text-center transition-colors peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-plum",
-            dragging ? "border-plum" : fileError ? "border-err" : "border-border-strong hover:border-plum",
+            "flex min-h-[128px] flex-col items-center justify-center gap-1 rounded-lg border border-dashed bg-panel px-4 py-6 text-center transition-colors peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent",
+            dragging ? "border-accent" : fileError ? "border-err" : "border-border-strong hover:border-accent",
             disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
           )}
         >
-          <span className="break-all text-[13.5px] font-medium text-ink">{draft.file ? draft.file.name : "Choose a file or drop it here"}</span>
+          <span className="break-all text-base font-medium text-ink">{draft.file ? draft.file.name : "Choose a file or drop it here"}</span>
           <span id={`${id}-file-help`} className="text-xs text-secondary">
             {draft.file
               ? `${detected?.label ?? "Unknown type"} · ${formatBytes(draft.file.size)}`
@@ -159,7 +159,7 @@ export function FileSource({
 
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-2">
-          <label htmlFor={`${id}-paste`} className="block text-[12.5px] font-medium text-body">
+          <label htmlFor={`${id}-paste`} className="block text-sm font-medium text-body">
             Or paste CSV text
           </label>
           {hasPaste && (
@@ -188,7 +188,7 @@ export function FileSource({
       </div>
 
       <div className="space-y-1.5">
-        <label htmlFor={`${id}-name`} className="block text-[12.5px] font-medium text-body">
+        <label htmlFor={`${id}-name`} className="block text-sm font-medium text-body">
           Dataset name
         </label>
         <input
@@ -201,7 +201,7 @@ export function FileSource({
           aria-invalid={Boolean(nameError)}
           aria-describedby={cx(`${id}-name-help`, nameError && `${id}-name-err`)}
           onChange={(e) => source.setName(e.target.value)}
-          className={cx(inputCls, "font-mono text-[13px]", nameError && "border-err")}
+          className={cx(inputCls, "font-mono text-sm", nameError && "border-err")}
         />
         <p id={`${id}-name-help`} className="text-xs text-secondary">
           {nameHelp(source)}

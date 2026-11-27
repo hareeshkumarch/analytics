@@ -79,7 +79,7 @@ class GeminiInteractionsAdapter:
         with httpx.Client(timeout=request.timeout_seconds, transport=self._transport) as client:
             resp = client.post(url, json=payload, headers=headers)
         if resp.status_code >= 400:
-            raise classify_http_error(resp.status_code, resp.text, "Gemini")
+            raise classify_http_error(resp.status_code, resp.text, "Gemini", resp.headers.get("retry-after"))
 
         data = read_json_body(resp, "Gemini")
         text_parts: list[str] = []

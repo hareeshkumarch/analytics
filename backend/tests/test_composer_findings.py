@@ -57,7 +57,9 @@ class TestComposerFindings(unittest.TestCase):
         self.assertTrue(findings[0].startswith("data_specialist finding"))
         self.assertTrue(findings[1].startswith("reconciliation_specialist finding"))
         self.assertEqual(findings[2], "Supported.")
-        self.assertLess(len(findings[0]), len(findings[1]))
+        # The two long analytical findings share the cut: neither is reduced to a stub.
+        self.assertLess(abs(len(findings[0]) - len(findings[1])), 100)
+        self.assertGreater(len(findings[0]), 4_000)
         self.assertIn(TRIMMED_FINDINGS_LIMITATION, answer.limitations)
         self.assertIn(TRIMMED_FINDINGS_LIMITATION, inputs[-1]["limitations"])
 

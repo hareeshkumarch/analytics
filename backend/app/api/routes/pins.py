@@ -9,15 +9,31 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.schemas import (
     CreatePinRequest,
+    RefreshPinsRequest,
     UpdatePinRequest,
     CreateRunRequest,
 )
 from app.domain.models import RunMode, RunStatus
 
 from app.api.context import ApiContext
-from app.api.responses import PinListOut, PinOut
+from app.api.responses import PinListOut, PinOut, PinRefreshBatchOut
+from app.api.support import RUN_LIST_ANSWER_KEYS
 
 logger = logging.getLogger(__name__)
+
+ACTIVE_STATUSES = {RunStatus.QUEUED.value, RunStatus.RUNNING.value, RunStatus.AWAITING_INPUT.value}
+
+
+def newer_approved_version(snapshots: list[dict[str, Any]], snapshot: dict[str, Any] | None) -> int | None:
+    """Highest approved version of the same source that is newer than `snapshot`, if there is one."""
+    if not snapshot:
+        return None
+    versions = [
+        int(s["version"])
+        for s in snapshots
+        if s["source_id"] == snapshot["source_id"] and s.get("approved") and int(s["version"]) > int(snapshot["version"])
+    ]
+    return max(versions, default=None)
 
 
 def register(ctx: ApiContext) -> APIRouter:
@@ -27,10 +43,37 @@ def register(ctx: ApiContext) -> APIRouter:
     _snapshot_record = ctx.snapshot_record
     _newest_approved_in_source = ctx.newest_approved_in_source
 
+    def _describe_pins(workspace_id: str, pins: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Add what a dashboard card shows: the answer on display, its dataset, and whether newer data exists."""
+        run_ids = {p["run_id"] for p in pins} | {p["latest_run_id"] for p in pins if p.get("latest_run_id")}
+        runs = app.state.repo_runs.get_runs_by_ids(sorted(run_ids)) if run_ids else {}
+        snapshots = app.state.repo_snapshots.list_snapshots(workspace_id) if pins else []
+        by_id = {s["snapshot_id"]: s for s in snapshots}
+        described = []
+        for pin in pins:
+            latest = runs.get(pin.get("latest_run_id") or "")
+            # The newest finished re-run is what the card shows; until one finishes, the pinned answer stays.
+            shown = latest if latest and latest["status"] == RunStatus.COMPLETED.value else runs.get(pin["run_id"])
+            snapshot = by_id.get((shown or {}).get("snapshot_id") or "")
+            described.append(
+                {
+                    **pin,
+                    "shown_run": (
+                        {**shown, "answer": {k: shown["answer"][k] for k in RUN_LIST_ANSWER_KEYS if k in shown["answer"]}}
+                        if shown
+                        else None
+                    ),
+                    "latest_run_status": latest["status"] if latest else None,
+                    "snapshot": snapshot,
+                    "newer_version": newer_approved_version(snapshots, snapshot),
+                }
+            )
+        return described
+
     @router.get("/api/v1/workspaces/{workspace_id}/pins", response_model=PinListOut, response_model_exclude_unset=True)
     def list_pins(workspace_id: str) -> dict[str, Any]:
         try:
-            return {"pins": app.state.repo_pins.list_pins(workspace_id)}
+            return {"pins": _describe_pins(workspace_id, app.state.repo_pins.list_pins(workspace_id))}
         except SQLAlchemyError as exc:
             logger.exception("Failed to query pins from DB")
             raise _db_unavailable("load pinned answers") from exc
@@ -89,12 +132,14 @@ def register(ctx: ApiContext) -> APIRouter:
             logger.exception("Failed to update pin")
             raise _db_unavailable("update the pin") from exc
 
-    @router.post("/api/v1/workspaces/{workspace_id}/pins/{pin_id}/refresh", status_code=202)
-    async def refresh_pin(workspace_id: str, pin_id: str) -> dict[str, Any]:
-        pins = await asyncio.to_thread(app.state.repo_pins.list_pins, workspace_id)
-        pin = next((p for p in pins if p["pin_id"] == pin_id), None)
-        if not pin:
-            raise HTTPException(status_code=404, detail="Pin not found")
+    async def _start_refresh(workspace_id: str, pin: dict[str, Any]) -> dict[str, Any]:
+        pin_id = pin["pin_id"]
+        latest_id = pin.get("latest_run_id")
+        if latest_id:
+            latest = await asyncio.to_thread(app.state.repo_runs.get_run, latest_id)
+            if latest and latest.get("status") in ACTIVE_STATUSES:
+                # A re-run is already in flight: hand that one back instead of paying for a second.
+                return {"pin_id": pin_id, "refresh_run_id": latest_id, "status": latest["status"], "already_running": True}
         original_run = await asyncio.to_thread(app.state.repo_runs.get_run, pin["run_id"])
         try:
             mode = RunMode(str((original_run or {}).get("mode", RunMode.QUICK.value)))
@@ -121,7 +166,35 @@ def register(ctx: ApiContext) -> APIRouter:
         await asyncio.to_thread(
             app.state.repo_pins.update_pin_state, workspace_id, pin_id, {"latest_run_id": run_data["run_id"]}
         )
-        return {"pin_id": pin_id, "refresh_run_id": run_data["run_id"], "status": run_data["status"]}
+        return {"pin_id": pin_id, "refresh_run_id": run_data["run_id"], "status": run_data["status"], "already_running": False}
+
+    @router.post("/api/v1/workspaces/{workspace_id}/pins/refresh", status_code=202, response_model=PinRefreshBatchOut)
+    async def refresh_pins(workspace_id: str, payload: RefreshPinsRequest) -> dict[str, Any]:
+        try:
+            pins = await asyncio.to_thread(app.state.repo_pins.list_pins, workspace_id)
+            described = await asyncio.to_thread(_describe_pins, workspace_id, pins)
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to load pins for a batch refresh")
+            raise _db_unavailable("re-run pinned answers") from exc
+        wanted = set(payload.pin_ids) if payload.pin_ids is not None else None
+        targets = [p for p in described if (p["pin_id"] in wanted if wanted is not None else p["newer_version"] is not None)]
+        refreshed: list[dict[str, Any]] = []
+        failed: list[dict[str, Any]] = []
+        for pin in targets:
+            try:
+                refreshed.append(await _start_refresh(workspace_id, pin))
+            except HTTPException as exc:
+                # One pin over a limit must not stop the rest.
+                failed.append({"pin_id": pin["pin_id"], "detail": str(exc.detail)})
+        return {"refreshed": refreshed, "failed": failed}
+
+    @router.post("/api/v1/workspaces/{workspace_id}/pins/{pin_id}/refresh", status_code=202)
+    async def refresh_pin(workspace_id: str, pin_id: str) -> dict[str, Any]:
+        pins = await asyncio.to_thread(app.state.repo_pins.list_pins, workspace_id)
+        pin = next((p for p in pins if p["pin_id"] == pin_id), None)
+        if not pin:
+            raise HTTPException(status_code=404, detail="Pin not found")
+        return await _start_refresh(workspace_id, pin)
 
     async def _auto_refresh_pins(workspace_id: str, snapshot_id: str) -> list[str]:
         approved = await asyncio.to_thread(_snapshot_record, snapshot_id)

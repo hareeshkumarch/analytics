@@ -486,6 +486,7 @@
               "verified",
               "failed",
               "blocked",
+              "unreviewed",
               "not_applicable"
             ],
             "title": "Status",
@@ -881,6 +882,28 @@
             ],
             "title": "Latest Run Id"
           },
+          "latest_run_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Run Status"
+          },
+          "newer_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Newer Version"
+          },
           "pin_id": {
             "title": "Pin Id",
             "type": "string"
@@ -892,6 +915,26 @@
           "run_id": {
             "title": "Run Id",
             "type": "string"
+          },
+          "shown_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "title": {
             "title": "Title",
@@ -911,6 +954,79 @@
           "created_at"
         ],
         "title": "PinOut",
+        "type": "object"
+      },
+      "PinRefreshBatchOut": {
+        "additionalProperties": true,
+        "properties": {
+          "failed": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PinRefreshFailureOut"
+            },
+            "title": "Failed",
+            "type": "array"
+          },
+          "refreshed": {
+            "items": {
+              "$ref": "#/components/schemas/PinRefreshOut"
+            },
+            "title": "Refreshed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "refreshed"
+        ],
+        "title": "PinRefreshBatchOut",
+        "type": "object"
+      },
+      "PinRefreshFailureOut": {
+        "additionalProperties": true,
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "pin_id": {
+            "title": "Pin Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pin_id",
+          "detail"
+        ],
+        "title": "PinRefreshFailureOut",
+        "type": "object"
+      },
+      "PinRefreshOut": {
+        "additionalProperties": true,
+        "properties": {
+          "already_running": {
+            "default": false,
+            "title": "Already Running",
+            "type": "boolean"
+          },
+          "pin_id": {
+            "title": "Pin Id",
+            "type": "string"
+          },
+          "refresh_run_id": {
+            "title": "Refresh Run Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pin_id",
+          "refresh_run_id",
+          "status"
+        ],
+        "title": "PinRefreshOut",
         "type": "object"
       },
       "PromptTemplateListOut": {
@@ -1028,6 +1144,28 @@
           "models"
         ],
         "title": "ProvidersOut",
+        "type": "object"
+      },
+      "RefreshPinsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "pin_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 200,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pin Ids"
+          }
+        },
+        "title": "RefreshPinsRequest",
         "type": "object"
       },
       "ReimportOut": {
@@ -2153,9 +2291,57 @@
         "title": "UpdateWorkspaceSettingsRequest",
         "type": "object"
       },
+      "UsageBucketOut": {
+        "additionalProperties": true,
+        "properties": {
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "string"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "tokens": {
+            "title": "Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start",
+          "runs",
+          "tokens",
+          "cost_usd"
+        ],
+        "title": "UsageBucketOut",
+        "type": "object"
+      },
       "UsageOut": {
         "additionalProperties": true,
         "properties": {
+          "buckets": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/UsageBucketOut"
+            },
+            "title": "Buckets",
+            "type": "array"
+          },
+          "matched_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Count"
+          },
           "models": {
             "items": {
               "$ref": "#/components/schemas/ModelUsageOut"
@@ -2803,6 +2989,55 @@
           }
         },
         "summary": "Create Pin"
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/pins/refresh": {
+      "post": {
+        "operationId": "refresh_pins_api_v1_workspaces__workspace_id__pins_refresh_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshPinsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PinRefreshBatchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh Pins"
       }
     },
     "/api/v1/workspaces/{workspace_id}/pins/{pin_id}": {
@@ -4459,6 +4694,141 @@
                 }
               ],
               "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "when",
+              "enum": [
+                "when",
+                "calls",
+                "tokens",
+                "cost"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "desc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Order",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bucket",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "enum": [
+                "hour",
+                "day"
+              ],
+              "title": "Bucket",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tz_offset_minutes",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 840,
+              "minimum": -840,
+              "title": "Tz Offset Minutes",
+              "type": "integer"
             }
           }
         ],

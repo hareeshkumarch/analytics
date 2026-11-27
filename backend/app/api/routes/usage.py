@@ -1,9 +1,9 @@
 from dataclasses import asdict
 from datetime import datetime
 import logging
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.application.ports.tools import summarize_tool_executions
@@ -12,7 +12,7 @@ from app.bootstrap.container import AppContainer
 
 from app.api.support import RUN_PAGE_MAX
 from app.api.context import ApiContext
-from app.application.services.usage_summary import summarize_usage
+from app.application.services.usage_summary import bucket_usage, select_usage_rows, summarize_usage
 from app.api.responses import ModelCallListOut, PromptTemplateListOut, TaskRecordListOut, ToolExecutionListOut, UsageOut
 from app.domain.limits import PREVIEW_CHARS
 
@@ -25,36 +25,54 @@ def register(ctx: ApiContext) -> APIRouter:
     _db_unavailable = ctx.db_unavailable
 
     @router.get("/api/v1/workspaces/{workspace_id}/usage", response_model=UsageOut, response_model_exclude_unset=True)
-    def get_usage(workspace_id: str, since: datetime | None = None) -> dict[str, Any]:
+    def get_usage(
+        workspace_id: str,
+        since: datetime | None = None,
+        sort: Literal["when", "calls", "tokens", "cost"] = "when",
+        order: Literal["asc", "desc"] = "desc",
+        status: str | None = Query(None, max_length=32),
+        mode: str | None = Query(None, max_length=16),
+        q: str | None = Query(None, max_length=200),
+        limit: int | None = Query(None, ge=1),
+        offset: int = Query(0, ge=0),
+        bucket: Literal["hour", "day"] = "day",
+        tz_offset_minutes: int = Query(0, ge=-840, le=840),
+    ) -> dict[str, Any]:
         c: AppContainer = app.state.container
         try:
-            window = app.state.repo_runs.window_runs(workspace_id, since)
-            all_ids = [run_id for run_id, _, _ in window]
+            rows = app.state.repo_runs.usage_rows(workspace_id, since)
+            all_ids = [r["run_id"] for r in rows]
             all_totals = c.budget_ledger.get_runs_totals(all_ids)
             models = c.budget_ledger.get_model_usage(all_ids)
             tools = summarize_tool_executions(c.tool_executions.list_for_runs(all_ids))
-            ws_runs = app.state.repo_runs.list_runs(workspace_id, limit=RUN_PAGE_MAX, since=since)
         except SQLAlchemyError as exc:
             logger.exception("Failed to query runs for usage from DB")
             raise _db_unavailable("load usage") from exc
+        # Filter and sort over the whole window, then page: "most expensive" means of everything, not of the newest page.
+        matched = select_usage_rows(rows, all_totals, status=status, mode=mode, q=q, sort=sort, descending=order == "desc")
+        page = matched[offset : offset + min(limit or RUN_PAGE_MAX, RUN_PAGE_MAX)]
+        empty = {"used_attempts": 0, "total_tokens": 0, "total_cost_usd": "0", "incomplete": False}
         totals = [
             {
-                **all_totals[r["run_id"]],
-                "mode": r.get("mode", "quick"),
-                "status": r.get("status", "queued"),
-                "created_at": r.get("created_at", ""),
-                "question": str(r.get("question", ""))[:PREVIEW_CHARS],
-                "error": r.get("error"),
+                **empty,
+                **all_totals.get(r["run_id"], {}),
+                "run_id": r["run_id"],
+                "mode": r["mode"],
+                "status": r["status"],
+                "created_at": r["created_at"],
+                "question": r["question"][:PREVIEW_CHARS],
+                "error": r["error"],
             }
-            for r in ws_runs
-            if r["run_id"] in all_totals
+            for r in page
         ]
         return {
             "workspace_id": workspace_id,
-            "run_count": len(window),
+            "run_count": len(rows),
             "runs": totals,
-            "runs_truncated": len(window) > len(totals),
-            "summary": summarize_usage(window, all_totals),
+            "runs_truncated": len(matched) > offset + len(page),
+            "matched_count": len(matched),
+            "summary": summarize_usage([(r["run_id"], r["mode"], r["status"]) for r in rows], all_totals),
+            "buckets": bucket_usage(rows, all_totals, hourly=bucket == "hour", tz_offset_minutes=tz_offset_minutes),
             "models": models,
             "tools": tools,
         }

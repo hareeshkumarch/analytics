@@ -122,9 +122,9 @@ function GlyphSvg({ name, className }: { name: Glyph; className: string }) {
 }
 
 const SIZES = {
-  sm: { box: "h-7 w-7", mark: "h-4 w-4", text: "text-[10px]" },
-  md: { box: "h-10 w-10", mark: "h-[22px] w-[22px]", text: "text-[13px]" },
-  lg: { box: "h-12 w-12", mark: "h-7 w-7", text: "text-[15px]" },
+  sm: { box: "h-7 w-7", mark: "h-4 w-4", text: "text-2xs" },
+  md: { box: "h-10 w-10", mark: "h-[22px] w-[22px]", text: "text-sm" },
+  lg: { box: "h-12 w-12", mark: "h-7 w-7", text: "text-md" },
 } as const;
 
 /*
@@ -152,7 +152,7 @@ export function ConnectorLogo({ id, size = "sm" }: { id: LogoId; size?: keyof ty
 
 function LogoTile({ mark, size }: { mark: Mark; size: keyof typeof SIZES }) {
   const s = SIZES[size];
-  const base = `inline-flex shrink-0 items-center justify-center font-bold leading-none tracking-[-0.04em] ring-1 ring-inset ring-border ${s.box}`;
+  const base = `inline-flex shrink-0 items-center justify-center font-bold leading-none tracking-[-0.04em] rounded-md ring-1 ring-inset ring-border ${s.box}`;
 
   if (mark.kind === "neutral") {
     return (
