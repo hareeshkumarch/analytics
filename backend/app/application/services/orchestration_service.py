@@ -80,6 +80,7 @@ PRIOR_ANSWER_CHARS = 1500
 STREAM_FLUSH_CHARS = 120
 STREAM_FLUSH_SECONDS = 0.25
 MIN_ATTEMPTS_PER_TASK = 2
+TRIMMED_FINDINGS_LIMITATION = "Some step findings were shortened to fit the answer writer's context, so details from earlier steps may be missing."
 
 
 class _OrchestrationState(TypedDict):
@@ -1299,9 +1300,10 @@ class InvestigationOrchestrator:
         ):
             answer_limitations.append("The review found unresolved gaps after the available remediation steps.")
         if use_deep_agents and summary_parts and not cancelled and not direct:
-            composer_context = composer_findings([_clean_text(text, strip=False) for text in summary_parts[-12:]])
+            composer_context = composer_findings([_clean_text(text, strip=False) for text in summary_parts])
             if composer_context.trimmed or composer_context.dropped:
-                logger.info("Run %s composer findings trimmed %s", run_id, composer_context.trimmed)
+                logger.info("Run %s composer findings trimmed %s, dropped %s", run_id, composer_context.trimmed, composer_context.dropped)
+                answer_limitations.append(TRIMMED_FINDINGS_LIMITATION)
             composer_input = {
                 "question": question_for_agents,
                 "findings": [section.text for section in composer_context.sections],
