@@ -2,6 +2,7 @@ import csv
 import html
 import io
 import os
+import re
 from pathlib import Path
 from collections.abc import Sequence
 from typing import Any
@@ -79,6 +80,122 @@ def _source_lines(evidence: Sequence[dict[str, Any]]) -> list[str]:
     return lines
 
 
+_INLINE_CODE_RE = re.compile(r"(`[^`\n]+`)")
+_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+_ITALIC_RE = re.compile(r"(?<!\*)\*([^*\n]+)\*(?!\*)")
+_CITE_RE = re.compile(r"\[((?:ev|claim)_[A-Za-z0-9_]+)\]")
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$")
+_UL_RE = re.compile(r"^[-*+]\s+(.+)$")
+_OL_RE = re.compile(r"^\d+\.\s+(.+)$")
+_TABLE_SEP_RE = re.compile(r"^\s*\|?(?:\s*:?-{2,}:?\s*\|)+\s*(?::?-{2,}:?\s*)?$")
+
+
+def _render_inline_html(text: str) -> str:
+    """Escape text safely, then apply inline Markdown formatting and citation badges."""
+    parts: list[str] = []
+    for chunk in _INLINE_CODE_RE.split(text):
+        if not chunk:
+            continue
+        if chunk.startswith("`") and chunk.endswith("`") and len(chunk) >= 2:
+            parts.append(f"<code>{html.escape(chunk[1:-1], quote=True)}</code>")
+            continue
+        escaped = html.escape(chunk, quote=True)
+        escaped = _BOLD_RE.sub(r"<strong>\1</strong>", escaped)
+        escaped = _ITALIC_RE.sub(r"<em>\1</em>", escaped)
+        escaped = _CITE_RE.sub(r"<span class='cite'>\1</span>", escaped)
+        parts.append(escaped)
+    return "".join(parts)
+
+
+def _split_table_cells(row: str) -> list[str]:
+    stripped = row.strip()
+    if stripped.startswith("|"):
+        stripped = stripped[1:]
+    if stripped.endswith("|"):
+        stripped = stripped[:-1]
+    return [cell.strip() for cell in stripped.split("|")]
+
+
+def _render_markdown_html(markdown: str) -> str:
+    """Convert common Markdown blocks into sanitized HTML matching SafeMarkdown."""
+    lines = markdown.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if not stripped:
+            i += 1
+            continue
+        if stripped.startswith("```"):
+            code_lines: list[str] = []
+            i += 1
+            while i < len(lines) and not lines[i].strip().startswith("```"):
+                code_lines.append(lines[i])
+                i += 1
+            if i < len(lines):
+                i += 1
+            out.append(f"<pre><code>{html.escape(chr(10).join(code_lines), quote=True)}</code></pre>")
+            continue
+        h_match = _HEADING_RE.match(stripped)
+        if h_match:
+            level = min(len(h_match.group(1)) + 1, 6)
+            out.append(f"<h{level}>{_render_inline_html(h_match.group(2))}</h{level}>")
+            i += 1
+            continue
+        if "|" in stripped and i + 1 < len(lines) and _TABLE_SEP_RE.match(lines[i + 1]):
+            headers = _split_table_cells(stripped)
+            i += 2
+            body_rows: list[list[str]] = []
+            while i < len(lines) and "|" in lines[i].strip() and lines[i].strip():
+                body_rows.append(_split_table_cells(lines[i]))
+                i += 1
+            head_html = "".join(f"<th>{_render_inline_html(h)}</th>" for h in headers)
+            rows_html = "".join(
+                "<tr>" + "".join(f"<td>{_render_inline_html(row[c] if c < len(row) else '')}</td>" for c in range(len(headers))) + "</tr>"
+                for row in body_rows
+            )
+            out.append(f"<table><thead><tr>{head_html}</tr></thead><tbody>{rows_html}</tbody></table>")
+            continue
+        if stripped.startswith(">"):
+            quote_lines: list[str] = []
+            while i < len(lines) and lines[i].strip().startswith(">"):
+                quote_lines.append(lines[i].strip().lstrip(">").strip())
+                i += 1
+            out.append(f"<blockquote><p>{_render_inline_html(' '.join(quote_lines))}</p></blockquote>")
+            continue
+        if _UL_RE.match(stripped):
+            items: list[str] = []
+            while i < len(lines):
+                m = _UL_RE.match(lines[i].strip())
+                if not m:
+                    break
+                items.append(f"<li>{_render_inline_html(m.group(1))}</li>")
+                i += 1
+            out.append(f"<ul>{''.join(items)}</ul>")
+            continue
+        if _OL_RE.match(stripped):
+            items = []
+            while i < len(lines):
+                m = _OL_RE.match(lines[i].strip())
+                if not m:
+                    break
+                items.append(f"<li>{_render_inline_html(m.group(1))}</li>")
+                i += 1
+            out.append(f"<ol>{''.join(items)}</ol>")
+            continue
+        para: list[str] = []
+        while i < len(lines):
+            cur = lines[i].strip()
+            if not cur or cur.startswith("```") or cur.startswith(">") or _HEADING_RE.match(cur) or _UL_RE.match(cur) or _OL_RE.match(cur):
+                break
+            if "|" in cur and i + 1 < len(lines) and _TABLE_SEP_RE.match(lines[i + 1]):
+                break
+            para.append(cur)
+            i += 1
+        out.append(f"<p>{_render_inline_html(' '.join(para))}</p>")
+    return "".join(out)
+
+
 class ExportService:
     def __init__(self, limits: DataLimits = DEFAULT_DATA_LIMITS) -> None:
         self._limits = limits
@@ -112,31 +229,56 @@ class ExportService:
     ) -> bytes:
         claims_html = "".join(
             f"<li><strong>[{html.escape(c.label)}]</strong> {html.escape(c.statement)} "
-            f"(Value: {html.escape(str(c.value))} {html.escape(c.currency or c.unit or '')}; "
-            f"Evidence: {html.escape(', '.join(c.evidence_ids))})</li>"
+            f"<span class='meta'>(Value: {html.escape(str(c.value))} {html.escape(c.currency or c.unit or '')}; "
+            f"Evidence: {', '.join(f'<span class=\"cite\">{html.escape(eid)}</span>' for eid in c.evidence_ids)})</span></li>"
             for c in answer.claims
         )
         limitations_html = "".join(f"<li>{html.escape(lim)}</li>" for lim in answer.limitations)
         charts_html = "".join(
-            f"<h3>{html.escape(ch.title)}</h3><table><tr>"
+            f"<h3>{html.escape(ch.title)}</h3><table><thead><tr>"
             + "".join(f"<th>{html.escape(h)}</th>" for h in _chart_header(ch))
-            + "</tr>"
+            + "</tr></thead><tbody>"
             + "".join("<tr>" + "".join(f"<td>{html.escape(_cell(v))}</td>" for v in row) + "</tr>" for row in ch.rows)
-            + f"</table><p>Evidence: <code>{html.escape(ch.evidence_id)}</code>{' (partial data)' if ch.truncated else ''}</p>"
+            + f"</tbody></table><p class='meta'>Evidence: <span class='cite'>{html.escape(ch.evidence_id)}</span>{' (partial data)' if ch.truncated else ''}</p>"
             for ch in answer.charts
         )
+        body_html = _render_markdown_html(answer.summary_markdown)
         doc = (
             "<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>"
-            "<title>Analytics Export</title>"
-            "<style>body{font-family:system-ui,sans-serif;background:#FAF7F5;color:#111111;max-width:860px;margin:2rem auto;padding:1.5rem;border:1px solid #D8CFCA}"
-            "h1,h2{color:#3E3144}code{background:#F5F1EE;padding:2px 4px}"
-            "table{border-collapse:collapse}th,td{border:1px solid #D8CFCA;padding:4px 8px;text-align:left}</style></head><body>"
-            f"<h1>Investigation Answer</h1>"
-            f"<p><strong>Scope:</strong> {html.escape(scope_label)} | "
-            f"<strong>Snapshot:</strong> <code>{html.escape(answer.snapshot_id)}</code> | "
-            f"<strong>Semantic Version:</strong> <code>{html.escape(answer.semantic_version_id)}</code></p>"
-            f"<div>{html.escape(answer.summary_markdown)}</div>"
-            f"<h2>Validated Claims</h2><ul>{claims_html}</ul>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<title>Ledgerline Export</title>"
+            "<style>"
+            ":root{color-scheme:light}"
+            "body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:#F7F6F2;color:#111111;"
+            "max-width:860px;margin:2.5rem auto;padding:0 1.5rem 3rem;line-height:1.6;-webkit-font-smoothing:antialiased}"
+            ".card{background:#FFFFFF;border:1px solid #E6E4DF;border-radius:12px;padding:1.75rem 2rem}"
+            ".eyebrow{font-size:12px;font-weight:600;color:#787671;letter-spacing:.02em;margin:0 0 4px}"
+            "h1{font-family:'Newsreader',Georgia,serif;font-size:28px;line-height:1.2;font-weight:500;color:#111111;margin:0 0 .75rem}"
+            "h2{font-size:17px;font-weight:600;color:#111111;margin:1.75rem 0 .65rem;padding-bottom:.35rem;border-bottom:1px solid #E6E4DF}"
+            "h3,h4,h5,h6{font-size:14.5px;font-weight:600;color:#111111;margin:1.25rem 0 .45rem}"
+            ".meta-bar{display:flex;flex-wrap:wrap;gap:.5rem 1.25rem;background:#F7F6F2;border:1px solid #E6E4DF;border-radius:8px;padding:.65rem .9rem;margin:0 0 1.5rem;font-size:12.5px;color:#6B6A66}"
+            ".meta-bar strong{color:#111111}"
+            ".prose p,.prose li,.prose blockquote{color:#6B6A66;font-size:14.5px}"
+            ".prose blockquote{border-left:2px solid #111111;margin:.9rem 0;padding:.15rem 0 .15rem .9rem;color:#6B6A66}"
+            "ul,ol{padding-left:1.3rem;margin:.5rem 0 .9rem}li{margin:.3rem 0}"
+            "code{font-family:ui-monospace,'JetBrains Mono',monospace;font-size:12.5px;background:#F7F6F2;color:#111111;padding:1px 5px;border-radius:4px}"
+            "pre{background:#F7F6F2;border:1px solid #E6E4DF;border-radius:8px;padding:.85rem 1rem;overflow-x:auto}"
+            "pre code{background:transparent;padding:0}"
+            ".cite{display:inline-block;font-family:ui-monospace,'JetBrains Mono',monospace;font-size:11.5px;background:#F7F6F2;color:#111111;border:1px solid #E6E4DF;padding:0 5px;border-radius:5px;vertical-align:baseline}"
+            ".meta{font-size:12.5px;color:#787671}"
+            "table{width:100%;border-collapse:collapse;margin:.85rem 0;font-size:13px;border:1px solid #E6E4DF;border-radius:8px;overflow:hidden}"
+            "th{background:#F7F6F2;color:#111111;font-weight:600;font-size:12px}"
+            "th,td{border-bottom:1px solid #E6E4DF;border-right:1px solid #E6E4DF;padding:.5rem .75rem;text-align:left}"
+            "th:last-child,td:last-child{border-right:none}"
+            "tr:last-child td{border-bottom:none}"
+            "</style></head><body><main class='card'>"
+            "<p class='eyebrow'>Ledgerline · Investigation Export</p>"
+            "<h1>Investigation Answer</h1>"
+            f"<div class='meta-bar'><span><strong>Scope:</strong> {html.escape(scope_label)}</span>"
+            f"<span><strong>Snapshot:</strong> <code>{html.escape(answer.snapshot_id)}</code></span>"
+            f"<span><strong>Semantic Version:</strong> <code>{html.escape(answer.semantic_version_id)}</code></span></div>"
+            f"<section class='prose'>{body_html}</section>"
+            + (f"<h2>Validated Claims</h2><ul>{claims_html}</ul>" if claims_html else "")
             + (f"<h2>Charts</h2>{charts_html}" if charts_html else "")
             + (
                 "<h2>Verification</h2><ul>" + "".join(f"<li>{html.escape(line)}</li>" for line in _verification_lines(answer)) + "</ul>"
@@ -148,8 +290,8 @@ class ExportService:
                 if evidence
                 else ""
             )
-            +             f"<h2>Limitations</h2><ul>{limitations_html}</ul>"
-            "</body></html>"
+            + (f"<h2>Limitations</h2><ul>{limitations_html}</ul>" if limitations_html else "<h2>Limitations</h2><p class='meta'>None reported.</p>")
+            + "</main></body></html>"
         )
         return self._check_size(doc.encode("utf-8"), "html")
 

@@ -242,6 +242,24 @@ class ApproveSemanticsRequest(StrictApiModel):
     expected_version: int = Field(..., ge=1)
 
 
+class MetricDefinitionEdit(StrictApiModel):
+    metric_id: str = Field(..., min_length=1, max_length=IDENTIFIER_CHARS)
+    display_name: str = Field(..., min_length=1, max_length=DISPLAY_NAME_CHARS)
+    unit: str | None = Field(default=None, max_length=32)
+    currency: str | None = Field(default=None, max_length=16)
+
+
+class UpdateSemanticsRequest(StrictApiModel):
+    expected_version: int = Field(..., ge=1)
+    metrics: list[MetricDefinitionEdit] = Field(default_factory=list, max_length=200)
+    remove_metric_ids: list[str] = Field(default_factory=list, max_length=200)
+
+
+class CreateWorkspaceRequest(StrictApiModel):
+    name: str = Field(..., min_length=1, max_length=DISPLAY_NAME_CHARS)
+    workspace_id: str | None = Field(default=None, min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
+
+
 class UpdateWorkspaceSettingsRequest(StrictApiModel):
     business_timezone: str = Field(..., min_length=1, max_length=64)
 
@@ -288,6 +306,7 @@ class PinAlertRequest(StrictApiModel):
 
 class UpdatePinRequest(StrictApiModel):
     # Every field is optional: send only what should change.
+    title: str | None = Field(default=None, min_length=1, max_length=DEFAULT_GLOBAL_LIMITS.max_pin_title_chars)
     auto_refresh: bool | None = None
     schedule: Literal["off", "daily", "weekly"] | None = None
     alert: PinAlertRequest | None = None

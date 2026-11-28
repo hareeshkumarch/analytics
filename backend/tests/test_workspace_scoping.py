@@ -43,9 +43,11 @@ class TestObjectsStayInTheirWorkspace(unittest.TestCase):
 
         run_id = self.client.post("/api/v1/workspaces/ws_a/runs", json={"question": "q", "mode": "quick"}).json()["run_id"]
         self.app.state.repo_runs.save_answer(Answer(
-            answer_id="ans_1", run_id=run_id, summary_markdown="Total 100.", claims=(), charts=(), limitations=(),
+            answer_id="ans_1", run_id=run_id, summary_markdown="Total 100.", claims=(), charts=(), limitations=("Missing refunds table.",),
             snapshot_id=sid, semantic_version_id="sem", created_at=datetime.now(timezone.utc),
         ))
+        detail = self.client.get(f"/api/v1/workspaces/ws_a/runs/{run_id}").json()
+        self.assertEqual(detail["answer"]["limitations"], ["Missing refunds table."])
         self.assertEqual(self.client.post("/api/v1/workspaces/ws_b/exports", json={"run_id": run_id, "format": "html"}).status_code, 404)
         made = self.client.post("/api/v1/workspaces/ws_a/exports", json={"run_id": run_id, "format": "html"}).json()
         self.assertEqual(self.client.get(made["download_url"]).status_code, 200)
@@ -55,6 +57,7 @@ class TestObjectsStayInTheirWorkspace(unittest.TestCase):
 BODIES = {
     ("post", "/clarify"): {"revision": 0, "answer": "October"},
     ("post", "/approve"): {"expected_version": 1},
+    ("patch", "/semantics/{snapshot_id}"): {"expected_version": 1, "metrics": []},
     ("patch", "/pins/{pin_id}"): {"auto_refresh": True},
     ("post", "/notes"): {"text": "Revenue means paid orders only."},
 }
@@ -151,6 +154,25 @@ class TestProviderKeysStayInTheirWorkspace(unittest.TestCase):
             create_app(restarted, session_factory=client.app.state.session_factory)
             self.assertEqual(restarted.routing_service.api_key_for(ProviderId.OPENAI, "ws_a"), "sk-ws-a-only")
             self.assertEqual(restarted.routing_service.api_key_for(ProviderId.OPENAI, "ws_b"), "")
+
+            client.put("/api/v1/workspaces/ws_b/settings/provider-key", json={"provider_id": "openai", "api_key": "sk-ws-b-only"})
+            removed = client.delete("/api/v1/workspaces/ws_a/settings/provider-key/openai")
+            self.assertEqual(removed.status_code, 200, removed.text)
+            self.assertFalse(openai_status("ws_a"))
+            self.assertTrue(openai_status("ws_b"))
+
+    def test_workspaces_can_be_listed_and_created(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            client = TestClient(create_app(build_container(artifact_root=td)))
+            initial = client.get("/api/v1/workspaces")
+            self.assertEqual(initial.status_code, 200, initial.text)
+            self.assertTrue(any(w["workspace_id"] == "default" for w in initial.json()["workspaces"]))
+
+            created = client.post("/api/v1/workspaces", json={"name": "Finance Ops", "workspace_id": "finance_ops"})
+            self.assertEqual(created.status_code, 201, created.text)
+            self.assertEqual(created.json()["workspace_id"], "finance_ops")
+            self.assertEqual(created.json()["name"], "Finance Ops")
+            self.assertEqual(client.post("/api/v1/workspaces", json={"name": "Dup", "workspace_id": "finance_ops"}).status_code, 409)
 
 
 if __name__ == "__main__":

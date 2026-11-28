@@ -68,7 +68,7 @@ export function PauseControl({ switchId, data }: { switchId: string; data: OpsSw
   }
 
   return (
-    <form onSubmit={submit} className="flex w-full min-w-[240px] flex-col gap-2 text-left">
+    <form onSubmit={submit} className="flex w-full min-w-[200px] max-w-[260px] flex-col gap-2 text-left">
       <label htmlFor={`${id}-reason`} className="text-sm font-medium text-ink">
         {current ? `Why resume ${label.toLowerCase()}?` : `Why pause ${label.toLowerCase()}?`}
       </label>
@@ -110,7 +110,7 @@ export function IncidentControls() {
   return (
     <section aria-labelledby={`${id}-title`} className={cx(cardCls, "p-5 sm:p-6")}>
       <details open={Boolean(runsPaused) || undefined} className="group">
-        <summary className="flex min-h-[40px] cursor-pointer list-none items-center justify-between gap-3">
+        <summary className="flex min-h-[40px] cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
           <span>
             <h2 id={`${id}-title`} className={sectionTitleCls}>
               Incident controls
@@ -143,7 +143,7 @@ export function IncidentControls() {
           )}
           {query.data && query.data.history.length > 0 && (
             <details className="text-xs text-secondary">
-              <summary className="cursor-pointer text-sm text-ink">Recent changes</summary>
+              <summary className="cursor-pointer list-none text-sm text-ink [&::-webkit-details-marker]:hidden">Recent changes</summary>
               <ul className="mt-2 space-y-1">
                 {query.data.history.slice(0, 10).map((h, i) => (
                   <li key={`${h.switch_id}-${h.changed_at}-${i}`}>

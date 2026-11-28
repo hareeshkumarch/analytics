@@ -240,6 +240,9 @@ class RoutingService:
     def set_workspace_key(self, workspace_id: str, provider: ProviderId, api_key: str) -> None:
         self._workspace_keys[(workspace_id, provider)] = api_key
 
+    def clear_workspace_key(self, workspace_id: str, provider: ProviderId) -> None:
+        self._workspace_keys.pop((workspace_id, provider), None)
+
     def api_key_for(self, provider: ProviderId, workspace_id: str) -> str:
         return self._workspace_keys.get((workspace_id, provider)) or self._api_keys.get(provider, "")
 

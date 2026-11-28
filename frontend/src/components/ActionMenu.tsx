@@ -17,12 +17,14 @@ export interface MenuAction {
 export function ActionMenu({
   menuLabel,
   triggerText = "More",
+  triggerLabel,
   actions,
   disabled = false,
   notice,
 }: {
   menuLabel: string;
   triggerText?: React.ReactNode;
+  triggerLabel?: string;
   actions: MenuAction[];
   disabled?: boolean;
   notice?: React.ReactNode;
@@ -95,7 +97,7 @@ export function ActionMenu({
           aria-expanded={open}
           disabled={disabled}
           onClick={() => setOpen((v) => !v)}
-          aria-label="More actions"
+          aria-label={triggerLabel ?? (triggerText === "More" ? "More actions" : undefined)}
           className={btn.ghost}
         >
           {triggerText}

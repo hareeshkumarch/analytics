@@ -207,7 +207,7 @@ export function RichSelect({
           dense
             ? // Filter-bar selectors read as text with a chevron, and fill only on hover.
               `h-7 px-2.5 font-medium hover:bg-ink/[0.05] dark:hover:bg-ink/[0.08] ${open ? "bg-ink/[0.05] dark:bg-ink/[0.08]" : ""}`
-            : `min-h-[32px] border bg-surface px-2.5 dark:bg-ink/[0.05] ${open ? "border-focus ring-[3px] ring-focus/15" : "border-ink/[0.12]"}`
+            : `min-h-[32px] border bg-surface px-2.5 dark:bg-ink/[0.05] ${open ? "border-focus ring-[3px] ring-focus/15" : "border-border-strong"}`
         } ${triggerClassName}`}
       >
         <span id={`${id}-value`} className={`flex min-w-0 items-center gap-2 ${selected ? "" : "text-secondary"}`}>
@@ -271,7 +271,7 @@ export function RichSelect({
                   onClick={() => choose(idx)}
                   className={`flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-1.5 text-base transition-colors ${
                     opt.disabled ? "cursor-not-allowed opacity-50" : ""
-                  } ${isActive ? "bg-ink/[0.05] dark:bg-ink/[0.08]" : ""} text-ink`}
+                  } ${isActive ? "bg-ink/[0.08] dark:bg-ink/[0.14]" : ""} text-ink`}
                 >
                   {opt.icon}
                   <div className="min-w-0 flex-1">

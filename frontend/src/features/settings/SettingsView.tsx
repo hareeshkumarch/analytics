@@ -6,7 +6,7 @@ import { Icon } from "@/components/Icon";
 import { apiFetch, errorHint, errorMessage } from "@/lib/api/client";
 import { RichSelect, RichOption } from "@/components/RichSelect";
 import { PageHeader } from "@/components/PageHeader";
-import { Badge, Notice, Spinner, btn, btnSm, cardCls, cx, inputCls, sectionTitleCls } from "@/components/ui";
+import { Badge, Notice, Spinner, btn, btnSm, cardCls, cx, dangerConfirmBtnCls, inputCls, sectionTitleCls } from "@/components/ui";
 import { ProviderLogo } from "@/components/ConnectorLogo";
 import { BusinessTimezone } from "@/features/settings/BusinessTimezone";
 import { IncidentControls, PauseControl, providerSwitchId, useOpsSwitches } from "@/features/settings/IncidentControls";
@@ -38,6 +38,8 @@ function AddModelPopover({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -45,21 +47,40 @@ function AddModelPopover({
       if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
     };
     document.addEventListener("pointerdown", onPointer);
     document.addEventListener("keydown", onKey);
+    menuRef.current?.querySelector<HTMLButtonElement>("[role=menuitem]")?.focus();
     return () => {
       document.removeEventListener("pointerdown", onPointer);
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
 
+  function onMenuKey(e: React.KeyboardEvent<HTMLDivElement>) {
+    const items = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>("[role=menuitem]"));
+    if (!items.length) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const idx = items.indexOf(document.activeElement as HTMLButtonElement);
+      const next = (idx + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+      items[next]?.focus();
+    } else if (e.key === "Home" || e.key === "End") {
+      e.preventDefault();
+      items[e.key === "Home" ? 0 : items.length - 1]?.focus();
+    }
+  }
+
   if (options.length === 0) return null;
 
   return (
     <div ref={rootRef} className="relative inline-block">
       <button
+        ref={triggerRef}
         type="button"
         disabled={disabled}
         aria-expanded={open}
@@ -72,9 +93,12 @@ function AddModelPopover({
       </button>
       {open && (
         <div
+          ref={menuRef}
           role="menu"
+          tabIndex={-1}
           aria-label={`Available models for ${roleLabel}`}
-          className="absolute left-0 top-full z-40 mt-1 max-h-52 min-w-[210px] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-border bg-surface p-1 shadow-pop"
+          onKeyDown={onMenuKey}
+          className="absolute left-0 top-full z-40 mt-1 max-h-52 min-w-[210px] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-pop"
         >
           {options.map((modelId) => (
             <button
@@ -84,8 +108,9 @@ function AddModelPopover({
               onClick={() => {
                 onAdd(modelId);
                 setOpen(false);
+                triggerRef.current?.focus();
               }}
-              className="flex w-full items-center rounded px-2.5 py-1.5 text-left font-mono text-xs text-ink transition-colors hover:bg-sidebar"
+              className="flex w-full items-center rounded px-2.5 py-1.5 text-left font-mono text-xs text-ink transition-colors hover:bg-ink/[0.05] focus:bg-ink/[0.08] focus:outline-none dark:hover:bg-ink/[0.08] dark:focus:bg-ink/[0.14]"
             >
               {modelId}
             </button>
@@ -117,9 +142,16 @@ export function SettingsView() {
   const [probeMsg, setProbeMsg] = useState<Msg | null>(null);
   const [saving, setSaving] = useState(false);
   const [probing, setProbing] = useState(false);
+  const [confirmRemoveKey, setConfirmRemoveKey] = useState(false);
+  const [removingKey, setRemovingKey] = useState(false);
 
   const keyCardRef = useRef<HTMLFormElement>(null);
   const apiKeyInputRef = useRef<HTMLInputElement>(null);
+  const cancelRemoveKeyRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (confirmRemoveKey) cancelRemoveKeyRef.current?.focus();
+  }, [confirmRemoveKey]);
 
   const [roleDraftState, setRoleDraftState] = useState<Record<string, string[]> | null>(null);
   const [ceilingDraft, setCeilingDraft] = useState("");
@@ -248,6 +280,7 @@ export function SettingsView() {
   function updateRoutingChoice(patch: Parameters<typeof routing.update>[0]) {
     setRoutingMsg(null);
     routing.update(patch, {
+      onSuccess: () => toast(patch.preset !== undefined ? "Routing preset updated." : "Fallback setting updated."),
       onError: (err) => setRoutingMsg({ text: errorMessage(err, "Couldn't save routing."), hint: errorHint(err), ok: false }),
     });
   }
@@ -268,11 +301,44 @@ export function SettingsView() {
       setApiKey("");
       setShowKey(false);
       toast(`Key saved for ${providerLabel(savedId)}.`);
+      setConfirmRemoveKey(false);
       await refetch();
     } catch (err) {
       setSaveMsg({ text: errorMessage(err, "Couldn't save the key."), hint: errorHint(err), ok: false });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleRemoveKey() {
+    if (!provider) return;
+    const removedId = provider.provider_id;
+    setSaveMsg(null);
+    setProbeMsg(null);
+    setRemovingKey(true);
+    try {
+      await apiFetch<{ provider_id: string; status: string }>(
+        ws.path(`/settings/provider-key/${encodeURIComponent(removedId)}`),
+        { method: "DELETE" },
+      );
+      setApiKey("");
+      setShowKey(false);
+      setConfirmRemoveKey(false);
+      const updated = await refetch();
+      const stillActive = updated.data?.providers.find((p) => p.provider_id === removedId)?.configured;
+      if (stillActive) {
+        setSaveMsg({
+          text: `Saved workspace key removed for ${providerLabel(removedId)}.`,
+          hint: "A server environment API key is still active for this provider.",
+          ok: true,
+        });
+      } else {
+        toast(`Removed key for ${providerLabel(removedId)}.`);
+      }
+    } catch (err) {
+      setSaveMsg({ text: errorMessage(err, "Couldn't remove the key."), hint: errorHint(err), ok: false });
+    } finally {
+      setRemovingKey(false);
     }
   }
 
@@ -348,6 +414,7 @@ export function SettingsView() {
               setShowKey(false);
               setSaveMsg(null);
               setProbeMsg(null);
+              setConfirmRemoveKey(false);
             }}
           />
           <div className="space-y-1.5">
@@ -381,22 +448,55 @@ export function SettingsView() {
               </button>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="submit" disabled={!apiKey.trim() || saving} className={btn.primary}>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="submit" disabled={!apiKey.trim() || saving || removingKey} className={btn.primary}>
               {saving && <Spinner />}
               {saving ? "Saving…" : "Save key"}
             </button>
             {provider?.configured && (
-              <button
-                type="button"
-                onClick={() => void handleTestProvider()}
-                disabled={probing || !providerId || Boolean(apiKey.trim())}
-                className={btn.secondary}
-                title={apiKey.trim() ? "Save the new key first; the test uses the saved key" : undefined}
-              >
-                {probing && <Spinner />}
-                {probing ? "Testing…" : "Test saved key"}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => void handleTestProvider()}
+                  disabled={probing || removingKey || !providerId || Boolean(apiKey.trim())}
+                  className={btn.secondary}
+                  title={apiKey.trim() ? "Save the new key first; the test uses the saved key" : undefined}
+                >
+                  {probing && <Spinner />}
+                  {probing ? "Testing…" : "Test saved key"}
+                </button>
+                {confirmRemoveKey ? (
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={removingKey}
+                      onClick={() => void handleRemoveKey()}
+                      className={dangerConfirmBtnCls}
+                    >
+                      {removingKey && <Spinner />}
+                      Confirm remove
+                    </button>
+                    <button
+                      ref={cancelRemoveKeyRef}
+                      type="button"
+                      disabled={removingKey}
+                      onClick={() => setConfirmRemoveKey(false)}
+                      className={btn.ghost}
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={saving || probing || removingKey}
+                    onClick={() => setConfirmRemoveKey(true)}
+                    className={btn.ghost}
+                  >
+                    Remove key
+                  </button>
+                )}
+              </>
             )}
           </div>
           {saveMsg && (
@@ -411,30 +511,37 @@ export function SettingsView() {
           )}
         </form>
 
-        <section id="routing" className={cx(cardCls, "scroll-mt-28 space-y-4 p-5 sm:p-6")}>
+        <section id="routing" className={cx(cardCls, "scroll-mt-28 space-y-5 p-5 sm:p-6")}>
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className={sectionTitleCls}>Routing</h2>
-              <p className="mt-1 text-xs text-secondary">Applies to every new question in this workspace. Preset and fallback save as soon as you pick them.</p>
+              <p className="mt-1 text-xs text-secondary">Applies to every new question in this workspace.</p>
             </div>
             {routing.data && <Badge>{routing.updating ? "Saving…" : `Version ${routing.data.policy_version}`}</Badge>}
           </div>
-          <RichSelect
-            label="Routing preset"
-            value={routing.data?.preset ?? ""}
-            placeholder={routing.isLoading ? "Loading…" : "Unavailable"}
-            options={PRESET_OPTIONS}
-            disabled={!routing.data || routing.updating}
-            onChange={(v) => updateRoutingChoice({ preset: v as RoutingPreset })}
-          />
-          <RichSelect
-            label="Fallback"
-            value={routing.data ? (routing.data.fallback_enabled ? "on" : "off") : ""}
-            placeholder={routing.isLoading ? "Loading…" : "Unavailable"}
-            options={FALLBACK_OPTIONS}
-            disabled={!routing.data || routing.updating}
-            onChange={(v) => updateRoutingChoice({ fallback_enabled: v === "on" })}
-          />
+
+          <div className="space-y-4 rounded-lg border border-border bg-panel/40 p-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-secondary">Workspace defaults</h3>
+              <span className="text-2xs text-secondary">Saves immediately on selection</span>
+            </div>
+            <RichSelect
+              label="Routing preset"
+              value={routing.data?.preset ?? ""}
+              placeholder={routing.isLoading ? "Loading…" : "Unavailable"}
+              options={PRESET_OPTIONS}
+              disabled={!routing.data || routing.updating}
+              onChange={(v) => updateRoutingChoice({ preset: v as RoutingPreset })}
+            />
+            <RichSelect
+              label="Fallback"
+              value={routing.data ? (routing.data.fallback_enabled ? "on" : "off") : ""}
+              placeholder={routing.isLoading ? "Loading…" : "Unavailable"}
+              options={FALLBACK_OPTIONS}
+              disabled={!routing.data || routing.updating}
+              onChange={(v) => updateRoutingChoice({ fallback_enabled: v === "on" })}
+            />
+          </div>
 
           <form
             className="space-y-4 border-t border-border pt-4"
@@ -443,6 +550,10 @@ export function SettingsView() {
               saveRouting();
             }}
           >
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-secondary">Cost limit &amp; role overrides</h3>
+              <span className="text-2xs text-secondary">{dirty ? "Unsaved changes — click Save routing" : "Saved with Save routing"}</span>
+            </div>
             <div className="space-y-1.5">
               <label htmlFor="cost-ceiling" className="block text-sm font-medium text-body">
                 Cost limit per question (USD)
@@ -519,7 +630,7 @@ export function SettingsView() {
                                 }}
                                 onDragEnd={() => setDragState(null)}
                                 className={cx(
-                                  "inline-flex min-h-[28px] max-w-full items-center gap-1 rounded-full border bg-surface px-2 py-0.5 font-mono text-xs text-ink",
+                                  "inline-flex min-h-[32px] max-w-full items-center gap-0.5 rounded-full border bg-surface px-1.5 py-0.5 font-mono text-xs text-ink",
                                   dragState?.role === role && dragState.index === idx ? "border-dashed border-ink opacity-60" : "border-border",
                                   current.length > 1 && "cursor-grab active:cursor-grabbing"
                                 )}
@@ -530,19 +641,19 @@ export function SettingsView() {
                                     disabled={!routing.data || idx === 0}
                                     onClick={() => moveRoleModel(role, idx, idx - 1)}
                                     aria-label={`Move ${modelId} earlier in ${roleLabel}`}
-                                    className="rounded-full px-1 py-0.5 text-xs leading-none text-secondary transition-colors hover:text-ink disabled:opacity-30"
+                                    className="inline-flex h-6 w-6 items-center justify-center rounded-full text-sm leading-none text-secondary transition-colors hover:bg-ink/[0.06] hover:text-ink disabled:opacity-30"
                                   >
                                     ‹
                                   </button>
                                 )}
-                                <span className="break-all">{modelId}</span>
+                                <span className="break-all px-1">{modelId}</span>
                                 {current.length > 1 && (
                                   <button
                                     type="button"
                                     disabled={!routing.data || idx === current.length - 1}
                                     onClick={() => moveRoleModel(role, idx, idx + 1)}
                                     aria-label={`Move ${modelId} later in ${roleLabel}`}
-                                    className="rounded-full px-1 py-0.5 text-xs leading-none text-secondary transition-colors hover:text-ink disabled:opacity-30"
+                                    className="inline-flex h-6 w-6 items-center justify-center rounded-full text-sm leading-none text-secondary transition-colors hover:bg-ink/[0.06] hover:text-ink disabled:opacity-30"
                                   >
                                     ›
                                   </button>
@@ -552,7 +663,7 @@ export function SettingsView() {
                                   disabled={!routing.data}
                                   onClick={() => removeRoleModel(role, idx)}
                                   aria-label={`Remove ${modelId} from ${roleLabel}`}
-                                  className="ml-0.5 rounded-full px-1 py-0.5 text-xs leading-none text-secondary transition-colors hover:text-err disabled:opacity-30"
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded-full text-sm leading-none text-secondary transition-colors hover:bg-err-soft/50 hover:text-err disabled:opacity-30"
                                 >
                                   ×
                                 </button>
@@ -634,7 +745,7 @@ export function SettingsView() {
               <span className="w-[28%]">Provider</span>
               <span className="flex-1">Models</span>
               <span className="w-[120px] text-right">Status</span>
-              <span className="w-[208px]" />
+              <span className="w-[224px]" />
             </div>
             <ul aria-label="Providers">
               {data.providers.map((p) => {
@@ -666,7 +777,7 @@ export function SettingsView() {
                         </Badge>
                       )}
                     </span>
-                    <span className="order-4 flex flex-wrap items-start justify-end gap-2 sm:w-[208px] sm:flex-nowrap">
+                    <span className="order-4 flex flex-wrap items-start justify-end gap-2 sm:min-w-[224px] sm:max-w-[280px]">
                       {ops.data?.available.includes(providerSwitchId(p.provider_id)) && (
                         <PauseControl switchId={providerSwitchId(p.provider_id)} data={ops.data} />
                       )}

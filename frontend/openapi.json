@@ -477,6 +477,36 @@
         "title": "CreateRunRequest",
         "type": "object"
       },
+      "CreateWorkspaceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CreateWorkspaceRequest",
+        "type": "object"
+      },
       "CriterionOut": {
         "additionalProperties": true,
         "properties": {
@@ -611,6 +641,53 @@
           "connector_id"
         ],
         "title": "ImportForm",
+        "type": "object"
+      },
+      "MetricDefinitionEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "metric_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Metric Id",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "metric_id",
+          "display_name"
+        ],
+        "title": "MetricDefinitionEdit",
         "type": "object"
       },
       "ModeUsageOut": {
@@ -1495,6 +1572,20 @@
               }
             ],
             "title": "Follow Ups"
+          },
+          "limitations": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limitations"
           },
           "outcome": {
             "anyOf": [
@@ -2412,6 +2503,19 @@
               }
             ],
             "title": "Schedule"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
           }
         },
         "title": "UpdatePinRequest",
@@ -2483,6 +2587,37 @@
           "expected_version"
         ],
         "title": "UpdateRoutingRequest",
+        "type": "object"
+      },
+      "UpdateSemanticsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricDefinitionEdit"
+            },
+            "maxItems": 200,
+            "title": "Metrics",
+            "type": "array"
+          },
+          "remove_metric_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Remove Metric Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "UpdateSemanticsRequest",
         "type": "object"
       },
       "UpdateWorkspaceSettingsRequest": {
@@ -2699,6 +2834,58 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "WorkspaceListOut": {
+        "additionalProperties": true,
+        "properties": {
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceOut"
+            },
+            "title": "Workspaces",
+            "type": "array"
+          }
+        },
+        "required": [
+          "workspaces"
+        ],
+        "title": "WorkspaceListOut",
+        "type": "object"
+      },
+      "WorkspaceOut": {
+        "additionalProperties": true,
+        "properties": {
+          "business_timezone": {
+            "default": "UTC",
+            "title": "Business Timezone",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "name"
+        ],
+        "title": "WorkspaceOut",
+        "type": "object"
+      },
       "WorkspaceSettingsOut": {
         "additionalProperties": true,
         "properties": {
@@ -2863,6 +3050,60 @@
           }
         },
         "summary": "Ready"
+      }
+    },
+    "/api/v1/workspaces": {
+      "get": {
+        "operationId": "list_workspaces_api_v1_workspaces_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Workspaces"
+      },
+      "post": {
+        "operationId": "create_workspace_api_v1_workspaces_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkspaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Workspace"
       }
     },
     "/api/v1/workspaces/{workspace_id}/connectors/discover": {
@@ -4341,6 +4582,64 @@
           }
         },
         "summary": "Get Semantics"
+      },
+      "patch": {
+        "operationId": "update_semantics_api_v1_workspaces__workspace_id__semantics__snapshot_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSemanticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Semantics Api V1 Workspaces  Workspace Id  Semantics  Snapshot Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Semantics"
       }
     },
     "/api/v1/workspaces/{workspace_id}/semantics/{snapshot_id}/approve": {
@@ -4540,6 +4839,58 @@
           }
         },
         "summary": "Save Provider Key"
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/settings/provider-key/{provider_id}": {
+      "delete": {
+        "operationId": "delete_provider_key_api_v1_workspaces__workspace_id__settings_provider_key__provider_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "provider_id",
+            "required": true,
+            "schema": {
+              "title": "Provider Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Delete Provider Key Api V1 Workspaces  Workspace Id  Settings Provider Key  Provider Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Provider Key"
       }
     },
     "/api/v1/workspaces/{workspace_id}/snapshots": {

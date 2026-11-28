@@ -1,21 +1,21 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/lib/toast";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, errorMessage } from "@/lib/api/client";
+import { EXPORT_FORMATS, downloadAnswerExport, type ExportFormat } from "@/lib/exportAnswer";
 import { anyText, useUrlState } from "@/lib/url";
 import { ActionMenu } from "@/components/ActionMenu";
 import { AnswerCharts } from "@/components/AnswerCharts";
 import { ConnectorLogo, logoIdForFamily } from "@/components/ConnectorLogo";
 import { PageHeader } from "@/components/PageHeader";
 import { RichSelect, RichOption } from "@/components/RichSelect";
-import { Badge, EmptyState, FilterChips, Notice, SearchInput, Skeleton, Spinner, btn, cardCls, cx, inputCls } from "@/components/ui";
-import { datasetLabel, relativeTime, useServerDown, useWorkspace } from "@/lib/workspace";
+import { Badge, EmptyState, FilterChips, Notice, SearchInput, Skeleton, Spinner, btn, btnSm, cardCls, cx, dangerConfirmBtnCls, inputCls } from "@/components/ui";
+import { datasetLabel, relativeTime, useHealth, useServerDown, useWorkspace } from "@/lib/workspace";
 import type { PinOut, UpdatePinRequest } from "@/lib/api/types";
-import { headlineFigure, stripEvidenceIds } from "@/lib/text";
+import { excerptMarkdown, headlineFigure } from "@/lib/text";
 
 type PinItem = PinOut;
 
@@ -56,23 +56,11 @@ const SORT_OPTIONS: RichOption[] = [
   { value: "title", label: "Title A–Z", sublabel: "Alphabetical by pin title" },
 ];
 
-function excerpt(markdown: string | undefined, max = 240): string {
-  if (!markdown) return "";
-  const text = stripEvidenceIds(markdown)
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/^\s*[-*+]\s+/gm, "")
-    .replace(/[*_`>|]/g, "")
-    .replace(/-{3,}/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .split(/(?<=[.!?])\s/)[0];
-  return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
-}
-
 export function DashboardView() {
   const ws = useWorkspace();
   const qc = useQueryClient();
-  const router = useRouter();
+  const health = useHealth();
+  const maxPinTitleChars = health.data?.input_limits?.max_pin_title_chars;
   const pinsQuery = useQuery({
     queryKey: ["pins", ws.id],
     queryFn: () => apiFetch<{ pins: PinItem[] }>(ws.path("/pins")),
@@ -87,12 +75,30 @@ export function DashboardView() {
   const [dataset, setDataset] = useUrlState("dataset", "all", anyText);
   const [busyPin, setBusyPin] = useState<string | null>(null);
   const [autoRefreshPin, setAutoRefreshPin] = useState<string | null>(null);
+  const [exportingPin, setExportingPin] = useState<string | null>(null);
+  const [renamingPin, setRenamingPin] = useState<string | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
   const [confirmUnpin, setConfirmUnpin] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [rerunningAll, setRerunningAll] = useState(false);
   const [alertPin, setAlertPin] = useState<string | null>(null);
   const [alertDirection, setAlertDirection] = useState<"above" | "below">("above");
   const [alertValue, setAlertValue] = useState("");
+  const [alertError, setAlertError] = useState<string | null>(null);
+  const cancelUnpinRef = useRef<HTMLButtonElement>(null);
+  const alertValueRef = useRef<HTMLInputElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (renamingPin) {
+      const id = window.requestAnimationFrame(() => renameInputRef.current?.focus());
+      return () => window.cancelAnimationFrame(id);
+    }
+  }, [renamingPin]);
+
+  useEffect(() => {
+    if (confirmUnpin) cancelUnpinRef.current?.focus();
+  }, [confirmUnpin]);
 
   const pins = useMemo(() => pinsQuery.data?.pins ?? [], [pinsQuery.data]);
   async function setAutoRefresh(pin: PinItem, enabled: boolean) {
@@ -126,11 +132,18 @@ export function DashboardView() {
   function openAlertForm(pin: PinItem) {
     setAlertDirection(pin.alert?.direction === "below" ? "below" : "above");
     setAlertValue(pin.alert ? String(pin.alert.value) : "");
+    setAlertError(null);
     setAlertPin(pin.pin_id);
+    window.requestAnimationFrame(() => alertValueRef.current?.focus());
   }
   async function saveAlert(pin: PinItem) {
     const value = Number(alertValue);
-    if (alertValue.trim() === "" || !Number.isFinite(value)) return;
+    if (alertValue.trim() === "" || !Number.isFinite(value)) {
+      setAlertError("Enter a numeric threshold value.");
+      alertValueRef.current?.focus();
+      return;
+    }
+    setAlertError(null);
     const saved = await updatePin(pin, { alert: { direction: alertDirection, value } }, "Alert saved. The card is flagged whenever the figure crosses it.");
     if (saved) setAlertPin(null);
   }
@@ -196,12 +209,55 @@ export function DashboardView() {
     setBusyPin(pin.pin_id);
     setActionError(null);
     try {
-      const res = await apiFetch<{ refresh_run_id: string }>(ws.path(`/pins/${encodeURIComponent(pin.pin_id)}/refresh`), { method: "POST" });
+      const res = await apiFetch<{ pin_id: string; refresh_run_id: string; status?: string }>(
+        ws.path(`/pins/${encodeURIComponent(pin.pin_id)}/refresh`),
+        { method: "POST" },
+      );
+      qc.setQueryData<{ pins: PinItem[] }>(["pins", ws.id], (old) =>
+        old
+          ? {
+              pins: old.pins.map((p) =>
+                p.pin_id === pin.pin_id
+                  ? { ...p, latest_run_id: res.refresh_run_id, latest_run_status: res.status || "queued" }
+                  : p,
+              ),
+            }
+          : old,
+      );
+      toast(`Re-running "${pin.title}" against the latest imported snapshot.`);
+      await qc.invalidateQueries({ queryKey: ["pins", ws.id] });
       await qc.invalidateQueries({ queryKey: ["runs", ws.id] });
-      router.push(`/ask?run=${encodeURIComponent(res.refresh_run_id)}`);
     } catch (err) {
       setActionError(errorMessage(err, "Couldn't re-run this question."));
+    } finally {
       setBusyPin(null);
+    }
+  }
+
+  function openRename(pin: PinItem) {
+    setRenamingPin(pin.pin_id);
+    setRenameTitle(pin.title);
+  }
+
+  async function saveRename(pin: PinItem) {
+    const clean = renameTitle.trim();
+    if (!clean) {
+      setActionError("Enter a title for this pin.");
+      return;
+    }
+    const ok = await updatePin(pin, { title: clean }, "Pin renamed.");
+    if (ok) setRenamingPin(null);
+  }
+
+  async function exportPin(pin: PinItem, runId: string, format: ExportFormat) {
+    setExportingPin(pin.pin_id);
+    setActionError(null);
+    try {
+      await downloadAnswerExport({ workspaceId: ws.id, runId, format, title: pin.title });
+    } catch (err) {
+      setActionError(errorMessage(err, "Couldn't export this pinned answer."));
+    } finally {
+      setExportingPin(null);
     }
   }
 
@@ -360,28 +416,63 @@ export function DashboardView() {
             const latestFailed = pin.latest_run_status === "failed";
             const snap = pin.snapshot ?? undefined;
             const newer = pin.newer_version ?? null;
-            const text = excerpt(run?.answer?.summary_markdown ?? undefined);
+            const text = excerptMarkdown(run?.answer?.summary_markdown ?? undefined);
             const headline = run?.answer?.summary_markdown ? headlineFigure(run.answer.summary_markdown) : null;
             const busy = busyPin === pin.pin_id;
             const canRefresh = Boolean(snap);
             const schedule = pin.schedule === "daily" || pin.schedule === "weekly" ? pin.schedule : null;
             const saving = autoRefreshPin === pin.pin_id;
+            const exporting = exportingPin === pin.pin_id;
+            const exportRunId = run?.status === "completed" ? run.run_id : null;
             const menuActions = [
+              { label: "Rename title…", onSelect: () => openRename(pin) },
               ...(canRefresh && schedule !== "daily"
-                ? [{ label: "Re-run every day", onSelect: () => void updatePin(pin, { schedule: "daily" }, "This answer will re-run every day.") }]
+                ? [{ label: "Re-run every day", onSelect: () => void updatePin(pin, { schedule: "daily" }, "Scheduled daily against latest imported data.") }]
                 : []),
               ...(canRefresh && schedule !== "weekly"
-                ? [{ label: "Re-run every week", onSelect: () => void updatePin(pin, { schedule: "weekly" }, "This answer will re-run every week.") }]
+                ? [{ label: "Re-run every week", onSelect: () => void updatePin(pin, { schedule: "weekly" }, "Scheduled weekly against latest imported data.") }]
                 : []),
               ...(schedule ? [{ label: "Stop scheduled re-runs", onSelect: () => void updatePin(pin, { schedule: "off" }, "Scheduled re-runs turned off.") }] : []),
-              { label: pin.alert ? "Change alert…" : "Set alert…", onSelect: () => openAlertForm(pin) },
+              { label: pin.alert ? "Change alert…" : "Set alert…", separatorAbove: true, onSelect: () => openAlertForm(pin) },
               ...(pin.alert ? [{ label: "Remove alert", onSelect: () => void updatePin(pin, { clear_alert: true }, "Alert removed.") }] : []),
-              { label: "Unpin", danger: true, onSelect: () => setConfirmUnpin(pin.pin_id) },
+              ...(exportRunId
+                ? EXPORT_FORMATS.map((fmt, idx) => ({
+                    label: fmt.label,
+                    separatorAbove: idx === 0,
+                    onSelect: () => void exportPin(pin, exportRunId, fmt),
+                  }))
+                : []),
+              { label: "Unpin", danger: true, separatorAbove: true, onSelect: () => setConfirmUnpin(pin.pin_id) },
             ];
             return (
               <li key={pin.pin_id} className={cx(cardCls, "flex flex-col gap-3 p-5")}>
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <h2 className="min-w-0 flex-1 text-md font-semibold leading-snug text-ink">{pin.title}</h2>
+                  {renamingPin === pin.pin_id ? (
+                    <form
+                      className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void saveRename(pin);
+                      }}
+                    >
+                      <input
+                        ref={renameInputRef}
+                        aria-label={`Rename ${pin.title}`}
+                        value={renameTitle}
+                        onChange={(e) => setRenameTitle(e.target.value)}
+                        maxLength={maxPinTitleChars}
+                        className={cx(inputCls, "min-w-[160px] flex-1")}
+                      />
+                      <button type="submit" disabled={!renameTitle.trim() || saving} className={btnSm.primary}>
+                        Save
+                      </button>
+                      <button type="button" onClick={() => setRenamingPin(null)} disabled={saving} className={btnSm.ghost}>
+                        Cancel
+                      </button>
+                    </form>
+                  ) : (
+                    <h2 className="min-w-0 flex-1 text-md font-semibold leading-snug text-ink">{pin.title}</h2>
+                  )}
                   {updating ? (
                     <Badge tone="info" dot pulse>
                       Updating
@@ -433,23 +524,27 @@ export function DashboardView() {
                   {run && run.run_id !== pin.run_id && run.created_at ? `updated ${relativeTime(run.created_at)} · ` : ""}
                   pinned {relativeTime(pin.created_at)}
                 </p>
-                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-border pt-3">
-                  <label className={cx("flex min-h-[40px] cursor-pointer items-center gap-2 text-sm", canRefresh ? "text-body" : "cursor-not-allowed text-secondary opacity-60")}>
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 accent-focus"
-                      checked={Boolean(pin.auto_refresh)}
-                      disabled={!canRefresh || autoRefreshPin === pin.pin_id}
-                      onChange={(e) => void setAutoRefresh(pin, e.target.checked)}
-                    />
-                    Re-run automatically on new data
-                  </label>
+                <div className="space-y-1.5 border-t border-border pt-3">
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                    <label
+                      title="Re-runs this question automatically whenever a newer version of its dataset is approved in Ledgerline."
+                      className={cx("flex min-h-[40px] cursor-pointer items-center gap-2 text-sm", canRefresh ? "text-body" : "cursor-not-allowed text-secondary opacity-60")}
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-focus"
+                        checked={Boolean(pin.auto_refresh)}
+                        disabled={!canRefresh || autoRefreshPin === pin.pin_id}
+                        onChange={(e) => void setAutoRefresh(pin, e.target.checked)}
+                      />
+                      Re-run automatically on new data
+                    </label>
                   {confirmUnpin === pin.pin_id ? (
                     <span className="flex flex-wrap items-center gap-1.5">
                       <span className="text-sm text-body">Unpin this answer?</span>
                       <button
                         type="button"
-                        className={cx(btn.secondary, "border-err text-err hover:border-err")}
+                        className={dangerConfirmBtnCls}
                         onClick={() => void unpin(pin)}
                         disabled={busy}
                         aria-label={`Confirm unpin ${pin.title}`}
@@ -457,12 +552,23 @@ export function DashboardView() {
                         {busy && <Spinner />}
                         Unpin
                       </button>
-                      <button type="button" className={btn.ghost} onClick={() => setConfirmUnpin(null)} disabled={busy}>
+                      <button
+                        ref={cancelUnpinRef}
+                        type="button"
+                        className={btn.ghost}
+                        onClick={() => {
+                          setConfirmUnpin(null);
+                          window.requestAnimationFrame(() =>
+                            document.getElementById(`pin-actions-${pin.pin_id}`)?.querySelector<HTMLButtonElement>("[aria-haspopup='menu']")?.focus()
+                          );
+                        }}
+                        disabled={busy}
+                      >
                         Cancel
                       </button>
                     </span>
                   ) : (
-                    <span className="flex flex-wrap items-center gap-1.5">
+                    <span id={`pin-actions-${pin.pin_id}`} className="flex flex-wrap items-center gap-1.5">
                       <Link
                         href={`/ask?run=${encodeURIComponent(run?.run_id ?? pin.run_id)}`}
                         aria-label={`Open ${pin.title}`}
@@ -483,14 +589,24 @@ export function DashboardView() {
                       </button>
                       <ActionMenu
                         menuLabel={`More actions for ${pin.title}`}
-                        disabled={busy || saving}
+                        triggerText={exporting ? "Exporting…" : "More"}
+                        disabled={busy || saving || exporting}
                         actions={menuActions}
                       />
                     </span>
                   )}
+                  </div>
+                  {(schedule || pin.auto_refresh) && (
+                    <p className="text-2xs text-secondary">
+                      {schedule
+                        ? `Scheduled (${schedule}) and automatic re-runs query your latest imported snapshot — they do not pull from external sources.`
+                        : "Runs again whenever a new snapshot of this dataset is imported and approved."}
+                    </p>
+                  )}
                 </div>
                 {alertPin === pin.pin_id && (
                   <form
+                    noValidate
                     className="flex flex-wrap items-end gap-2 border-t border-border pt-3"
                     aria-label={`Alert for ${pin.title}`}
                     onSubmit={(e) => {
@@ -498,7 +614,7 @@ export function DashboardView() {
                       void saveAlert(pin);
                     }}
                   >
-                    <div className="w-40">
+                    <div className="w-44">
                       <RichSelect
                         label="Flag this card when it"
                         value={alertDirection}
@@ -509,14 +625,19 @@ export function DashboardView() {
                     <label className="flex min-w-[8rem] flex-1 flex-col gap-1 text-sm text-body">
                       Value
                       <input
+                        ref={alertValueRef}
                         type="number"
                         step="any"
                         inputMode="decimal"
                         required
+                        aria-invalid={Boolean(alertError)}
                         value={alertValue}
-                        onChange={(e) => setAlertValue(e.target.value)}
+                        onChange={(e) => {
+                          setAlertValue(e.target.value);
+                          if (alertError) setAlertError(null);
+                        }}
                         placeholder={pin.headline_value != null ? `Now ${formatNumber(pin.headline_value)}` : "For example 5000"}
-                        className={cx(inputCls, "w-full min-w-0")}
+                        className={cx(inputCls, "w-full min-w-0", alertError && "border-err")}
                       />
                     </label>
                     <button type="submit" className={btn.primary} disabled={saving || alertValue.trim() === ""}>
@@ -526,6 +647,11 @@ export function DashboardView() {
                     <button type="button" className={btn.ghost} onClick={() => setAlertPin(null)}>
                       Cancel
                     </button>
+                    {alertError && (
+                      <p role="alert" className="basis-full text-xs text-err">
+                        {alertError}
+                      </p>
+                    )}
                     <p className="basis-full text-xs text-secondary">
                       {pin.headline_value != null
                         ? "Compared with the headline figure each time this answer re-runs."

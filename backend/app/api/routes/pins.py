@@ -141,6 +141,11 @@ def register(ctx: ApiContext) -> APIRouter:
     @router.patch("/api/v1/workspaces/{workspace_id}/pins/{pin_id}", response_model=PinOut, response_model_exclude_unset=True)
     def update_pin(workspace_id: str, pin_id: str, payload: UpdatePinRequest) -> dict[str, Any]:
         changes: dict[str, Any] = {}
+        if payload.title is not None:
+            clean_title = " ".join(payload.title.split())
+            if not clean_title:
+                raise HTTPException(status_code=422, detail="Pin title cannot be blank")
+            changes["title"] = clean_title
         if payload.auto_refresh is not None:
             changes["auto_refresh"] = payload.auto_refresh
         if payload.schedule is not None:

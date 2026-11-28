@@ -116,6 +116,15 @@ class TestPinsFollowNewData(unittest.TestCase):
         named = self.client.post(f"{B}/pins/refresh", json={"pin_ids": ["pin_missing"]}).json()
         self.assertEqual(named, {"refreshed": [], "failed": []})
 
+    def test_rename_pin_updates_title(self) -> None:
+        orders = self._import("orders", "1,10\n")["snapshot"]
+        pin = self._pin(orders["snapshot_id"], auto=False)
+        renamed = self.client.patch(f"{B}/pins/{pin['pin_id']}", json={"title": "  Monthly Orders  "})
+        self.assertEqual(renamed.status_code, 200, renamed.text)
+        self.assertEqual(renamed.json()["title"], "Monthly Orders")
+        self.assertEqual(self.client.get(f"{B}/pins").json()["pins"][0]["title"], "Monthly Orders")
+        self.assertEqual(self.client.patch(f"{B}/pins/{pin['pin_id']}", json={"title": "   "}).status_code, 422)
+
 
 if __name__ == "__main__":
     unittest.main()

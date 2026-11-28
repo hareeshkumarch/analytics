@@ -18,11 +18,18 @@ function safeHref(href: string): string | null {
 export const EvidenceContext = createContext<((evidenceId: string) => void) | null>(null);
 const CitationNumbers = createContext<Map<string, number>>(new Map());
 
-function EvidenceChip({ id }: { id: string }) {
+function EvidenceChip({ id, suffix }: { id: string; suffix?: string }) {
   const open = useContext(EvidenceContext);
   const number = useContext(CitationNumbers).get(id) ?? 0;
   const label = number ? String(number) : "•";
-  if (!open) return <sup className="ml-0.5 text-[0.72em] font-medium text-secondary">{label}</sup>;
+  if (!open) {
+    return (
+      <sup className="ml-0.5 text-[0.72em] font-medium text-secondary">
+        {label}
+        {suffix}
+      </sup>
+    );
+  }
   return (
     <sup className="ml-0.5">
       <button
@@ -30,7 +37,7 @@ function EvidenceChip({ id }: { id: string }) {
         onClick={() => open(id)}
         aria-label={`Source ${label}: show the query and rows behind this figure`}
         title="Show the query and rows behind this figure"
-        className="inline-flex min-w-[1.4em] items-center justify-center rounded-sm bg-accent-soft px-1 text-[0.72em] font-semibold leading-[1.5] text-accent transition-colors hover:bg-accent hover:text-on-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="inline-flex min-w-[1.5em] items-center justify-center rounded-sm bg-accent-soft px-1.5 text-[0.72em] font-semibold leading-[1.5] text-accent transition-colors hover:bg-accent hover:text-on-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
       >
         {label}
       </button>
@@ -113,7 +120,9 @@ function renderInline(text: string, keyPrefix: string, depth = 0): React.ReactNo
       if (citation) {
         flushPlain(pos);
         const key = `${keyPrefix}-${seq++}`;
-        citation.ids.forEach((id, n) => out.push(<EvidenceChip key={`${key}-${n}`} id={id} />));
+        citation.ids.forEach((id, n) =>
+          out.push(<EvidenceChip key={`${key}-${n}`} id={id} suffix={n < citation.ids.length - 1 ? "," : undefined} />)
+        );
         pos = citation.end;
         plainStart = pos;
         continue;
@@ -290,7 +299,7 @@ function parse(src: string): Block[] {
       continue;
     }
 
-    const heading = /^(#{1,4})\s+(.*)$/.exec(trimmed);
+    const heading = /^(#{1,6})\s+(.*)$/.exec(trimmed);
     if (heading) {
       blocks.push({ kind: "heading", level: heading[1].length, text: stripTrailingHeadingHashes(heading[2]) });
       i++;
@@ -349,7 +358,7 @@ function parse(src: string): Block[] {
     while (
       i < lines.length &&
       lines[i].trim() &&
-      !/^(#{1,4}\s|```|~~~|>|\||(-{3,}|\*{3,})$)/.test(lines[i].trim()) &&
+      !/^(#{1,6}\s|```|~~~|>|\||(-{3,}|\*{3,})$)/.test(lines[i].trim()) &&
       !listItem.test(lines[i])
     ) {
       para.push(lines[i++].trim());
@@ -364,6 +373,8 @@ const HEADING_CLS: Record<number, string> = {
   2: "text-[19px] font-semibold tracking-[-0.01em]",
   3: "text-[17px] font-semibold",
   4: "text-md font-semibold",
+  5: "text-base font-semibold",
+  6: "text-sm font-semibold text-secondary",
 };
 
 export const SafeMarkdown = memo(function SafeMarkdown({ content }: { content: string }) {
@@ -376,7 +387,7 @@ export const SafeMarkdown = memo(function SafeMarkdown({ content }: { content: s
           const key = `b${idx}`;
           switch (b.kind) {
             case "heading": {
-              const Tag = (["h2", "h3", "h4", "h5"] as const)[Math.min(Math.max(b.level, 1), 4) - 1];
+              const Tag = (["h2", "h3", "h4", "h5", "h6", "h6"] as const)[Math.min(Math.max(b.level, 1), 6) - 1];
               return (
                 <Tag key={key} className={`pt-1.5 text-ink first:pt-0 ${HEADING_CLS[b.level]}`}>
                   {renderInline(b.text, key)}

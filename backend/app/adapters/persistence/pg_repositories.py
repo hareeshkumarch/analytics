@@ -712,6 +712,20 @@ class PgCredentialRepository:
                         )
                     )
 
+    def revoke_credential(self, workspace_id: str, provider: str) -> bool:
+        with self._sf() as db:
+            with db.begin():
+                res = db.execute(
+                    update(CredentialRefRow)
+                    .where(
+                        CredentialRefRow.workspace_id == workspace_id,
+                        CredentialRefRow.provider_or_source == provider,
+                        CredentialRefRow.revoked.is_(False),
+                    )
+                    .values(revoked=True)
+                )
+                return bool(res.rowcount)
+
     def list_active_credentials(self, workspace_id: str | None = None) -> list[dict[str, Any]]:
         with self._sf() as db:
             stmt = select(CredentialRefRow).where(CredentialRefRow.revoked.is_(False))
@@ -1055,6 +1069,70 @@ class PgSnapshotRepository:
         except IntegrityError as exc:
             raise VersionConflictError("Semantic version conflict") from exc
 
+    def update_semantics(
+        self,
+        snapshot_id: str,
+        expected_version: int,
+        metric_edits: list[dict[str, Any]],
+        *,
+        remove_metric_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Record an edited semantic version while preserving prior versions as history."""
+        edits_by_id = {str(e["metric_id"]): e for e in metric_edits}
+        removed = set(remove_metric_ids or ())
+        try:
+            with self._sf() as db:
+                with db.begin():
+                    current = db.scalars(
+                        select(SemanticVersionRow)
+                        .where(SemanticVersionRow.snapshot_id == snapshot_id)
+                        .order_by(SemanticVersionRow.version.desc())
+                    ).first()
+                    if not current:
+                        raise NotFoundError("Semantic version not found")
+                    if current.version != expected_version:
+                        raise VersionConflictError("Semantic version conflict")
+                    next_metrics: list[dict[str, Any]] = []
+                    for metric in current.definitions_json.get("metrics") or []:
+                        mid = str(metric.get("metric_id") or "")
+                        if mid in removed:
+                            continue
+                        updated = dict(metric)
+                        edit = edits_by_id.get(mid)
+                        if edit is not None:
+                            updated["display_name"] = edit["display_name"]
+                            if "unit" in edit and edit["unit"] is not None:
+                                updated["unit"] = edit["unit"]
+                            if "currency" in edit:
+                                updated["currency"] = edit["currency"]
+                        next_metrics.append(updated)
+                    next_version = current.version + 1
+                    next_defs = {
+                        **current.definitions_json,
+                        "metrics": next_metrics,
+                        "approved": False,
+                        "version": next_version,
+                    }
+                    edited = SemanticVersionRow(
+                        semantic_version_id=f"sem_{uuid.uuid4().hex[:10]}",
+                        workspace_id=current.workspace_id,
+                        snapshot_id=snapshot_id,
+                        version=next_version,
+                        approved=False,
+                        definitions_json=next_defs,
+                    )
+                    db.add(edited)
+                    db.flush()
+                    return {
+                        **next_defs,
+                        "semantic_version_id": edited.semantic_version_id,
+                        "snapshot_id": snapshot_id,
+                        "version": edited.version,
+                        "approved": False,
+                    }
+        except IntegrityError as exc:
+            raise VersionConflictError("Semantic version conflict") from exc
+
 
 class PgPinRepository:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
@@ -1151,12 +1229,17 @@ class PgPinRepository:
                 return True
 
     def update_pin_state(self, workspace_id: str, pin_id: str, changes: dict[str, Any]) -> bool:
+        updates = dict(changes)
+        new_title = updates.pop("title", None)
         with self._sf() as db:
             with db.begin():
                 pin = db.get(PinRow, pin_id, with_for_update=True)
                 if pin is None or pin.workspace_id != workspace_id:
                     return False
-                pin.artifact_json = {**(pin.artifact_json or {}), **changes}
+                if new_title is not None:
+                    pin.title = str(new_title)
+                if updates:
+                    pin.artifact_json = {**(pin.artifact_json or {}), **updates}
                 return True
 
     def delete_pin(self, workspace_id: str, pin_id: str) -> bool:
@@ -1588,6 +1671,42 @@ class PgToolExecutionLedger:
 class PgWorkspaceSettings:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._sf = session_factory
+
+    def list_workspaces(self) -> list[dict[str, Any]]:
+        with self._sf() as db:
+            with db.begin():
+                ensure_workspace(db, "default")
+                rows = db.scalars(
+                    select(WorkspaceRow).order_by(WorkspaceRow.created_at.asc(), WorkspaceRow.workspace_id.asc())
+                ).all()
+                return [
+                    {
+                        "workspace_id": r.workspace_id,
+                        "name": r.name,
+                        "business_timezone": r.business_timezone or DEFAULT_BUSINESS_TIMEZONE,
+                        "created_at": r.created_at.isoformat(),
+                    }
+                    for r in rows
+                ]
+
+    def create_workspace(self, workspace_id: str | None, name: str) -> dict[str, Any]:
+        clean_name = " ".join(name.split())
+        if not clean_name:
+            raise ValidationError("Workspace name cannot be blank")
+        wid = (workspace_id or "").strip() or f"ws_{uuid.uuid4().hex[:8]}"
+        with self._sf() as db:
+            with db.begin():
+                if db.get(WorkspaceRow, wid) is not None:
+                    raise VersionConflictError(f"Workspace {wid!r} already exists")
+                row = WorkspaceRow(workspace_id=wid, name=clean_name)
+                db.add(row)
+                db.flush()
+                return {
+                    "workspace_id": row.workspace_id,
+                    "name": row.name,
+                    "business_timezone": row.business_timezone or DEFAULT_BUSINESS_TIMEZONE,
+                    "created_at": row.created_at.isoformat(),
+                }
 
     def get_business_timezone(self, workspace_id: str) -> str:
         with self._sf() as db:

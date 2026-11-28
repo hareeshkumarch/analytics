@@ -38,6 +38,28 @@ export function useSemantics(snapshotId: string) {
   });
 }
 
+export function useUpdateSemantics(snapshotId: string) {
+  const ws = useWorkspace();
+  const qc = useQueryClient();
+  const key = semanticsKey(ws.id, snapshotId);
+  return useMutation({
+    mutationFn: (payload: {
+      expected_version: number;
+      metrics: { metric_id: string; display_name: string; unit?: string | null; currency?: string | null }[];
+      remove_metric_ids?: string[];
+    }) =>
+      apiFetch<SemanticVersion>(ws.path(`/semantics/${encodeURIComponent(snapshotId)}`), {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (next) => qc.setQueryData(key, next),
+    onError: (err) => {
+      if (isVersionConflict(err)) void qc.invalidateQueries({ queryKey: key });
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["snapshots", ws.id] }),
+  });
+}
+
 export function useApproveSemantics(snapshotId: string) {
   const ws = useWorkspace();
   const qc = useQueryClient();

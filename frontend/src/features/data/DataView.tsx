@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
+import { toast } from "@/lib/toast";
 import { Notice, btn, cardCls, sectionTitleCls } from "@/components/ui";
 import { setUrlParam } from "@/lib/url";
 import { CONNECTOR_BY_ID, ConnectorId } from "@/lib/connectors";
@@ -88,6 +89,7 @@ export function DataView() {
           onImported={(id) => {
             closeSources();
             select(id, "definitions", true);
+            toast("Dataset imported. Review and approve definitions below.");
           }}
           offerSample={!snapshots.some(isSampleDataset)}
           onClose={hasData ? closeSources : undefined}
@@ -118,7 +120,7 @@ export function DataView() {
               It may have been imported into another workspace. Showing the newest dataset instead.
             </Notice>
           )}
-          <div className="grid gap-5 lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] lg:items-start">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] lg:items-start">
             <DatasetList
               snapshots={snapshots}
               loading={snapshotsQuery.isLoading}

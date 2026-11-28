@@ -8,7 +8,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { HScroll } from "@/components/HScroll";
 import { RichSelect } from "@/components/RichSelect";
 import { ActionMenu } from "@/components/ActionMenu";
-import { Badge, Notice, Spinner, btn, cx } from "@/components/ui";
+import { Badge, Notice, Spinner, btn, cx, dangerConfirmBtnCls } from "@/components/ui";
 import { ApiError, errorMessage } from "@/lib/api/client";
 import { useSemantics } from "@/lib/api/semantics";
 import { deleteSnapshot } from "@/lib/api/snapshots";
@@ -90,8 +90,14 @@ export function DatasetPanel({
   const [table, setTable] = useState(snapshot.tables[0] ?? "");
   const headingRef = useRef<HTMLHeadingElement>(null);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
+  const actionsWrapRef = useRef<HTMLDivElement>(null);
   const versions = snapshots.filter((s) => s.source_id === snapshot.source_id);
   const tableDetails = new Map((snapshot.table_details ?? []).map((t) => [t.name, t]));
+
+  useEffect(() => {
+    if (confirmDelete !== "idle") cancelDeleteRef.current?.focus();
+  }, [confirmDelete]);
 
   useEffect(() => {
     if (!reveal) return;
@@ -140,7 +146,7 @@ export function DatasetPanel({
   }
 
   return (
-    <div className="space-y-4 border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+    <div className="min-w-0 space-y-4 border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
           <ConnectorLogo id={logoIdForFamily(snapshot.source_family) ?? "file"} size="md" />
@@ -151,7 +157,7 @@ export function DatasetPanel({
             <p className="mt-0.5 text-xs text-secondary">{meta.join(" · ")}</p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div ref={actionsWrapRef} className="flex flex-wrap items-center gap-2">
           {snapshot.unavailable_tables?.length ? (
             <Badge tone="err" dot>
               Files missing for {snapshot.unavailable_tables.join(", ")}: import a new version
@@ -186,7 +192,7 @@ export function DatasetPanel({
             <>
               <button
                 type="button"
-                className={cx(btn.secondary, "border-err text-err hover:border-err")}
+                className={dangerConfirmBtnCls}
                 disabled={deleting}
                 onClick={() => void removeDataset(confirmDelete === "force")}
               >
@@ -194,12 +200,14 @@ export function DatasetPanel({
                 {deleting ? "Deleting…" : confirmDelete === "force" ? "Delete anyway" : "Confirm delete"}
               </button>
               <button
+                ref={cancelDeleteRef}
                 type="button"
                 className={btn.ghost}
                 disabled={deleting}
                 onClick={() => {
                   setConfirmDelete("idle");
                   setForceReason(null);
+                  requestAnimationFrame(() => actionsWrapRef.current?.querySelector<HTMLButtonElement>("[aria-haspopup='menu']")?.focus());
                 }}
               >
                 Cancel

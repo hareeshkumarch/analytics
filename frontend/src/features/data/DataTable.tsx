@@ -36,50 +36,63 @@ export function DataTable({
   children: React.ReactNode;
 }) {
   const table = (
-    <HScroll className={scrollY ? "" : "rounded-lg border border-border"} label={label}>
-      <table className={cx("w-full border-collapse text-left text-sm", minWidth)}>
-        <caption className="sr-only">{label}</caption>
-        <thead>
-          <tr className={rawHead ? "bg-panel font-mono text-xs text-secondary" : tableHeadCls}>
-            {head.map((h) => {
-              const cell = typeof h === "string" ? { label: h } : h;
-              const right = cell.align === "right";
-              return (
-                <th
-                  key={cell.label}
-                  scope="col"
-                  aria-sort={cell.sort ? (cell.sort.dir === "asc" ? "ascending" : cell.sort.dir === "desc" ? "descending" : "none") : undefined}
-                  className={cx("whitespace-nowrap px-3.5 py-2.5 font-medium", right && "text-right", cell.className)}
-                >
-                  {cell.srOnly ? (
-                    <span className="sr-only">{cell.label}</span>
-                  ) : cell.sort ? (
-                    <button
-                      type="button"
-                      onClick={cell.sort.onToggle}
-                      className={cx(
-                        "-mx-1.5 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-medium transition-colors hover:text-ink",
-                        cell.sort.dir && "text-ink"
-                      )}
-                    >
-                      {cell.label}
-                      <Icon
-                        name={cell.sort.dir === "asc" ? "arrow-up" : "arrow-down"}
-                        className={cx("h-3 w-3", !cell.sort.dir && "opacity-30")}
-                        strokeWidth={2.25}
-                      />
-                    </button>
-                  ) : (
-                    cell.label
-                  )}
-                </th>
-              );
-            })}
-          </tr>
-        </thead>
-        <tbody>{children}</tbody>
-      </table>
+    <table className={cx("w-full border-collapse text-left text-sm", minWidth)}>
+      <caption className="sr-only">{label}</caption>
+      <thead className={scrollY ? "sticky top-0 z-10" : undefined}>
+        <tr className={rawHead ? "bg-panel font-mono text-xs text-secondary" : tableHeadCls}>
+          {head.map((h) => {
+            const cell = typeof h === "string" ? { label: h } : h;
+            const right = cell.align === "right";
+            return (
+              <th
+                key={cell.label}
+                scope="col"
+                aria-sort={cell.sort ? (cell.sort.dir === "asc" ? "ascending" : cell.sort.dir === "desc" ? "descending" : "none") : undefined}
+                className={cx("whitespace-nowrap px-3.5", cell.sort ? "py-1.5" : "py-2.5", "font-medium", right && "text-right", cell.className)}
+              >
+                {cell.srOnly ? (
+                  <span className="sr-only">{cell.label}</span>
+                ) : cell.sort ? (
+                  <button
+                    type="button"
+                    onClick={cell.sort.onToggle}
+                    className={cx(
+                      "-mx-2 inline-flex min-h-[28px] items-center gap-1 rounded-md px-2 font-medium transition-colors hover:text-ink",
+                      cell.sort.dir && "text-ink"
+                    )}
+                  >
+                    {cell.label}
+                    <Icon
+                      name={cell.sort.dir === "asc" ? "arrow-up" : "arrow-down"}
+                      className={cx("h-3 w-3", !cell.sort.dir && "opacity-30")}
+                      strokeWidth={2.25}
+                    />
+                  </button>
+                ) : (
+                  cell.label
+                )}
+              </th>
+            );
+          })}
+        </tr>
+      </thead>
+      <tbody>{children}</tbody>
+    </table>
+  );
+  if (scrollY) {
+    return (
+      <div
+        role="region"
+        aria-label={label}
+        className="max-h-[480px] overflow-auto overscroll-contain rounded-lg border border-border"
+      >
+        {table}
+      </div>
+    );
+  }
+  return (
+    <HScroll className="rounded-lg border border-border" label={label}>
+      {table}
     </HScroll>
   );
-  return scrollY ? <div className="max-h-[480px] overflow-y-auto rounded-lg border border-border">{table}</div> : table;
 }

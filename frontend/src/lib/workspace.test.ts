@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isSampleDataset } from "@/lib/sample";
-import { datasetLabel, datasetTables, providerLabel, sortSnapshotsNewestFirst, type SnapshotSummary } from "@/lib/workspace";
+import { ApiError } from "@/lib/api/client";
+import { datasetLabel, datasetTables, isApiUnreachable, providerLabel, sortSnapshotsNewestFirst, type SnapshotSummary } from "@/lib/workspace";
 
 const snap = (id: string, created_at: string | null, tables = ["t"]): SnapshotSummary => ({
   snapshot_id: id,
@@ -46,5 +47,20 @@ describe("datasetLabel", () => {
     expect(datasetLabel(named)).toBe("Sample shop payments (INR)");
     expect(datasetTables(named)).toBe("fees +2 more");
     expect(datasetLabel({ ...named, display_name: null })).toBe("fees +2 more");
+  });
+});
+
+describe("isApiUnreachable", () => {
+  it("treats a failed fetch, a server error or a non-JSON 404 page as unreachable", () => {
+    expect(isApiUnreachable(new ApiError("Failed to fetch", { status: 0 }))).toBe(true);
+    expect(isApiUnreachable(new ApiError("Bad gateway", { status: 502 }))).toBe(true);
+    expect(isApiUnreachable(new ApiError("Not Found", { status: 404, jsonBody: false }))).toBe(true);
+  });
+
+  it("does not treat JSON answers from the API or non-API errors as unreachable", () => {
+    expect(isApiUnreachable(new ApiError("Not found", { status: 404 }))).toBe(false);
+    expect(isApiUnreachable(new ApiError("Unauthorized", { status: 401 }))).toBe(false);
+    expect(isApiUnreachable(new Error("boom"))).toBe(false);
+    expect(isApiUnreachable(null)).toBe(false);
   });
 });

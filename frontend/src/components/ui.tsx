@@ -40,13 +40,15 @@ export const btnSm = {
   ghost: `${btnBase} ${btnSmSize} ${quiet}`,
 };
 
+export const dangerConfirmBtnCls = `${btnBase} ${btnMd} ${outlined} text-err ring-err/70 hover:bg-err-soft/50 hover:text-err dark:ring-1 dark:ring-err/70`;
+
 export const inputBaseCls =
-  "w-full rounded-md border border-ink/[0.12] bg-surface px-2.5 text-base text-ink placeholder:text-secondary/80 transition-shadow focus:border-focus focus:outline-none focus:ring-[3px] focus:ring-focus/15 disabled:opacity-60 dark:bg-ink/[0.05]";
+  "w-full rounded-md border border-border-strong bg-surface px-2.5 text-[16px] sm:text-base text-ink placeholder:text-secondary transition-shadow focus:border-focus focus:outline-none focus:ring-[3px] focus:ring-focus/15 disabled:opacity-60 dark:bg-ink/[0.05]";
 
 /** Default 32px field. */
 export const inputCls = `min-h-[32px] ${inputBaseCls}`;
 /** 28px field for filter bars, next to small buttons and chips. */
-export const inputSmCls = `h-7 ${inputBaseCls}`;
+export const inputSmCls = `min-h-[32px] sm:h-7 ${inputBaseCls}`;
 
 export const cardCls = "rounded-xl border border-border bg-surface";
 

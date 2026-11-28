@@ -4,19 +4,23 @@
 
 :root {
   color-scheme: light;
-  --canvas: 255 255 255;
-  --sidebar: 250 250 250;
-  --panel: 243 243 243;
-  --surface: 255 255 255;
-  --bubble: 239 239 239;
-  --ink: 25 25 25;
-  --body: 56 56 56;
-  --muted: 102 102 102;
-  --border: 235 235 235;
-  --border-strong: 224 224 224;
-  --accent: 25 25 25;
-  --accent-hover: 60 60 60;
-  --accent-soft: 242 242 242;
+  /* Warm minimalist neutrals: alabaster page, white cards, stone greys, near-black ink and CTA. */
+  --canvas: 247 246 242; /* #F7F6F2 page background */
+  --sidebar: 242 241 236; /* #F2F1EC a step deeper than the page */
+  --panel: 239 237 232; /* #EFEDE8 table heads, hovers */
+  --surface: 255 255 255; /* #FFFFFF cards */
+  --bubble: 236 234 228; /* #ECEAE4 user message bubble */
+  --ink: 17 17 17; /* #111111 primary text */
+  /* Body and secondary text are the palette's greys taken just dark enough for 4.5:1 on the grey washes
+     behind toggles and secondary buttons (#E5E4E0), not only on the page and on white cards. */
+  --body: 87 83 78; /* #57534E body and subtitle text */
+  --muted: 103 102 98; /* #676662 secondary text */
+  --border: 230 228 223; /* #E6E4DF hairline borders */
+  --border-strong: 142 141 136; /* #8E8D88 field borders, captions */
+  --pattern-dot: 216 214 208; /* #D8D6D0 dot grid */
+  --accent: 17 17 17; /* #111111 primary buttons */
+  --accent-hover: 54 53 50;
+  --accent-soft: 241 239 234;
   --on-accent: 255 255 255;
   --ok: 0 108 16;
   --ok-soft: 202 236 200;
@@ -29,11 +33,11 @@
   --err-soft: 251 212 212;
   --err-dot: 220 60 61;
   --shadow: 0 0 0;
-  /* Menus and the composer sit on their own surface (same as the page in light, lifted in dark). */
+  /* Menus and the composer sit on their own surface (white in light, lifted in dark). */
   --popover: 255 255 255;
-  /* Clay: the send button and the logo. */
-  --brand: 198 97 63;
-  --brand-hover: 217 119 87;
+  /* The send button and the logo tile follow the CTA colour. */
+  --brand: 17 17 17;
+  --brand-hover: 54 53 50;
   /* Blue: focus rings, checked boxes, links that need colour. */
   --focus: 37 125 224;
   --selection: 204 227 253;
@@ -45,20 +49,22 @@
 /* theme.ts always sets data-theme (resolving "system" itself), so dark tokens live in one place. */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --canvas: 25 25 25;
-  --sidebar: 31 31 31;
-  --panel: 38 38 38;
-  --surface: 31 31 31;
-  --bubble: 48 48 48;
-  --ink: 239 239 239;
-  --body: 194 194 194;
-  --muted: 156 156 156;
-  --border: 43 43 43;
-  --border-strong: 53 53 53;
-  --accent: 239 239 239;
-  --accent-hover: 215 215 215;
-  --accent-soft: 59 59 59;
-  --on-accent: 25 25 25;
+  /* The same warm stone family, inverted. */
+  --canvas: 25 24 22;
+  --sidebar: 31 30 28;
+  --panel: 38 37 34;
+  --surface: 31 30 28;
+  --bubble: 48 46 43;
+  --ink: 239 238 234;
+  --body: 194 192 187;
+  --muted: 176 174 168;
+  --border: 44 42 39;
+  --border-strong: 113 111 106;
+  --pattern-dot: 54 52 48;
+  --accent: 239 238 234;
+  --accent-hover: 215 213 208;
+  --accent-soft: 59 57 53;
+  --on-accent: 25 24 22;
   --ok: 144 218 142;
   --ok-soft: 18 59 19;
   --ok-dot: 10 172 35;
@@ -69,9 +75,9 @@
   --err-soft: 96 19 20;
   --err-dot: 236 70 71;
   --shadow: 0 0 0;
-  --popover: 48 48 48;
-  --brand: 198 97 63;
-  --brand-hover: 217 119 87;
+  --popover: 48 46 43;
+  --brand: 239 238 234;
+  --brand-hover: 215 213 208;
   --focus: 37 125 224;
   --selection: 6 49 103;
   --data-1: 81 156 237;
@@ -118,6 +124,14 @@ td {
 }
 *::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* Dot grid backdrop for hero areas, faded at the edges so no control sits on it. */
+.bg-dot-grid {
+  background-image: radial-gradient(rgb(var(--pattern-dot)) 1px, transparent 1.2px);
+  background-size: 20px 20px;
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 72%);
+  mask-image: radial-gradient(ellipse at center, #000 30%, transparent 72%);
 }
 
 /* Horizontal scrollers (HScroll) show edge fades instead of a bar. */

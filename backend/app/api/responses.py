@@ -46,6 +46,17 @@ class WorkspaceSettingsOut(ApiResponse):
     business_timezone: str
 
 
+class WorkspaceOut(ApiResponse):
+    workspace_id: str
+    name: str
+    business_timezone: str = "UTC"
+    created_at: str | None = None
+
+
+class WorkspaceListOut(ApiResponse):
+    workspaces: list[WorkspaceOut]
+
+
 class TaskBudgetOut(ApiResponse):
     tokens: int
     tool_calls: int
@@ -120,6 +131,7 @@ class RunAnswerOut(ApiResponse):
     criteria: list[CriterionOut] | None = None
     route: str | None = None
     follow_ups: list[str] | None = None
+    limitations: list[str] | None = None
 
 
 class RunOut(ApiResponse):

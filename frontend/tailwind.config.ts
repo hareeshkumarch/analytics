@@ -26,6 +26,7 @@ const config: Config = {
         body: token("body"),
         secondary: token("muted"),
         border: token("border"),
+        "pattern-dot": token("pattern-dot"),
         "border-strong": token("border-strong"),
         bubble: token("bubble"),
         accent: {

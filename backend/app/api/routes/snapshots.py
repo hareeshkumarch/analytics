@@ -9,6 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.api.schemas import (
     CreateDatasetNoteRequest,
     ApproveSemanticsRequest,
+    UpdateSemanticsRequest,
 )
 from app.application.services.profiling import profile_arrow_table
 from app.bootstrap.container import AppContainer
@@ -151,6 +152,37 @@ def register(ctx: ApiContext) -> APIRouter:
         except SQLAlchemyError as exc:
             logger.exception("Failed to approve semantics")
             raise _db_unavailable("approve the definitions") from exc
+        app.state.semantics[snapshot_id] = res
+        return res
+
+    @router.patch("/api/v1/workspaces/{workspace_id}/semantics/{snapshot_id}")
+    def update_semantics(workspace_id: str, snapshot_id: str, payload: UpdateSemanticsRequest) -> dict[str, Any]:
+        _get_workspace_snapshot(workspace_id, snapshot_id)
+        edits = [
+            {
+                "metric_id": m.metric_id,
+                "display_name": " ".join(m.display_name.split()),
+                "unit": m.unit.strip() if m.unit is not None and m.unit.strip() else None,
+                "currency": m.currency.strip() if m.currency is not None and m.currency.strip() else None,
+            }
+            for m in payload.metrics
+        ]
+        if any(not e["display_name"] for e in edits):
+            raise HTTPException(status_code=422, detail="Metric display name cannot be blank")
+        try:
+            res: dict[str, Any] = app.state.repo_snapshots.update_semantics(
+                snapshot_id,
+                payload.expected_version,
+                edits,
+                remove_metric_ids=payload.remove_metric_ids,
+            )
+        except NotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Semantic version not found") from exc
+        except VersionConflictError as exc:
+            raise HTTPException(status_code=409, detail="Semantic version conflict") from exc
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to update semantics")
+            raise _db_unavailable("update the definitions") from exc
         app.state.semantics[snapshot_id] = res
         return res
 

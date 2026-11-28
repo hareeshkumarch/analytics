@@ -110,7 +110,7 @@ function Field({ field, id, value, error, disabled, onChange, sheetsHint }: Fiel
           {...shared}
           rows={5}
           onChange={(e) => onChange(field.key, e.target.value)}
-          className={cx(inputCls, "min-h-[120px] py-2.5 font-mono text-xs", error && "border-err")}
+          className={cx(inputCls, "min-h-[120px] py-2.5 font-mono text-[16px] sm:text-xs", error && "border-err")}
         />
       ) : field.type === "password" ? (
         <div className="relative">
@@ -118,14 +118,14 @@ function Field({ field, id, value, error, disabled, onChange, sheetsHint }: Fiel
             {...shared}
             type={revealed ? "text" : "password"}
             onChange={(e) => onChange(field.key, e.target.value)}
-            className={cx(inputCls, "pr-14", field.readOnly && "bg-panel text-secondary", error && "border-err")}
+            className={cx(inputCls, "pr-16", field.readOnly && "bg-panel text-secondary", error && "border-err")}
           />
           <button
             type="button"
             onClick={() => setRevealed((r) => !r)}
             aria-label={revealed ? `Hide ${field.label}` : `Show ${field.label}`}
             aria-pressed={revealed}
-            className="absolute right-1.5 top-1/2 flex h-8 items-center justify-center rounded-full px-2 text-xs text-secondary transition-colors hover:text-ink"
+            className="absolute right-1 top-1/2 flex h-7 min-w-[44px] -translate-y-1/2 items-center justify-center rounded-md px-2 text-xs text-secondary transition-colors hover:text-ink"
           >
             {revealed ? "Hide" : "Show"}
           </button>

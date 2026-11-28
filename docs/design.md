@@ -1,95 +1,82 @@
-# UI design
+# Design System — Ledgerline
 
-**Look: "Graphite" (minimal).** Neutral zinc grays with a charcoal accent (near-white in dark mode).
-Color appears only where it means something: small status dots, and red for errors. One typeface, Inter
-(semibold for headings), and the system's monospace for ids, SQL and traces. **Sharp corners everywhere** (no rounded
-buttons, cards or inputs); only status dots and spinners are round. Pages use the full width up to
-1480px with tight gutters (16px on phones, 32px on desktop).
+Ledgerline's interface is a warm minimalist neutral, close to editorial monochrome: a warm off-white canvas (`#F7F6F2`), crisp white cards (`#FFFFFF`) separated by hairline borders (`#E6E4DF`) rather than shadows, stone-grey secondary text, and near-black (`#111111`) for primary text and every call to action. There is no bright brand colour; hierarchy comes from contrast between `#111111` and the stone greys.
 
-**Theme:** System (default, follows the OS), Light or Dark. The switch is at the bottom of the sidebar,
-an icon button when the rail is collapsed or on phones. The choice is stored in `localStorage` (`ledgerline.theme`)
-and applied before first paint by an inline script, so there is no flash.
+---
 
-**Design canvas (Claude Design):** https://claude.ai/artifact/EJxwEePBJzNBVh9JvhkVgJ
-(private; share it from the page's Share menu). Boards: Ask, Data, Settings,
-Design tokens & components, Ask on phone.
+## Color Tokens
 
-## Where it lives in code
+Defined in [`frontend/src/app/globals.css`](../frontend/src/app/globals.css) as RGB channel triplets so Tailwind utilities support opacity modifiers cleanly across light and dark themes.
 
-| What | File |
-|---|---|
-| Color tokens (light + dark, RGB channels; `data-theme` overrides the OS) | `frontend/src/app/globals.css` |
-| Tailwind names for tokens, fonts, radii, shadows | `frontend/tailwind.config.ts` |
-| Fonts (`next/font`, self-hosted at build time, system fallbacks) | `frontend/src/app/layout.tsx` |
-| Sidebar: collapsible icon rail (Ctrl/⌘ B, remembered), phone top bar | `frontend/src/components/AppShell.tsx` |
-| Selects (keyboard + screen-reader accessible, viewport-aware) | `frontend/src/components/RichSelect.tsx` |
-| Horizontal scroller with edge fades (scrollbars are hidden) | `frontend/src/components/HScroll.tsx` |
-| Safe Markdown for answers (tables, code, lists, links) | `frontend/src/components/SafeMarkdown.tsx` |
-| Connector catalog (fields per source) | `frontend/src/lib/connectors.ts` |
-| Theme preference (`useTheme`), no-flash init script, chart colors that follow the theme (`useThemeColor`) | `frontend/src/lib/theme.ts` |
-| Theme switch (System / Light / Dark; compact icon variant) | `frontend/src/components/ThemeToggle.tsx` |
+### Light Theme (`:root`)
 
-## Tokens (light)
+| Token | Value | Hex | Usage |
+|---|---|---|---|
+| `--canvas` | `247 246 242` | `#F7F6F2` | Page background (warm off-white) |
+| `--sidebar` | `242 241 236` | `#F2F1EC` | Persistent left navigation rail |
+| `--panel` | `239 237 232` | `#EFEDE8` | Secondary panels, code blocks, table headers |
+| `--surface` | `255 255 255` | `#FFFFFF` | Cards and inputs |
+| `--bubble` | `236 234 228` | `#ECEAE4` | User question bubbles |
+| `--popover` | `255 255 255` | `#FFFFFF` | Composer card, menus, charts tooltip |
+| `--ink` | `17 17 17` | `#111111` | Primary text and headings |
+| `--body` | `87 83 78` | `#57534E` | Answer prose, subtitles and table body text |
+| `--muted` | `103 102 98` | `#676662` | Secondary metadata (`text-secondary`); the darkest stone grey that still clears WCAG AA 4.5:1 on the `#E5E4E0` control washes |
+| `--border` | `230 228 223` | `#E6E4DF` | Hairline card and table dividers |
+| `--border-strong` | `142 141 136` | `#8E8D88` | Input outlines, checkboxes, captions |
+| `--pattern-dot` | `216 214 208` | `#D8D6D0` | Dot grid behind the Ask hero (`.bg-dot-grid`) |
+| `--accent` / `--on-accent` | `17 17 17` / `255 255 255` | `#111111` / `#FFFFFF` | Primary buttons and other calls to action |
+| `--brand` / `--brand-hover` | `17 17 17` / `54 53 50` | `#111111` / `#363532` | Send button and logo tile (same as the CTA) |
+| `--focus` | `37 125 224` | `#257DE0` | Visible 2px keyboard focus ring |
 
-| Token | Hex | Use |
-|---|---|---|
-| canvas | `#FAFAFA` | page |
-| sidebar / panel | `#F4F4F5` | sidebar, segmented track, table heads |
-| surface | `#FFFFFF` | cards, inputs, menus |
-| bubble | `#EFEFF1` | your question in Ask |
-| ink | `#18181B` | headings, primary text |
-| body | `#3F3F46` | long text |
-| secondary (muted) | `#696972` | meta text: 5.2:1 on canvas |
-| border / border-strong | `#E4E4E7` / `#8C8C96` | dividers / input outlines (3:1+) |
-| plum (accent) | `#18181B` | primary buttons, active states, focus ring |
-| plum-soft | `#EEEEF0` | focus halo, selected rows |
-| plum-muted | `#71717A` | logo marks |
-| ok dot | `#16A34A` | success status dots |
-| warn | `#92400E` on `#FFF7E6`, dot `#D97706` | "needs your attention" (awaiting approval, reconnecting, newer data). Amber so it never looks like "done" |
-| err | `#B91C1C` on `#FEF2F2` | errors |
-| data-1 / data-2 / data-3 | `#1B6E9C` / `#C2652A` / `#B0407A` (dark: `#3D99CC` / `#D9773A` / `#D2609A`) | chart series only, in this fixed order |
+### Dark Theme (`[data-theme="dark"]`)
 
-Data colours keep charts apart from actions: charcoal means "you can press this or it's selected", while blue, orange and magenta mean "this is data". Every pair passes the dataviz palette checks in both themes:
-- colour-blind separation (CVD ΔE at least 15)
-- normal-vision separation at least 15
-- contrast of at least 3:1 against `surface`
+The same warm stone family, inverted.
 
-Charts carry at most three series (`MAX_SERIES` in `charts.py`), so the order is never cycled. Recharts reads the colours with `useThemeColor("data-1")` and so on, and CSS bars use `bg-data-1`. Never use hex values. Status colours (ok, warn, err) are never used for series.
+| Token | Value | Hex | Usage |
+|---|---|---|---|
+| `--canvas` | `25 24 22` | `#191816` | Primary background |
+| `--sidebar` / `--surface` | `31 30 28` | `#1F1E1C` | Left rail and primary cards |
+| `--panel` | `38 37 34` | `#262522` | Inset panels and table headers |
+| `--bubble` / `--popover` | `48 46 43` | `#302E2B` | Question bubbles, menus, tooltips |
+| `--ink` | `239 238 234` | `#EFEEEA` | Primary text |
+| `--body` | `194 192 187` | `#C2C0BB` | Body text |
+| `--muted` | `176 174 168` | `#B0AEA8` | Secondary text (clears WCAG AA 4.5:1) |
+| `--border` / `--border-strong` | `44 42 39` / `113 111 106` | `#2C2A27` / `#716F6A` | Hairline dividers and input outlines |
+| `--pattern-dot` | `54 52 48` | `#363430` | Dot grid |
+| `--accent` / `--brand` | `239 238 234` | `#EFEEEA` | Primary buttons, send button, logo tile |
 
-Connector logos (`components/ConnectorLogo.tsx`) are the one place fixed brand colours are allowed: each logo is a self-contained tile with its own background and foreground, so it reads the same in both themes.
+### Semantic Status & Data Palette
 
-- **Official marks:** 16 connector brands and 4 LLM providers use their official mark from [Simple Icons](https://simpleicons.org) 16.35.0 (CC0), vendored as path data in `components/brandPaths.ts`, so the app makes no runtime request.
-- **LLM providers:** `ProviderLogo` (same file) shows vendored brand marks for all seven providers in Settings (Anthropic, Google Gemini, Kimi and NVIDIA from Simple Icons 16.35.0; OpenAI, Groq and xAI vendored separately).
-- **Drawn marks:** AWS (S3, RDS) and Microsoft Azure aren't in Simple Icons, and their official icon packages only allow architecture diagrams, training and documentation (AWS Trademark Guidelines §3(d); Azure icon terms). Those connectors therefore keep a drawn mark in brand colours until written permission is obtained. Generic sources (file upload, link, REST) use a neutral glyph.
-- **Adding a logo:** download `icons/<slug>.svg` from the same Simple Icons version, check it is a single `<path>`, add its `d` to `brandPaths.ts`, and map it in `MARKS`.
-- **Brand rules:** logos are trademarks of their owners and only identify the connector; don't recolour them beyond the brand colour or alter their shape.
+- **Success (`ok`)**: `#006C10` text on `#CAECC8` tint (`#90DA8E` on `#123B13` dark)
+- **Warning (`warn`)**: `#794C02` text on `#F9DCA4` tint (`#FBB315` on `#442800` dark)
+- **Error (`err`)**: `#A42528` text on `#FBD4D4` tint (`#F7A7A7` on `#601314` dark)
+- **Chart Series**: `--data-1` (`#257DE0`), `--data-2` (`#C2652A`), `--data-3` (`#B0407A`)
 
-`plum` is just the accent's legacy class name; the color is charcoal. To re-tint the whole app,
-change the variables in `globals.css`; no component needs editing.
+---
 
-## Rules of thumb
+## Typography
 
-- Use token classes (`bg-surface`, `text-ink`, `text-body`, `text-secondary`, `border-border`,
-  `bg-plum` + `text-on-accent`, `bg-ok-soft text-ok` + `bg-ok-dot` / `warn` / `err`), never hex values, `bg-white` or
-  Tailwind's palette colors, or dark mode breaks.
-- Corners: the Tailwind radius scale is 0 (`rounded`, `rounded-lg`, `rounded-card` … all render square).
-  Don't add arbitrary radii like `rounded-[10px]`. `rounded-full` is only for dots and spinners.
-- Cards: `rounded-card border border-border bg-surface shadow-card`, titles `font-display text-lg font-semibold`.
-- Any choice from a list uses `RichSelect`. Two or three mutually exclusive modes (Quick/Deep) use a
-  segmented control instead, because both options stay visible.
-- Wide content goes in `HScroll` (edge fades, no bar). Vertical scroll areas show a thin themed scrollbar.
-- Controls are at least 40px tall (44px for inputs and selects), and every icon-only button has an `aria-label`.
-- Action weights:
-  - One filled button (`btn.primary`) per card or area, for its main action.
-  - Secondary actions are outlined (`btn.secondary`), and minor ones such as Copy, Unpin or Cancel are plain text (`btn.ghost`).
-  - Destructive actions live in an `ActionMenu` ("More"), separated from the rest, and ask for confirmation.
-- Shared pieces live in `components/ui.tsx`: `btn.*`, `Notice`, `Badge`, `SearchInput`, `FilterChips`, `EmptyState`, `Details`, `Skeleton`, `Spinner`. Use them instead of new class strings.
-- Lists with more than a handful of items get a `SearchInput` and, where useful, `FilterChips` with counts.
-- Show people what they need to act on; put ids, hashes, raw traces and raw errors behind a collapsed `Details` ("Technical details").
-- Inter is self-hosted with `next/font` (no runtime request to Google); monospace uses the system font, so no second download.
+Loaded via `next/font/google` in [`frontend/src/app/layout.tsx`](../frontend/src/app/layout.tsx):
 
-## Performance rules
+- **Sans (`--font-inter`)**: `Inter` — UI controls, dense tables, navigation, and Markdown body prose (`14px`–`15px` desktop, `16px` input font size below `640px` to prevent iOS Safari focus auto-zoom).
+- **Display (`--font-newsreader`)**: `Newsreader` — Editorial serif for primary empty-state and page headings (`28px`–`32px`, light-to-medium weight `360`–`500`).
+- **Mono**: `JetBrains Mono` / `ui-monospace` — SQL queries, snapshot IDs, metric expressions, and trace logs.
+- Numeric tables, metrics, and axis ticks use `tabular-nums`.
 
-- Charts load on demand: `ChartPlot` and `UsageBarChart` hold every `recharts` import and are loaded with `next/dynamic`. Don't import `recharts` anywhere else.
-- Streamed answer text is applied every `STREAM_FLUSH_MS` (80 ms), not once per piece, and `answer.delta` events are not kept in the event list. Keep per-piece work out of render.
-- Reserve space for content that loads: placeholders roughly the height of the real content, and no section that appears or opens only after data arrives.
+---
+
+## Layout & Component Geometry
+
+- **Application Shell (`AppShell`)**:
+  - Desktop left navigation rail (`md:w-[216px]` expanded, `md:w-[52px]` collapsed) with Logo, interactive **WorkspaceSwitcher** (`GET`/`POST /api/v1/workspaces`), Primary Navigation (`Ask`, `Data`, `Dashboard`, `Usage`, `Settings`), and `ThemeToggle`.
+  - Mobile (`< 768px`): sticky compact top bar with Logo, WorkspaceSwitcher, and ThemeToggle, paired with a bottom tab bar.
+- **Control Sizing & Radii**:
+  - Default buttons and inputs (`btn`, `inputCls`, `RichSelect`): `min-h-[32px]`, `rounded-md` / `rounded-lg`.
+  - Compact/dense controls (`btnSm`, `inputSmCls`): `28px` on `>= 640px` (`min-h-[32px]` on mobile inputs/buttons where needed).
+  - Composer & feature cards: `rounded-xl` (`12px`), elevated subtly via `--shadow` tokens and `1px` `--border`.
+- **Interactive Primitives**:
+  - **Ask**: Multi-turn inline conversation thread with a single unified composer (centered top composer on new session; docked bottom follow-up composer in active threads), inline Limitations callout, `"Removed dataset"` fallback badge, slide-over Evidence drawer, and Export menu (`PDF`, `DOCX`, and semantic `HTML`).
+  - **Data**: Tabbed upload (`Upload file` / `Paste CSV`) preserving separate drafts, editable & filterable proposed metric definitions (`PATCH /semantics/{id}`), and click-to-inspect cell viewer modals in `PreviewTab`.
+  - **Dashboard**: In-place single-pin and batch `Re-run`, inline pin renaming, card export menu, alert threshold form, and clear distinction between new-snapshot auto-refresh and scheduled re-runs.
+  - **Usage**: Independent chart metric vs `By model` bar metric switchers and gap-filled continuous hourly (`24h`) / daily (`7d`/`30d`/`90d`) timelines.
+  - **Settings**: Visually separated immediate-save workspace defaults (`Preset`, `Fallback`, `Business time zone`) from draft `Cost limit & role overrides` (`Save routing`), plus confirmed workspace API key revocation (`Remove key`).

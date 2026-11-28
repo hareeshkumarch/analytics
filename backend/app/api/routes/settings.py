@@ -221,6 +221,22 @@ def register(ctx: ApiContext) -> APIRouter:
         c.routing_service.set_workspace_key(workspace_id, payload.provider_id, payload.api_key)
         return {"provider_id": payload.provider_id.value, "status": "configured"}
 
+    @router.delete("/api/v1/workspaces/{workspace_id}/settings/provider-key/{provider_id}")
+    def delete_provider_key(workspace_id: str, provider_id: str) -> dict[str, str]:
+        try:
+            pid = ProviderId(provider_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=f"Unknown provider: {provider_id}") from exc
+        try:
+            app.state.repo_creds.revoke_credential(workspace_id, pid.value)
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to revoke provider key in DB")
+            raise _db_unavailable("remove the provider key") from exc
+        app.state.undecryptable_keys.discard(f"{workspace_id}:{pid.value}")
+        c: AppContainer = app.state.container
+        c.routing_service.clear_workspace_key(workspace_id, pid)
+        return {"provider_id": pid.value, "status": "removed"}
+
     @router.get("/api/v1/workspaces/{workspace_id}/settings", response_model=WorkspaceSettingsOut)
     def get_workspace_settings(workspace_id: str) -> dict[str, Any]:
         try:

@@ -1,23 +1,10 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { API_BASE, apiFetch, errorMessage } from "@/lib/api/client";
+import { Icon } from "@/components/Icon";
+import { errorMessage } from "@/lib/api/client";
+import { EXPORT_FORMATS, downloadAnswerExport, type ExportFormat } from "@/lib/exportAnswer";
 import { ActionMenu, type MenuAction } from "@/components/ActionMenu";
-import { workspacePath } from "@/lib/workspace";
-import type { CreateExportRequest } from "@/lib/api/types";
-
-const FORMATS = [
-  { id: "pdf", label: "Export as PDF", ext: "pdf" },
-  { id: "docx", label: "Export as Word document", ext: "docx" },
-  { id: "html", label: "Export as web page (HTML)", ext: "html" },
-] as const;
-
-type Format = (typeof FORMATS)[number];
-
-function fileName(question: string, ext: string): string {
-  const slug = question.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
-  return `${slug || "answer"}.${ext}`;
-}
 
 export function AnswerMenu({
   workspaceId,
@@ -34,30 +21,17 @@ export function AnswerMenu({
   onCopy?: () => void;
   onDelete?: () => void;
 }) {
-  const [busy, setBusy] = useState<Format["id"] | null>(null);
+  const [busy, setBusy] = useState<ExportFormat["id"] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => setError(null), [runId]);
 
-  async function download(format: Format) {
+  async function download(format: ExportFormat) {
     if (!runId) return;
     setBusy(format.id);
     setError(null);
     try {
-      const created = await apiFetch<{ artifact_id: string }>(workspacePath(workspaceId, "/exports"), {
-        method: "POST",
-        body: JSON.stringify({ run_id: runId, format: format.id } satisfies CreateExportRequest),
-      });
-      const res = await fetch(`${API_BASE}${workspacePath(workspaceId, `/exports/${encodeURIComponent(created.artifact_id)}`)}`);
-      if (!res.ok) throw new Error(`The export couldn't be downloaded (HTTP ${res.status}).`);
-      const url = URL.createObjectURL(await res.blob());
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = fileName(question, format.ext);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await downloadAnswerExport({ workspaceId, runId, format, title: question });
     } catch (err) {
       setError(errorMessage(err, "Couldn't export this answer."));
     } finally {
@@ -67,7 +41,7 @@ export function AnswerMenu({
 
   const actions: MenuAction[] = [
     ...(onCopy ? [{ label: "Copy answer", onSelect: onCopy }] : []),
-    ...(runId ? FORMATS.map((format) => ({ label: format.label, onSelect: () => void download(format) })) : []),
+    ...(runId ? EXPORT_FORMATS.map((format) => ({ label: format.label, onSelect: () => void download(format) })) : []),
     ...(onDelete ? [{ label: "Delete answer…", onSelect: onDelete, danger: true }] : []),
   ];
 
@@ -81,8 +55,13 @@ export function AnswerMenu({
         error && (
           <>
             <span className="flex-1">{error}</span>
-            <button type="button" onClick={() => setError(null)} aria-label="Dismiss export error" className="shrink-0 rounded-full text-secondary hover:text-ink">
-              ×
+            <button
+              type="button"
+              onClick={() => setError(null)}
+              aria-label="Dismiss export error"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-secondary transition-colors hover:bg-panel hover:text-ink"
+            >
+              <Icon name="x" className="h-3.5 w-3.5" />
             </button>
           </>
         )

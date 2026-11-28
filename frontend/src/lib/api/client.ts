@@ -9,6 +9,8 @@ export class ApiError extends Error {
   readonly remediation: string | null;
   readonly fieldErrors: Record<string, string>;
   readonly requestId: string | null;
+  /** False when the error response had no JSON body, so it came from something other than the API. */
+  readonly jsonBody: boolean;
 
   constructor(
     message: string,
@@ -18,6 +20,7 @@ export class ApiError extends Error {
       remediation?: string | null;
       fieldErrors?: Record<string, string>;
       requestId?: string | null;
+      jsonBody?: boolean;
     }
   ) {
     super(message);
@@ -27,6 +30,7 @@ export class ApiError extends Error {
     this.remediation = opts.remediation ?? null;
     this.fieldErrors = opts.fieldErrors ?? {};
     this.requestId = opts.requestId ?? null;
+    this.jsonBody = opts.jsonBody ?? true;
   }
 
   get isNetwork(): boolean {
@@ -59,6 +63,7 @@ function toApiError(body: unknown, status: number, statusText: string): ApiError
     remediation: str(b.remediation),
     fieldErrors,
     requestId: str(b.request_id),
+    jsonBody: body !== null && typeof body === "object",
   });
 }
 

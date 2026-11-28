@@ -3,12 +3,17 @@
 import React, { useContext, useMemo } from "react";
 import dynamic from "next/dynamic";
 import type { ChartOut } from "@/lib/api/types";
+import { HScroll } from "@/components/HScroll";
 import { EvidenceContext } from "@/components/SafeMarkdown";
+import { Skeleton, tableHeadCls } from "@/components/ui";
 import { useThemeColor } from "@/lib/theme";
 
 export type AnswerChart = ChartOut;
 
-const ChartPlot = dynamic(() => import("@/components/ChartPlot").then((m) => m.ChartPlot), { ssr: false });
+const ChartPlot = dynamic(() => import("@/components/ChartPlot").then((m) => m.ChartPlot), {
+  ssr: false,
+  loading: () => <Skeleton className="h-full w-full" />,
+});
 
 const compact = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
 const full = new Intl.NumberFormat(undefined, { maximumFractionDigits: 4 });
@@ -34,7 +39,7 @@ function numberFormats(currency: string | null | undefined): NumberFormats {
 function ChartCard({ chart, small, showTitle }: { chart: AnswerChart; small: boolean; showTitle: boolean }) {
   const openEvidence = useContext(EvidenceContext);
   const formats = useMemo(() => numberFormats(chart.currency), [chart.currency]);
-  const palette = [useThemeColor("data-1", "#1B6E9C"), useThemeColor("data-2", "#C2652A"), useThemeColor("data-3", "#B0407A")];
+  const palette = [useThemeColor("data-1", "#257DE0"), useThemeColor("data-2", "#C2652A"), useThemeColor("data-3", "#B0407A")];
   const colorFor = (idx: number) => palette[Math.min(idx, palette.length - 1)];
   const keys = chart.y_fields.map((_, i) => `s${i}`);
   const data = chart.rows.map((row) => {
@@ -69,40 +74,44 @@ function ChartCard({ chart, small, showTitle }: { chart: AnswerChart; small: boo
       </div>
       {!small && (
         <details className="mt-2 text-xs text-secondary">
-          <summary className="cursor-pointer select-none hover:text-ink">Show data</summary>
-          <div className="mt-2 max-h-56 overflow-auto">
-            <table className="w-full border-collapse text-left">
-              <thead>
-                <tr>
-                  {[chart.x_field, ...chart.y_fields].map((h) => (
-                    <th key={h} scope="col" className="border-b border-border py-1 pr-3 font-medium text-body">
-                      {humanize(h)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {chart.rows.map((row, r) => (
-                  <tr key={r}>
-                    {row.map((cell, c) => (
-                      <td key={c} className="border-b border-border py-1 pr-3 tabular-nums">
-                        {typeof cell === "number" ? (c > 0 ? formats.value : full).format(cell) : cell ?? "—"}
-                      </td>
+          <summary className="inline-flex min-h-[28px] cursor-pointer list-none select-none items-center hover:text-ink [&::-webkit-details-marker]:hidden">
+            Show data
+          </summary>
+          <div className="mt-1.5 max-h-56 overflow-auto rounded-lg border border-border">
+            <HScroll label={`${chart.title} data`}>
+              <table className="w-full border-collapse text-left">
+                <thead>
+                  <tr className={tableHeadCls}>
+                    {[chart.x_field, ...chart.y_fields].map((h, i) => (
+                      <th key={h} scope="col" className={`whitespace-nowrap px-3 py-2 font-medium ${i > 0 ? "text-right" : ""}`}>
+                        {humanize(h)}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {chart.rows.map((row, r) => (
+                    <tr key={r} className="border-t border-border">
+                      {row.map((cell, c) => (
+                        <td key={c} className={`whitespace-nowrap px-3 py-1.5 tabular-nums text-body ${c > 0 ? "text-right" : ""}`}>
+                          {typeof cell === "number" ? (c > 0 ? formats.value : full).format(cell) : cell ?? "—"}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </HScroll>
           </div>
         </details>
       )}
       {(openEvidence || chart.truncated) && (
-        <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-2xs text-secondary">
+        <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-xs text-secondary">
           {openEvidence && (
             <button
               type="button"
               onClick={() => openEvidence(chart.evidence_id)}
-              className="underline decoration-border-strong underline-offset-4 hover:text-ink"
+              className="inline-flex min-h-[28px] items-center underline decoration-border-strong underline-offset-4 hover:text-ink"
             >
               View source query
             </button>

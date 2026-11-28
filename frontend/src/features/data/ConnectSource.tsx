@@ -274,7 +274,7 @@ function SourceSetup({
                 aria-invalid={Boolean(renameError)}
                 aria-describedby={cx(`${nameId}-help`, renameError && `${nameId}-err`)}
                 onChange={(e) => setTableName(e.target.value)}
-                className={cx(inputCls, "font-mono text-sm", renameError && "border-err")}
+                className={cx(inputCls, "font-mono text-[16px] sm:text-sm", renameError && "border-err")}
               />
               <p id={`${nameId}-help`} className="text-xs text-secondary">
                 {flow.tables[0] ? `${tableMeta(flow.tables[0])}. ` : ""}Renaming here doesn&apos;t upload the file again.

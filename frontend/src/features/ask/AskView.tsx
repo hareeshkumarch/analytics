@@ -1,25 +1,19 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ConnectorLogo, logoIdForFamily } from "@/components/ConnectorLogo";
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/lib/toast";
-import { Icon } from "@/components/Icon";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { API_BASE, apiFetch, cancelRun, clarifyRun, createRun, deleteRun, errorHint, errorMessage, newId } from "@/lib/api/client";
 import { subscribeRunEvents, SseEnvelope } from "@/lib/sse";
 import { useUiStore } from "@/lib/store";
 import { PRESET_SUMMARY, useRoutingPolicy } from "@/lib/routing";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { EvidenceContext, SafeMarkdown } from "@/components/SafeMarkdown";
 import { EvidencePanel } from "@/features/ask/EvidencePanel";
-import { RichSelect } from "@/components/RichSelect";
-import { Badge, Details, FilterChips, Notice, SearchInput, SkeletonRows, Spinner, btn, btnSm, cx, inputBaseCls, inputCls, outlineCls } from "@/components/ui";
+import { Badge, FilterChips, Notice, SearchInput, SkeletonRows, btn, btnSm, cx, outlineCls } from "@/components/ui";
 import {
-  RunLimits,
   datasetLabel,
-  datasetTables,
-  humanize,
   relativeTime,
   useHealth,
   useServerDown,
@@ -27,198 +21,26 @@ import {
   useSnapshots,
   workspacePath,
 } from "@/lib/workspace";
-import type { RunMode } from "@/lib/types";
 import { setUrlParam } from "@/lib/url";
-import { AnswerCharts, type AnswerChart } from "@/components/AnswerCharts";
-import { AnswerVerification, type Criterion } from "@/components/AnswerVerification";
-import { AnswerMenu } from "@/features/ask/AnswerMenu";
 import { SampleDataButton } from "@/components/SampleDataButton";
 import { SAMPLE_QUESTIONS, isSampleDataset } from "@/lib/sample";
-import type { CreatePinRequest, RunOut, RunPageOut, TaskRecordListOut } from "@/lib/api/types";
-import { progressSteps } from "@/lib/progress";
-import { citationNumbers, headlineFigure, stripEvidenceIds } from "@/lib/text";
-
-interface Session {
-  id: string;
-  question: string;
-  mode: RunMode;
-  runId: string | null;
-  status: string;
-  answer: string;
-  charts: AnswerChart[];
-  outcome: string | null;
-  criteria: Criterion[];
-  /** Suggested next questions, sent with the finished answer. */
-  followUps: string[];
-  conversationId: string | null;
-  /** The answer text came from the saved run; replayed answer.delta events must not be appended again. */
-  answerFromServer: boolean;
-  events: SseEnvelope[];
-  error: string | null;
-  createdAt: string | null;
-  snapshotId: string | null;
-  streaming: boolean;
-  connectionLost: boolean;
-  traceLoaded: boolean;
-  lastSeq: number;
-  clarificationPrompt: string | null;
-  clarificationRevision: number;
-  clarificationDraft: string;
-}
-
-type StoredRun = RunOut;
-type RunPage = RunPageOut;
-
-type HistoryFilter = "all" | "done" | "running" | "failed";
-
-const TERMINAL = new Set(["completed", "failed", "cancelled"]);
-const FINISHED_MESSAGES: Record<string, string> = {
-  completed: "Answer ready.",
-  failed: "The run failed.",
-  cancelled: "The run was cancelled.",
-};
-const isTerminal = (status: string) => TERMINAL.has(status);
-// Browsers allow about six HTTP/1.1 connections per host; the rest stay free for API calls.
-const MAX_LIVE_STREAMS = 3;
-
-const OPERATION_LABELS: Record<string, string> = {
-  aggregate: "Summary",
-  detail: "Rows",
-  compare_periods: "Period comparison",
-  contribution_breakdown: "Breakdown",
-  distribution: "Distribution",
-  reconciliation_lookup: "Reconciliation",
-};
-
-function budgetCopy(limits: RunLimits | undefined): string {
-  if (!limits) return "";
-  const minutes = Math.round(limits.active_seconds / 60);
-  return `Up to ${limits.total_model_attempts} model calls · ${minutes} min`;
-}
-
-function fromStored(run: StoredRun): Session {
-  const answer = run.answer?.summary_markdown ?? "";
-  return {
-    id: run.run_id,
-    question: run.question || "Untitled question",
-    mode: run.mode ?? "quick",
-    runId: run.run_id,
-    status: run.status,
-    answer,
-    charts: run.answer?.charts ?? [],
-    outcome: run.answer?.outcome ?? null,
-    criteria: run.answer?.criteria ?? [],
-    followUps: run.answer?.follow_ups ?? [],
-    conversationId: run.conversation_id ?? null,
-    answerFromServer: Boolean(answer),
-    events: [],
-    error: run.error ?? null,
-    createdAt: run.created_at ?? null,
-    snapshotId: run.snapshot_id ?? null,
-    streaming: false,
-    connectionLost: false,
-    traceLoaded: false,
-    lastSeq: 0,
-    clarificationPrompt: run.clarification_prompt ?? null,
-    clarificationRevision: run.clarification_revision ?? 0,
-    clarificationDraft: "",
-  };
-}
-
-const STREAM_FLUSH_MS = 80;
-
-function applyEvents(s: Session, evts: SseEnvelope[]): Partial<Session> {
-  let state = s;
-  for (const evt of evts) state = { ...state, ...applyEvent(state, evt) };
-  const kept = evts.filter((e) => e.type !== "answer.delta");
-  return { ...state, events: kept.length ? [...s.events, ...kept] : s.events, lastSeq: Math.max(s.lastSeq, ...evts.map((e) => e.sequence)) };
-}
-
-function applyEvent(s: Session, evt: SseEnvelope): Partial<Session> {
-  const next: Partial<Session> = {};
-  if (evt.type === "answer.reset") {
-    next.answer = "";
-    next.answerFromServer = false;
-  }
-  if (evt.type === "answer.delta" && !s.answerFromServer) next.answer = s.answer + String(evt.payload.text ?? "");
-  if (evt.type === "run.status" || evt.type === "run.finished") {
-    next.status = String(evt.payload.status ?? (evt.type === "run.finished" ? "completed" : s.status));
-    if (evt.payload.status === "queued" || evt.payload.status === "running") {
-      next.clarificationPrompt = null;
-      next.clarificationDraft = "";
-    }
-    if (evt.payload.revision !== undefined) {
-      next.clarificationRevision = Number(evt.payload.revision);
-    }
-  }
-  if (evt.type === "clarification.required") {
-    next.status = "awaiting_input";
-    next.clarificationPrompt = String(evt.payload.prompt ?? "Please clarify your question.");
-    next.clarificationRevision = Number(evt.payload.revision ?? s.clarificationRevision);
-  }
-  if (evt.type === "run.finished") {
-    next.streaming = false;
-    next.connectionLost = false;
-    if (typeof evt.payload.outcome === "string") next.outcome = evt.payload.outcome;
-    if (Array.isArray(evt.payload.criteria)) next.criteria = evt.payload.criteria as Criterion[];
-    const failedTasks = Number(evt.payload.failed_tasks ?? 0);
-    if (evt.payload.error) next.error = String(evt.payload.error);
-    else if (failedTasks > 0) {
-      next.error = `${failedTasks} step${failedTasks === 1 ? "" : "s"} failed, so the answer may be partial.`;
-    }
-  }
-  return next;
-}
-
-/** Turn raw backend/provider errors into plain words; the raw text stays available under "Details". */
-function friendlyError(raw: string): { title: string; hint: string | null } {
-  const r = raw.toLowerCase();
-  if (r.includes("may be partial")) return { title: raw, hint: null };
-  if (r.includes("setup_required") || r.includes("api key") || r.includes("not configured") || r.includes("no eligible"))
-    return { title: "No AI provider is ready", hint: "Add an API key in Settings, then ask again." };
-  if (r.includes("budget") || r.includes("ceiling"))
-    return { title: "The run hit its budget limit", hint: "Try Quick mode or a narrower question, or raise the cost ceiling in Settings." };
-  if (r.includes("timeout") || r.includes("timed out"))
-    return { title: "The model took too long to respond", hint: "Try again, or pick a faster routing preset in Settings." };
-  if (r.includes("not approved")) return { title: "This dataset isn't approved yet", hint: "Approve its definitions on the Data page." };
-  if (r.includes("reach") && r.includes("api")) return { title: raw, hint: null };
-  return { title: "The run didn't finish", hint: "Try again. The technical reason is under Details." };
-}
-
-function statusTone(status: string): "ok" | "err" | "neutral" | "warn" {
-  if (status === "completed") return "ok";
-  if (status === "failed") return "err";
-  if (status === "cancelled") return "neutral";
-  return "warn";
-}
-
-function statusLabel(status: string): string {
-  if (status === "completed") return "Done";
-  if (status === "queued") return "Queued";
-  if (status === "running") return "Working";
-  if (status === "awaiting_input") return "Needs your input";
-  return humanize(status);
-}
-
-const BUDGET_RESOURCES: Record<string, string> = { model_calls: "Model calls", tokens: "Tokens" };
-
-const ROUTE_LABELS: Record<string, string> = {
-  direct_query: "Direct query (no planning step)",
-  standard: "Planned",
-  deep: "Deep investigation",
-};
-
-const SUMMARY_FIELDS = ["status", "task_id", "tool", "provider_id", "model_id", "revision", "row_count", "truncated", "code"];
-
-function eventSummary(payload: Record<string, unknown>): string {
-  return SUMMARY_FIELDS.filter((k) => ["string", "number", "boolean"].includes(typeof payload[k]))
-    .map((k) => `${k}=${String(payload[k])}`)
-    .join(" ");
-}
-
-function taskName(taskId: string): string {
-  return humanize(taskId.replace(/^t\d+_/, ""));
-}
+import type { CreatePinRequest } from "@/lib/api/types";
+import { AskComposer } from "@/features/ask/AskComposer";
+import { AskThreadTurn } from "@/features/ask/AskThreadTurn";
+import {
+  FINISHED_MESSAGES,
+  HistoryFilter,
+  MAX_LIVE_STREAMS,
+  RunPage,
+  STREAM_FLUSH_MS,
+  Session,
+  StoredRun,
+  applyEvents,
+  budgetCopy,
+  fromStored,
+  isTerminal,
+  statusLabel,
+} from "@/features/ask/askTypes";
 
 const HistoryItem = React.memo(function HistoryItem({
   id,
@@ -264,38 +86,35 @@ const HistoryItem = React.memo(function HistoryItem({
   );
 });
 
-function RunProgress({ events, workspaceId, runId }: { events: SseEnvelope[]; workspaceId: string; runId: string | null }) {
-  const changes = events.filter((e) => e.type === "task.status" || e.type === "plan.updated").length;
-  const records = useQuery({
-    queryKey: ["run-tasks", workspaceId, runId, changes],
-    queryFn: () => apiFetch<TaskRecordListOut>(workspacePath(workspaceId, `/runs/${encodeURIComponent(runId!)}/tasks`)),
-    enabled: Boolean(runId) && changes > 0,
-    placeholderData: (previous) => previous,
-  });
-  const steps = progressSteps(events, records.data?.tasks);
-  if (!steps.length) return null;
-  return (
-    <ol className="space-y-1.5" aria-label="Progress">
-      {steps.map(({ taskId: t, status: st, queries }) => {
-        return (
-          <li key={t} className="flex items-center gap-2.5 text-sm">
-            <span
-              aria-hidden="true"
-              className={cx(
-                "h-2 w-2 shrink-0 rounded-full",
-                st === "completed" ? "bg-ok-dot" : st === "failed" ? "bg-err-dot" : st === "running" ? "animate-pulse bg-warn-dot" : "bg-border-strong"
-              )}
-            />
-            <span className={st === "pending" ? "text-secondary" : "text-ink"}>{taskName(t)}</span>
-            <span className="text-xs text-secondary">
-              {st === "running" ? "working" : st === "completed" ? "done" : st === "failed" ? "failed" : st === "superseded" ? "replaced" : st === "cancelled" ? "skipped" : "waiting"}
-              {queries ? ` · ${queries} quer${queries === 1 ? "y" : "ies"}` : ""}
-            </span>
-          </li>
-        );
-      })}
-    </ol>
-  );
+function AskUrlSync({
+  onRunParam,
+  onDatasetParam,
+}: {
+  onRunParam: (runId: string | null) => void;
+  onDatasetParam: (snapshotId: string) => void;
+}) {
+  const searchParams = useSearchParams();
+  const run = searchParams.get("run");
+  const dataset = searchParams.get("dataset");
+  const prevRun = useRef<string | null | undefined>(undefined);
+  const prevDataset = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (prevRun.current !== run) {
+      const first = prevRun.current === undefined;
+      prevRun.current = run;
+      if (!first || run) onRunParam(run);
+    }
+  }, [run, onRunParam]);
+
+  useEffect(() => {
+    if (dataset && dataset !== prevDataset.current) {
+      prevDataset.current = dataset;
+      onDatasetParam(dataset);
+    }
+  }, [dataset, onDatasetParam]);
+
+  return null;
 }
 
 export function AskView() {
@@ -346,27 +165,55 @@ export function AskView() {
   const [pinningRunId, setPinningRunId] = useState<string | null>(null);
   const [pinnedRunIds, setPinnedRunIds] = useState<Set<string>>(() => new Set());
   const [pinError, setPinError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const [clarificationSubmitting, setClarificationSubmitting] = useState(false);
-  const [openEvidence, setOpenEvidence] = useState<string | null>(null);
+  const [openEvidence, setOpenEvidence] = useState<{ runId: string; evidenceId: string } | null>(null);
   const [historyQuery, setHistoryQuery] = useState("");
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [isMac, setIsMac] = useState(false);
   const closeEvidence = useCallback(() => setOpenEvidence(null), []);
+  const handleOpenEvidence = useCallback((runId: string, evidenceId: string) => setOpenEvidence({ runId, evidenceId }), []);
   const closers = useRef(new Map<string, () => void>());
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const turnRefs = useRef(new Map<string, HTMLElement | null>());
+  const fetchedDetailsRef = useRef(new Set<string>());
   const unmounted = useRef(false);
 
-  // Read deep links once: ?run=<run_id> opens a saved run, ?dataset=<snapshot_id> preselects a dataset.
   useEffect(() => {
     setIsMac(/Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent));
-    const params = new URLSearchParams(window.location.search);
-    setPendingRunParam(params.get("run"));
-    const dataset = params.get("dataset");
-    if (dataset) setChosenSnapshot(dataset);
   }, []);
+
+  const handleUrlRun = useCallback((runId: string | null) => {
+    if (runId) {
+      setPendingRunParam(runId);
+    } else {
+      setPendingRunParam(null);
+      setActiveId(null);
+      setOpenEvidence(null);
+      setConfirmDeleteId(null);
+      setPinError(null);
+    }
+  }, []);
+
+  const handleUrlDataset = useCallback((datasetId: string) => {
+    setChosenSnapshot(datasetId);
+  }, []);
+
+  useEffect(() => {
+    closers.current.forEach((close) => close());
+    closers.current.clear();
+    pending.current.forEach((p) => window.clearTimeout(p.timer));
+    pending.current.clear();
+    fetchedDetailsRef.current.clear();
+    setSessions([]);
+    setActiveId(null);
+    setPendingRunParam(null);
+    setOpenEvidence(null);
+    setConfirmDeleteId(null);
+    setPinError(null);
+    setOlderRuns({ runs: [], next: undefined });
+  }, [activeWorkspaceId]);
 
   useEffect(() => {
     unmounted.current = false;
@@ -418,6 +265,7 @@ export function AskView() {
         const nextError = r.error ?? s.error;
         const outcome = r.answer?.outcome ?? s.outcome;
         const followUps = r.answer?.follow_ups ?? s.followUps;
+        const limitations = r.answer?.limitations ?? s.limitations;
         const prompt = r.clarification_prompt ?? null;
         const revision = r.clarification_revision ?? s.clarificationRevision;
         if (
@@ -428,6 +276,7 @@ export function AskView() {
           nextError === s.error &&
           outcome === s.outcome &&
           followUps.join("\n") === s.followUps.join("\n") &&
+          limitations.join("\n") === s.limitations.join("\n") &&
           prompt === s.clarificationPrompt &&
           revision === s.clarificationRevision
         ) return s;
@@ -438,6 +287,7 @@ export function AskView() {
           charts: serverCharts,
           outcome,
           criteria: r.answer?.criteria ?? s.criteria,
+          limitations,
           followUps,
           conversationId: r.conversation_id ?? s.conversationId,
           answerFromServer: Boolean(serverAnswer) || s.answerFromServer,
@@ -524,6 +374,18 @@ export function AskView() {
             closeStream(sessionId);
             void queryClient.invalidateQueries({ queryKey: ["runs", activeWorkspaceId] });
             void queryClient.invalidateQueries({ queryKey: ["usage", activeWorkspaceId] });
+            if (!fetchedDetailsRef.current.has(runId)) {
+              fetchedDetailsRef.current.add(runId);
+              void apiFetch<StoredRun>(workspacePath(activeWorkspaceId, `/runs/${encodeURIComponent(runId)}`))
+                .then((detail) => {
+                  if (unmounted.current) return;
+                  const lims = detail.answer?.limitations;
+                  if (Array.isArray(lims) && lims.length > 0) {
+                    patch(sessionId, () => ({ limitations: lims }));
+                  }
+                })
+                .catch(() => {});
+            }
           }
         },
         onResetDraft: () => flush(sessionId),
@@ -548,6 +410,15 @@ export function AskView() {
   );
 
   const active = sessions.find((s) => s.id === activeId) ?? null;
+  const activeThread = useMemo(() => {
+    if (!active) return [];
+    if (!active.conversationId) return [active];
+    return sessions
+      .filter((s) => s.conversationId === active.conversationId)
+      .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? "") || a.id.localeCompare(b.id));
+  }, [active, sessions]);
+  const latestTurn = activeThread.length ? activeThread[activeThread.length - 1] : active;
+
   const watched = useRef<{ id: string | null; status: string | null }>({ id: null, status: null });
   const activeKey = active?.id ?? null;
   const activeStatus = active?.status ?? null;
@@ -557,50 +428,39 @@ export function AskView() {
     watched.current = { id: activeKey, status: activeStatus };
     if (previous.id !== activeKey) {
       setLiveMessage("");
+      if (activeKey && activeThread.length > 1) {
+        turnRefs.current.get(activeKey)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
       return;
     }
     const finished = activeStatus !== null && isTerminal(activeStatus);
     const wasRunning = previous.status !== null && !isTerminal(previous.status);
     if (finished && wasRunning) setLiveMessage(FINISHED_MESSAGES[activeStatus] ?? "");
-  }, [activeKey, activeStatus]);
+  }, [activeKey, activeStatus, activeThread.length]);
 
-  // Opening a saved run loads its trace once; a run that is still working resumes live updates.
+  // Opening a conversation loads traces and single-run details (such as limitations) for its turns.
   useEffect(() => {
-    if (!active?.runId || active.streaming || closers.current.has(active.id)) return;
-    if (active.traceLoaded) return;
-    attach(active.id, active.runId, 0);
-  }, [active?.id, active?.runId, active?.streaming, active?.traceLoaded, attach]);
-
-  const isBusy = active ? !isTerminal(active.status) : false;
-  const isAwaitingInput = active?.status === "awaiting_input";
-  const isWorking = isBusy && !isAwaitingInput;
-  const headline = useMemo(
-    () => (active?.status === "completed" && active.answer ? headlineFigure(active.answer) : null),
-    [active?.status, active?.answer],
-  );
-  const canCopy = active?.status === "completed" && Boolean(active.runId && active.answer);
-  const canDelete = Boolean(active?.runId) && !isBusy && Boolean(active && isTerminal(active.status));
-  const toolEvents = active ? active.events.filter((e) => e.type === "tool.result") : [];
-  const nonSchemaTools = toolEvents.filter(
-    (e, i, all) =>
-      e.payload.tool !== "inspect_schema" &&
-      (typeof e.payload.evidence_id !== "string" || all.findIndex((o) => o.payload.evidence_id === e.payload.evidence_id) === i)
-  );
-  const sourceNumbers = useMemo(() => citationNumbers(active?.answer ?? ""), [active?.answer]);
-  const finishedEvent = active ? [...active.events].reverse().find((e) => e.type === "run.finished") : undefined;
-  const timeLimited = Boolean(finishedEvent?.payload.time_budget_exceeded);
-  const budgetWarnings = active ? active.events.filter((e) => e.type === "budget.warning") : [];
-  const planEvent = active ? [...active.events].reverse().find((e) => e.type === "plan.updated") : undefined;
-  const route = typeof planEvent?.payload.route === "string" ? planEvent.payload.route : null;
-  const models = active
-    ? Array.from(
-        new Set(
-          active.events
-            .filter((e) => e.type === "route.selected")
-            .map((e) => `${String(e.payload.provider ?? "")} · ${String(e.payload.model ?? "")}`)
-        )
-      )
-    : [];
+    for (const s of activeThread) {
+      if (!s.runId) continue;
+      if (s.status === "completed" && s.limitations.length === 0 && !fetchedDetailsRef.current.has(s.runId)) {
+        const rid = s.runId;
+        const sid = s.id;
+        fetchedDetailsRef.current.add(rid);
+        void apiFetch<StoredRun>(workspacePath(activeWorkspaceId, `/runs/${encodeURIComponent(rid)}`))
+          .then((detail) => {
+            if (unmounted.current) return;
+            const lims = detail.answer?.limitations;
+            if (Array.isArray(lims) && lims.length > 0) {
+              patch(sid, () => ({ limitations: lims }));
+            }
+          })
+          .catch(() => {});
+      }
+      if (!s.streaming && !closers.current.has(s.id) && !s.traceLoaded) {
+        attach(s.id, s.runId, 0);
+      }
+    }
+  }, [activeThread, activeWorkspaceId, attach, patch]);
 
   // Readiness: a provider key and an approved dataset are both required before asking.
   const anyProvider = providers.data ? providers.data.providers.some((p) => p.configured) : null;
@@ -659,6 +519,7 @@ export function AskView() {
         charts: [],
         outcome: null,
         criteria: [],
+        limitations: [],
         followUps: [],
         conversationId: target.followUpOf
           ? (sessions.find((s) => s.runId === target.followUpOf)?.conversationId ?? null)
@@ -724,16 +585,20 @@ export function AskView() {
   async function handleFollowUp(e: React.FormEvent) {
     e.preventDefault();
     const question = followUpDraft.trim();
-    if (!question || submitting || !active?.runId || !active.snapshotId) return;
+    const anchor = latestTurn ?? active;
+    if (!question || submitting || !anchor?.runId) return;
+    const targetSnapshotId =
+      anchor.snapshotId && snapshotById.get(anchor.snapshotId)?.approved ? anchor.snapshotId : snapshot?.snapshot_id;
+    if (!targetSnapshotId) return;
     setFollowUpDraft("");
-    await startRun(question, { snapshotId: active.snapshotId, followUpOf: active.runId }, setFollowUpDraft);
+    await startRun(question, { snapshotId: targetSnapshotId, followUpOf: anchor.runId }, setFollowUpDraft);
   }
 
-  async function handleCancel() {
-    if (!active?.runId) return;
-    const id = active.id;
+  async function handleCancel(target: Session) {
+    if (!target.runId) return;
+    const id = target.id;
     try {
-      const r = await cancelRun(activeWorkspaceId, active.runId);
+      const r = await cancelRun(activeWorkspaceId, target.runId);
       patch(id, () => ({ status: r.status }));
       void queryClient.invalidateQueries({ queryKey: ["runs", activeWorkspaceId] });
       if (isTerminal(r.status)) closeStream(id);
@@ -742,13 +607,9 @@ export function AskView() {
     }
   }
 
-  async function handleDelete() {
-    if (!active?.runId) return;
-    if (confirmDeleteId !== active.id) {
-      setConfirmDeleteId(active.id);
-      return;
-    }
-    const { id, runId } = active;
+  async function handleConfirmDelete(target: Session) {
+    if (!target.runId) return;
+    const { id, runId } = target;
     setConfirmDeleteId(null);
     try {
       await deleteRun(activeWorkspaceId, runId);
@@ -758,27 +619,31 @@ export function AskView() {
         page ? { ...page, runs: page.runs.filter((r) => r.run_id !== runId) } : page
       );
       setSessions((prev) => prev.filter((s) => s.id !== id));
-      setActiveId(null);
-      setUrlParam("run", null);
+      if (activeId === id) {
+        const nextTurn = activeThread.find((t) => t.id !== id) ?? null;
+        setActiveId(nextTurn ? nextTurn.id : null);
+        setUrlParam("run", nextTurn?.runId ?? null);
+      }
+      if (openEvidence?.runId === runId) setOpenEvidence(null);
       void queryClient.invalidateQueries({ queryKey: ["pins", activeWorkspaceId] });
     } catch (err) {
       patch(id, () => ({ error: errorMessage(err, "Couldn't delete this question.") }));
     }
   }
 
-  async function handleClarificationSubmit(e: React.FormEvent) {
+  async function handleClarificationSubmit(target: Session, e: React.FormEvent) {
     e.preventDefault();
-    if (!active?.runId || !active.clarificationPrompt || clarificationSubmitting) return;
-    const answer = active.clarificationDraft.trim();
+    if (!target.runId || !target.clarificationPrompt || clarificationSubmitting) return;
+    const answer = target.clarificationDraft.trim();
     if (!answer) return;
-    const id = active.id;
+    const id = target.id;
     setClarificationSubmitting(true);
     patch(id, () => ({ error: null }));
     try {
       const result = await clarifyRun(
         activeWorkspaceId,
-        active.runId,
-        active.clarificationRevision,
+        target.runId,
+        target.clarificationRevision,
         answer
       );
       patch(id, () => ({
@@ -788,7 +653,7 @@ export function AskView() {
         clarificationDraft: "",
       }));
       void queryClient.invalidateQueries({ queryKey: ["runs", activeWorkspaceId] });
-      if (!closers.current.has(id)) attach(id, active.runId, active.lastSeq);
+      if (!closers.current.has(id)) attach(id, target.runId, target.lastSeq);
     } catch (err) {
       patch(id, () => ({ error: errorMessage(err, "Couldn't send your clarification.") }));
       void queryClient.invalidateQueries({ queryKey: ["runs", activeWorkspaceId] });
@@ -797,17 +662,17 @@ export function AskView() {
     }
   }
 
-  async function handlePin() {
-    if (!active?.runId || active.status !== "completed" || pinnedRunIds.has(active.runId)) return;
-    const runId = active.runId;
+  async function handlePin(target: Session) {
+    if (!target.runId || target.status !== "completed" || pinnedRunIds.has(target.runId)) return;
+    const runId = target.runId;
     setPinningRunId(runId);
     setPinError(null);
     try {
       await apiFetch(workspacePath(activeWorkspaceId, "/pins"), {
         method: "POST",
         body: JSON.stringify({
-          title: active.question.trim().slice(0, inputLimits?.max_pin_title_chars) || "Pinned answer",
-          question_text: active.question,
+          title: target.question.trim().slice(0, inputLimits?.max_pin_title_chars) || "Pinned answer",
+          question_text: target.question,
           run_id: runId,
         } satisfies CreatePinRequest),
       });
@@ -821,16 +686,10 @@ export function AskView() {
     }
   }
 
-  async function copyAnswer() {
-    if (!active?.answer) return;
-    try {
-      await navigator.clipboard.writeText(stripEvidenceIds(active.answer));
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      setCopied(false);
-      setPinError("Couldn't copy automatically; select and copy the answer text below.");
-    }
+  function handleRetry(target: Session) {
+    const targetId = target.snapshotId && snapshotById.get(target.snapshotId)?.approved ? target.snapshotId : snapshot?.snapshot_id;
+    if (!targetId) return;
+    void startRun(target.question, { snapshotId: targetId }, setDraftQuestion);
   }
 
   function startNew() {
@@ -839,7 +698,7 @@ export function AskView() {
     setConfirmDeleteId(null);
     setPinError(null);
     setUrlParam("run", null);
-    textareaRef.current?.focus();
+    requestAnimationFrame(() => textareaRef.current?.focus());
   }
 
   const sortedSessions = useMemo(
@@ -876,114 +735,30 @@ export function AskView() {
 
   const presetSummary = routing.data ? PRESET_SUMMARY[routing.data.preset] : undefined;
   const activeDataset = active?.snapshotId ? snapshotById.get(active.snapshotId) : undefined;
-  const errorInfo = active?.error ? friendlyError(active.error) : null;
-
   const composer = (
-    <div className="space-y-1.5">
-      <form
-        onSubmit={handleSubmit}
-        className={cx(
-          "flex flex-col gap-2 rounded-xl p-2 transition-shadow",
-          canAsk
-            ? "bg-popover shadow-composer"
-            : "bg-ink/[0.03] shadow-[inset_0_0_0_1px_rgb(var(--ink)/0.08)]"
-        )}
-      >
-        <textarea
-          ref={textareaRef}
-          aria-label="Your question"
-          rows={2}
-          maxLength={inputLimits?.max_question_chars}
-          value={draftQuestion}
-          onChange={(e) => setDraftQuestion(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              e.currentTarget.form?.requestSubmit();
-            }
-          }}
-          placeholder={canAsk ? "Ask about your approved data…" : "Finish setup to start asking questions"}
-          className={cx(
-            "min-h-[50px] w-full resize-none bg-transparent px-2 pt-1.5 text-md leading-[21px] placeholder:text-secondary/70 focus:outline-none",
-            canAsk ? "text-ink" : "text-secondary"
-          )}
-        />
-
-        <div className="flex items-end justify-between gap-2.5">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-            <div role="group" aria-label="Run mode" className="inline-flex h-7 items-center rounded-md bg-ink/[0.05] p-[2px] dark:bg-ink/[0.08]">
-              {(["quick", "deep"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  aria-pressed={runMode === mode}
-                  onClick={() => setRunMode(mode)}
-                  title={mode === "quick" ? "One focused analysis step" : "Plans several steps and reviews the evidence"}
-                  className={cx(
-                    "h-6 rounded px-2.5 text-sm font-medium capitalize transition-colors",
-                    runMode === mode ? "bg-popover text-ink shadow-[0_0_0_1px_rgb(var(--ink)/0.08)]" : "text-secondary hover:text-ink"
-                  )}
-                >
-                  {mode}
-                </button>
-              ))}
-            </div>
-
-            <div className="min-w-[140px] flex-1 basis-[140px] sm:flex-none sm:basis-auto">
-              <RichSelect
-                dense
-                triggerClassName="w-full sm:w-auto sm:min-w-[168px] sm:max-w-[320px]"
-                ariaLabel="Dataset"
-                value={snapshot?.snapshot_id ?? ""}
-                placeholder={snapshotsQuery.isLoading ? "Loading datasets…" : "No approved dataset"}
-                options={snapshots.map((s) => ({
-                  value: s.snapshot_id,
-                  label: `${datasetLabel(s)} · v${s.version}`,
-                  sublabel: s.approved
-                    ? `${s.display_name ? `${datasetTables(s)} · ` : ""}${s.total_rows.toLocaleString()} rows`
-                    : "Needs approval on the Data page",
-                  badge: s.approved ? undefined : "Draft",
-                  disabled: !s.approved,
-                  icon: <ConnectorLogo id={logoIdForFamily(s.source_family) ?? "file"} />,
-                }))}
-                searchable={snapshots.length > 8}
-                disabled={approvedSnapshots.length === 0}
-                onChange={setChosenSnapshot}
-              />
-            </div>
-
-            <Link
-              href="/settings"
-              className={cx(btnSm.ghost, "whitespace-nowrap")}
-              title="Which models answer: applies to every question in this workspace. Change it in Settings."
-            >
-              <span className="text-secondary">Models</span>
-              {presetSummary ?? (routing.isLoading ? "…" : PRESET_SUMMARY.balanced)}
-            </Link>
-          </div>
-
-          <div className="ml-auto flex shrink-0 items-center gap-2.5">
-            <span className="hidden text-xs text-secondary sm:inline">{isMac ? "⌘ + Enter" : "Ctrl + Enter"}</span>
-            <button
-              type="submit"
-              aria-label={submitting ? "Starting" : runMode === "quick" ? "Ask (quick)" : "Ask (deep)"}
-              disabled={!draftQuestion.trim() || submitting || !canAsk}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {submitting ? (
-                <Spinner className="h-4 w-4" />
-              ) : (
-                <Icon name="arrow-up" className="h-[17px] w-[17px]" />
-              )}
-            </button>
-          </div>
-        </div>
-      </form>
-      {budget && <p className="px-0.5 text-xs text-secondary">{budget}</p>}
-      {health.isError && !serverDown && (
-        <p className="px-0.5 text-xs text-secondary">Run limits are unavailable right now; the API health check failed.</p>
-      )}
-    </div>
+    <AskComposer
+      variant="new"
+      value={draftQuestion}
+      onChange={setDraftQuestion}
+      onSubmit={handleSubmit}
+      textareaRef={textareaRef}
+      runMode={runMode}
+      onRunModeChange={setRunMode}
+      snapshots={snapshots}
+      approvedCount={approvedSnapshots.length}
+      selectedSnapshot={snapshot ?? undefined}
+      onSnapshotChange={setChosenSnapshot}
+      snapshotsLoading={snapshotsQuery.isLoading}
+      canAsk={canAsk}
+      submitting={submitting}
+      presetSummary={presetSummary ?? null}
+      routingLoading={routing.isLoading}
+      isMac={isMac}
+      maxLength={inputLimits?.max_question_chars}
+      budget={budget}
+      healthError={health.isError}
+      serverDown={serverDown}
+    />
   );
 
   const historyItem = (s: Session, followUp = false) => (
@@ -1067,13 +842,17 @@ export function AskView() {
 
   return (
     <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_260px]">
+      <Suspense fallback={null}>
+        <AskUrlSync onRunParam={handleUrlRun} onDatasetParam={handleUrlDataset} />
+      </Suspense>
       <p className="sr-only" aria-live="polite">
         {liveMessage}
       </p>
       {active && <h1 className="sr-only">Ask Ledgerline</h1>}
       <div className={cx("min-w-0", active ? "space-y-6" : "space-y-4")}>
         {!active && (
-          <header className="flex flex-col items-center gap-3 pt-4 text-center sm:pt-[8vh]">
+          <header className="relative isolate flex flex-col items-center gap-3 pt-4 text-center sm:pt-[8vh]">
+            <div aria-hidden="true" className="bg-dot-grid pointer-events-none absolute -inset-x-6 -bottom-4 top-0 -z-10" />
             <h1 className="font-display text-[28px] font-[360] leading-[1.2] sm:text-[32px]">What would you like to know?</h1>
             <p className="max-w-[560px] text-base leading-relaxed text-secondary">
               <strong className="font-medium text-ink">Quick</strong> answers one focused question.{" "}
@@ -1083,7 +862,7 @@ export function AskView() {
           </header>
         )}
 
-        {blockers.length > 0 && !serverDown && (
+        {!active && blockers.length > 0 && !serverDown && (
           <section aria-label="Setup" className="rounded-lg border border-border bg-surface p-3.5 sm:p-4">
             <h2 className="text-md font-semibold">Before your first question</h2>
             <ol className="mt-2.5 space-y-1.5">
@@ -1113,7 +892,7 @@ export function AskView() {
           </section>
         )}
 
-        {composer}
+        {!active && composer}
         {!active && isSampleDataset(snapshot) && (
           <section aria-label="Example questions" className="space-y-2">
             <p className="text-xs text-secondary">Questions to try on the sample data:</p>
@@ -1142,301 +921,107 @@ export function AskView() {
         )}
 
         {active && (
-          <article aria-label="Current question" className="space-y-4">
-            <div className="flex justify-end">
-              <p className="max-w-[560px] whitespace-pre-wrap break-words rounded-xl bg-bubble px-4 py-2.5 text-base leading-relaxed">{active.question}</p>
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3.5 py-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-secondary">
+                {activeDataset ? (
+                  <span className="truncate font-medium text-ink">
+                    {datasetLabel(activeDataset)} · v{activeDataset.version}
+                  </span>
+                ) : latestTurn?.snapshotId && !snapshotsQuery.isLoading ? (
+                  <Badge tone="neutral">Removed dataset</Badge>
+                ) : null}
+                <span>
+                  {activeThread.length} {activeThread.length === 1 ? "turn" : "turns"}
+                </span>
+              </div>
+              <button type="button" onClick={startNew} className={cx(btn.ghost, "h-7 px-2.5 text-xs")}>
+                New question
+              </button>
             </div>
 
-            <section aria-label="Answer" aria-busy={isWorking} className="space-y-4 rounded-xl border border-border bg-surface p-5 sm:px-6 sm:py-5">
-              <div className="flex flex-wrap items-center justify-between gap-2.5">
-                <span className="min-w-0 truncate text-xs text-secondary">
-                  {active.mode === "deep" ? "Deep investigation" : "Quick answer"}
-                  {activeDataset ? ` · ${datasetLabel(activeDataset)} v${activeDataset.version}` : ""}
-                  {active.createdAt ? ` · ${relativeTime(active.createdAt)}` : ""}
-                </span>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={statusTone(active.status)} dot pulse={isWorking}>
-                    {statusLabel(active.status)}
-                  </Badge>
-                  {active.status === "completed" && active.runId && (
-                    pinnedRunIds.has(active.runId) ? (
-                      <Link href="/dashboard" className={btn.secondary}>
-                        Pinned · open Dashboard
-                      </Link>
-                    ) : (
-                      <button type="button" onClick={() => void handlePin()} disabled={pinningRunId === active.runId} className={btn.secondary}>
-                        {pinningRunId === active.runId ? "Pinning…" : "Pin to Dashboard"}
-                      </button>
-                    )
-                  )}
-                  {isBusy && active.runId && (
-                    <button type="button" onClick={() => void handleCancel()} className={btn.secondary}>
-                      Cancel
-                    </button>
-                  )}
-                  {confirmDeleteId === active.id ? (
-                    <>
-                      <button type="button" onClick={() => void handleDelete()} className={cx(btn.secondary, "border-err text-err hover:border-err")}>
-                        Confirm delete
-                      </button>
-                      <button type="button" onClick={() => setConfirmDeleteId(null)} className={btn.ghost}>
-                        Keep it
-                      </button>
-                    </>
-                  ) : (
-                    (canCopy || canDelete) && (
-                      <AnswerMenu
-                        workspaceId={activeWorkspaceId}
-                        runId={canCopy ? active.runId : null}
-                        question={active.question}
-                        copied={copied}
-                        onCopy={canCopy ? () => void copyAnswer() : undefined}
-                        onDelete={canDelete ? () => void handleDelete() : undefined}
-                      />
-                    )
-                  )}
-                </div>
-              </div>
+            {pinError && <Notice tone="err" title={pinError} />}
 
-              {active.connectionLost && isBusy && (
-                <Notice
-                  tone="warn"
-                  title="Live updates stopped"
-                  action={
-                    <button type="button" className={btn.secondary} onClick={() => active.runId && attach(active.id, active.runId, active.lastSeq)}>
-                      Reconnect
-                    </button>
-                  }
-                >
-                  The run may still be working. This page also checks its status every few seconds.
-                </Notice>
-              )}
-              {errorInfo && (
-                <Notice
-                  tone={active.status === "failed" ? "err" : "warn"}
-                  title={errorInfo.title}
-                  action={
-                    active.status === "failed" && canAsk && (snapshot || active.snapshotId) ? (
-                      <button
-                        type="button"
-                        className={btn.secondary}
-                        disabled={submitting}
-                        onClick={() => {
-                          const targetId = active.snapshotId && snapshotById.get(active.snapshotId)?.approved ? active.snapshotId : snapshot?.snapshot_id;
-                          if (!targetId) return;
-                          void startRun(active.question, { snapshotId: targetId }, setDraftQuestion);
-                        }}
-                      >
-                        Retry question
-                      </button>
-                    ) : undefined
-                  }
-                >
-                  {errorInfo.hint}
-                  {errorInfo.title !== active.error && (
-                    <Details summary="Details" className="mt-1">
-                      <p className="break-words font-mono text-xs opacity-80">{active.error}</p>
-                    </Details>
-                  )}
-                </Notice>
-              )}
-              {timeLimited && (
-                <Notice tone="warn" title="Stopped at the time limit">
-                  The answer may be incomplete. Try Quick mode or a narrower question.
-                </Notice>
-              )}
-              {budgetWarnings.length > 0 && (
-                <Notice tone="warn" title="This run is close to its budget">
-                  {budgetWarnings
-                    .map((e) => `${BUDGET_RESOURCES[String(e.payload.resource)] ?? String(e.payload.resource)}: ${Number(e.payload.used).toLocaleString()} of ${Number(e.payload.limit).toLocaleString()} used`)
-                    .join(" · ")}
-                  . Later steps may be skipped and the answer may be partial.
-                </Notice>
-              )}
-              {pinError && <Notice tone="err" title={pinError} />}
+            <div className="space-y-6">
+              {activeThread.map((turn, idx) => (
+                <AskThreadTurn
+                  key={turn.id}
+                  session={turn}
+                  turnIndex={idx}
+                  isFocusedTurn={turn.id === active.id}
+                  isLatestTurn={idx === activeThread.length - 1}
+                  snapshotsLoading={snapshotsQuery.isLoading}
+                  snapshotById={snapshotById}
+                  fallbackSnapshot={snapshot ?? undefined}
+                  workspaceId={activeWorkspaceId}
+                  canAsk={canAsk}
+                  submitting={submitting}
+                  pinningRunId={pinningRunId}
+                  pinnedRunIds={pinnedRunIds}
+                  confirmDeleteId={confirmDeleteId}
+                  clarificationSubmitting={clarificationSubmitting}
+                  maxClarificationChars={inputLimits?.max_clarification_chars}
+                  registerRef={(el) => {
+                    if (el) turnRefs.current.set(turn.id, el);
+                    else turnRefs.current.delete(turn.id);
+                  }}
+                  onPin={(s) => void handlePin(s)}
+                  onCancel={(s) => void handleCancel(s)}
+                  onRequestDelete={(s) => setConfirmDeleteId(s.id)}
+                  onConfirmDelete={(s) => void handleConfirmDelete(s)}
+                  onCancelDelete={() => setConfirmDeleteId(null)}
+                  onRetry={handleRetry}
+                  onClarificationChange={(sid, draft) => patch(sid, () => ({ clarificationDraft: draft }))}
+                  onClarificationSubmit={(s, e) => void handleClarificationSubmit(s, e)}
+                  onReconnect={(s) => s.runId && attach(s.id, s.runId, s.lastSeq)}
+                  onOpenEvidence={handleOpenEvidence}
+                  onAskSuggestion={(suggestion, s) => {
+                    const targetId =
+                      s.snapshotId && snapshotById.get(s.snapshotId)?.approved ? s.snapshotId : snapshot?.snapshot_id;
+                    if (!targetId || !s.runId) return;
+                    void startRun(suggestion, { snapshotId: targetId, followUpOf: s.runId }, setFollowUpDraft);
+                  }}
+                />
+              ))}
+            </div>
 
-              {isAwaitingInput && active.clarificationPrompt && (
-                <form onSubmit={handleClarificationSubmit} className="space-y-3 rounded-lg border border-border-strong bg-canvas p-4">
-                  <Notice tone="warn" title="A detail is needed to continue">
-                    {active.clarificationPrompt}
-                  </Notice>
-                  <textarea
-                    aria-label="Clarification answer"
-                    value={active.clarificationDraft}
-                    onChange={(event) => patch(active.id, () => ({ clarificationDraft: event.target.value }))}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                        e.preventDefault();
-                        e.currentTarget.form?.requestSubmit();
-                      }
-                    }}
-                    rows={3}
-                    maxLength={inputLimits?.max_clarification_chars}
-                    className={cx(inputBaseCls, "min-h-[84px] resize-y py-2.5")}
-                    placeholder="Add the missing detail"
-                  />
-                  <div className="flex items-center justify-end gap-3">
-                    <span className="hidden text-xs text-secondary sm:inline">{isMac ? "⌘ + Enter" : "Ctrl + Enter"}</span>
-                    <button
-                      type="submit"
-                      disabled={!active.clarificationDraft.trim() || clarificationSubmitting}
-                      className={btn.primary}
-                    >
-                      {clarificationSubmitting ? "Sending…" : "Continue"}
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {isWorking && <RunProgress events={active.events} workspaceId={activeWorkspaceId} runId={active.runId ?? null} />}
-
-              {active.answer ? (
-                <ErrorBoundary key={active.id} title="This answer couldn't be shown">
-                  {headline && (
-                    <p className="mb-2 text-[32px] font-semibold leading-tight tracking-tight text-ink tabular-nums">{headline}</p>
-                  )}
-                  <EvidenceContext.Provider value={active.runId ? setOpenEvidence : null}>
-                    <SafeMarkdown content={active.answer} />
-                    {active.status === "completed" && <AnswerCharts charts={active.charts} />}
-                  </EvidenceContext.Provider>
-                  {active.status === "completed" && <AnswerVerification outcome={active.outcome} criteria={active.criteria} />}
-                </ErrorBoundary>
-              ) : (
-                isWorking && (
-                  <div className="space-y-2.5" aria-hidden="true">
-                    <div className="h-3 w-[86%] animate-pulse rounded bg-bubble" />
-                    <div className="h-3 w-[64%] animate-pulse rounded bg-bubble" />
-                    <div className="h-3 w-[72%] animate-pulse rounded bg-bubble" />
-                  </div>
-                )
-              )}
-
-              {nonSchemaTools.length > 0 && (
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-                  <p className="text-xs text-secondary">Sources</p>
-                  <ul aria-label="Sources" className="flex flex-wrap gap-1.5">
-                    {nonSchemaTools.map((evt) => {
-                        const p = evt.payload;
-                        const evId = typeof p.evidence_id === "string" ? p.evidence_id : null;
-                        const purpose = typeof p.purpose === "string" ? p.purpose.trim().replace(/\.$/, "") : "";
-                        const cited = evId ? sourceNumbers.get(evId) : undefined;
-                        const label = `${cited ? `${cited}. ` : ""}${purpose || (OPERATION_LABELS[String(p.operation ?? "")] ?? "Query")}${
-                          p.row_count !== undefined ? ` · ${Number(p.row_count).toLocaleString()} rows` : ""
-                        }`;
-                        return (
-                          <li key={evt.event_id}>
-                            {evId && active.runId ? (
-                              <button
-                                type="button"
-                                onClick={() => setOpenEvidence(evId)}
-                                className={cx(btnSm.secondary, "font-normal")}
-                              >
-                                <span className="h-1.5 w-1.5 rounded-full bg-ok-dot" aria-hidden="true" />
-                                {label}
-                              </button>
-                            ) : (
-                              <span
-                                title={p.ok ? undefined : "This query failed; the model was told and could retry."}
-                                className="inline-flex min-h-[32px] items-center gap-1.5 rounded-full border border-border px-3 text-sm text-secondary"
-                              >
-                                <span className={cx("h-1.5 w-1.5 rounded-full", p.ok ? "bg-secondary" : "bg-err-dot")} aria-hidden="true" />
-                                {p.ok ? label : `${label} · failed`}
-                              </span>
-                            )}
-                          </li>
-                        );
-                      })}
-                  </ul>
-                </div>
-              )}
-
-              {(active.runId || active.events.length > 0) && (
-                <div>
-                  <Details summary="Technical details">
-                    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
-                      {active.runId && (
-                        <>
-                          <dt className="text-secondary">Run</dt>
-                          <dd className="break-all font-mono text-body">{active.runId}</dd>
-                        </>
-                      )}
-                      {models.length > 0 && (
-                        <>
-                          <dt className="text-secondary">Models</dt>
-                          <dd className="text-body">{models.join(", ")}</dd>
-                        </>
-                      )}
-                      {route && (
-                        <>
-                          <dt className="text-secondary">Path</dt>
-                          <dd className="text-body" title={typeof planEvent?.payload.route_reason === "string" ? planEvent.payload.route_reason : undefined}>
-                            {ROUTE_LABELS[route] ?? humanize(route)}
-                          </dd>
-                        </>
-                      )}
-                      <dt className="text-secondary">Events</dt>
-                      <dd className="text-body">{active.events.length}</dd>
-                    </dl>
-                    {active.events.length > 0 && (
-                      <div className="mt-2 max-h-64 space-y-1 overflow-y-auto">
-                        {active.events.map((evt) => (
-                          <div key={evt.event_id} className="flex gap-2.5 rounded bg-panel px-2.5 py-[7px] font-mono text-xs leading-relaxed">
-                            <span className="shrink-0 text-secondary">#{evt.sequence}</span>
-                            <span className="shrink-0 text-ink">{evt.type}</span>
-                            <span className="min-w-0 break-all text-secondary">{eventSummary(evt.payload)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </Details>
-                </div>
-              )}
-
-              {active.status === "completed" && active.runId && active.snapshotId && active.followUps.length > 0 && (
-                <section aria-label="Suggested follow-up questions" className="space-y-2 border-t border-border pt-4">
-                  <p className="text-xs text-secondary">Ask next</p>
-                  <ul className="flex flex-wrap gap-2">
-                    {active.followUps.map((suggestion) => (
-                      <li key={suggestion}>
-                        <button
-                          type="button"
-                          disabled={submitting}
-                          onClick={() => void startRun(suggestion, { snapshotId: active.snapshotId!, followUpOf: active.runId! }, setFollowUpDraft)}
-                          className={cx(outlineCls, "min-h-[32px] rounded-md px-2.5 py-1.5 text-left text-base text-ink disabled:opacity-50")}
-                        >
-                          {suggestion}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-
-              {active.status === "completed" && active.runId && (
-                <form onSubmit={(e) => void handleFollowUp(e)} className={cx("flex gap-2 pt-4", active.followUps.length === 0 && "border-t border-border")}>
-                  <label htmlFor="follow-up" className="sr-only">
-                    Ask a follow-up question
-                  </label>
-                  <input
-                    id="follow-up"
+            {latestTurn && (
+              <div className="pt-1">
+                {latestTurn.status === "completed" && latestTurn.runId ? (
+                  <AskComposer
+                    variant="followup"
                     value={followUpDraft}
-                    onChange={(e) => setFollowUpDraft(e.target.value)}
-                    placeholder="Ask a follow-up"
+                    onChange={setFollowUpDraft}
+                    onSubmit={(e) => void handleFollowUp(e)}
+                    runMode={runMode}
+                    onRunModeChange={setRunMode}
+                    snapshots={snapshots}
+                    approvedCount={approvedSnapshots.length}
+                    selectedSnapshot={
+                      (latestTurn.snapshotId ? snapshotById.get(latestTurn.snapshotId) : undefined) ?? snapshot ?? undefined
+                    }
+                    onSnapshotChange={setChosenSnapshot}
+                    snapshotsLoading={snapshotsQuery.isLoading}
+                    canAsk={canAsk || approvedSnapshots.length > 0}
+                    submitting={submitting}
+                    isWorking={false}
+                    datasetRemoved={
+                      Boolean(latestTurn.snapshotId) &&
+                      !snapshotsQuery.isLoading &&
+                      !snapshotById.get(latestTurn.snapshotId ?? "")
+                    }
+                    presetSummary={presetSummary ?? null}
+                    routingLoading={routing.isLoading}
+                    isMac={isMac}
                     maxLength={inputLimits?.max_question_chars}
-                    className={cx(inputCls, "min-w-0 flex-1")}
+                    serverDown={serverDown}
                   />
-                  <button
-                    type="submit"
-                    aria-label="Ask follow-up"
-                    disabled={submitting || !followUpDraft.trim()}
-                    className={btn.icon}
-                  >
-                    <Icon name="arrow-up" className="h-4 w-4" />
-                  </button>
-                </form>
-              )}
-            </section>
-          </article>
+                ) : (
+                  composer
+                )}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -1460,9 +1045,14 @@ export function AskView() {
         </div>
       </aside>
 
-      {openEvidence && active?.runId && (
-        <ErrorBoundary key={openEvidence} title="This evidence couldn't be shown">
-          <EvidencePanel workspaceId={activeWorkspaceId} runId={active.runId} evidenceId={openEvidence} onClose={closeEvidence} />
+      {openEvidence && (
+        <ErrorBoundary key={`${openEvidence.runId}:${openEvidence.evidenceId}`} title="This evidence couldn't be shown">
+          <EvidencePanel
+            workspaceId={activeWorkspaceId}
+            runId={openEvidence.runId}
+            evidenceId={openEvidence.evidenceId}
+            onClose={closeEvidence}
+          />
         </ErrorBoundary>
       )}
     </div>

@@ -10,6 +10,7 @@ import { useUiStore } from "@/lib/store";
 import { HScroll } from "@/components/HScroll";
 import { LogoMark } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
 import { Toaster } from "@/components/Toaster";
 import { Notice, Spinner, btn } from "@/components/ui";
 import { useHealth, useReady, useServerDown } from "@/lib/workspace";
@@ -104,7 +105,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     try {
       saved = window.localStorage.getItem(COLLAPSE_KEY);
     } catch {}
-    setSidebarCollapsed(saved === null ? window.innerWidth < 1100 : saved === "1");
+    setSidebarCollapsed(saved === null ? window.innerWidth < 900 : saved === "1");
     const id = window.requestAnimationFrame(() => setAnimate(true));
     return () => window.cancelAnimationFrame(id);
   }, [setSidebarCollapsed]);
@@ -140,10 +141,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </a>
       <div className="flex min-h-screen flex-col bg-canvas text-ink md:flex-row">
         <header className="sticky top-0 z-30 border-b border-border bg-canvas/95 px-4 pb-2.5 pt-3 backdrop-blur-md md:hidden">
-          <div className="flex items-center gap-2.5">
-            <LogoMark className="h-7 w-7" />
-            <span className="flex-1 font-display text-[20px] font-semibold tracking-[-0.01em]">Ledgerline</span>
-            <ThemeToggle compact />
+          <div className="flex items-center gap-2">
+            <LogoMark className="h-7 w-7 shrink-0" />
+            <span className="min-w-0 truncate font-display text-[20px] font-semibold tracking-[-0.01em]">Ledgerline</span>
+            <div className="ml-auto flex items-center gap-2">
+              <div className="max-w-[164px]">
+                <WorkspaceSwitcher collapsed={false} />
+              </div>
+              <ThemeToggle compact />
+            </div>
           </div>
           <HScroll className="-mx-1 mt-2.5 hidden sm:block" fadeFrom="from-canvas">
           <nav aria-label="Primary Navigation" className="flex w-max gap-1 px-1 pb-0.5">
@@ -169,7 +175,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <aside
           aria-label="Workspace Navigation"
           className={`${
-            collapsed ? "md:w-[52px]" : "md:w-[288px]"
+            collapsed ? "md:w-[52px]" : "md:w-[216px]"
           } sticky top-0 z-20 hidden h-screen shrink-0 flex-col border-r border-border bg-sidebar py-4 md:flex ${
             animate ? "transition-[width] duration-200 ease-out" : ""
           } ${
@@ -189,6 +195,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
           </Link>
 
+          <div className="mb-3">
+            <WorkspaceSwitcher collapsed={collapsed} />
+          </div>
+
           <nav aria-label="Primary Navigation" className="flex flex-col gap-0.5">
             {NAV.map((item) => {
               const active = isActive(item.href);
@@ -198,7 +208,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   href={item.href}
                   aria-label={collapsed ? item.label : undefined}
                   aria-current={active ? "page" : undefined}
-                  className={`group relative flex h-8 items-center gap-2.5 rounded-md text-base font-medium transition-colors focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong ${
+                  className={`group relative flex h-8 items-center gap-2.5 rounded-md text-base font-medium transition-colors ${
                     collapsed ? "justify-center" : "px-2"
                   } ${
                     active ? "bg-ink/[0.05] text-ink dark:bg-ink/[0.15]" : "text-ink hover:bg-ink/[0.05] dark:hover:bg-ink/[0.08]"

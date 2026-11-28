@@ -22,7 +22,10 @@ type Metric = "tokens" | "cost" | "runs";
 type RunSortKey = "when" | "calls" | "tokens" | "cost";
 
 
-const UsageBarChart = dynamic(() => import("@/features/usage/UsageBarChart").then((m) => m.UsageBarChart), { ssr: false });
+const UsageBarChart = dynamic(() => import("@/features/usage/UsageBarChart").then((m) => m.UsageBarChart), {
+  ssr: false,
+  loading: () => <Skeleton className="h-full w-full" />,
+});
 const REFRESH_MS = 15000;
 
 const WINDOW_OPTIONS: { value: WindowKey; label: string }[] = [
@@ -45,6 +48,7 @@ const STATUS_OPTIONS: RichOption[] = [
   { value: "all", label: "All statuses", sublabel: "Every question in the time window" },
   { value: "completed", label: "Completed", sublabel: "Finished with an answer", icon: statusDot("bg-ok-dot") },
   { value: "running", label: "Running", sublabel: "Being answered now", icon: statusDot("bg-warn-dot") },
+  { value: "awaiting_input", label: "Needs input", sublabel: "Waiting for your clarification", icon: statusDot("bg-warn-dot") },
   { value: "queued", label: "Queued", sublabel: "Waiting for a free slot", icon: statusDot("bg-warn-dot") },
   { value: "failed", label: "Failed", sublabel: "Stopped with an error", icon: statusDot("bg-err-dot") },
   { value: "cancelled", label: "Cancelled", sublabel: "Stopped by someone", icon: statusDot("bg-secondary") },
@@ -65,6 +69,7 @@ const STATUS_DOT: Record<string, string> = {
   completed: "bg-ok-dot",
   failed: "bg-err-dot",
   running: "bg-warn-dot",
+  awaiting_input: "bg-warn-dot",
   queued: "bg-warn-dot",
   cancelled: "bg-secondary",
 };
@@ -75,6 +80,13 @@ function formatCost(value: number): string {
   if (value === 0) return "$0";
   if (value < 0.01) return `$${value.toFixed(4)}`;
   return `$${value.toFixed(2)}`;
+}
+
+function formatAxisCost(value: number): string {
+  if (value === 0) return "$0";
+  if (value < 0.01) return `$${value.toFixed(4)}`;
+  if (value < 1) return `$${value.toFixed(2)}`;
+  return `$${compact.format(value)}`;
 }
 
 function Stat({ label, value, hint, loading }: { label: string; value: string; hint: string; loading: boolean }) {
@@ -91,26 +103,25 @@ function Stat({ label, value, hint, loading }: { label: string; value: string; h
 
 function ModelUsage({
   models,
-  metric,
   provider,
   onProvider,
   windowLabel,
   loading,
 }: {
   models: ModelUsageItem[];
-  metric: Metric;
   provider: string;
   onProvider: (value: string) => void;
   windowLabel: string;
   loading: boolean;
 }) {
+  const [barMetric, setBarMetric] = useState<Metric>("tokens");
   const providers = Array.from(new Set(models.map((m) => m.provider_id))).sort();
   const active = providers.includes(provider) ? provider : "all";
   const shown = active === "all" ? models : models.filter((m) => m.provider_id === active);
-  const value = (m: ModelUsageItem) => (metric === "cost" ? Number(m.total_cost_usd) || 0 : metric === "runs" ? m.calls : m.total_tokens);
+  const value = (m: ModelUsageItem) => (barMetric === "cost" ? Number(m.total_cost_usd) || 0 : barMetric === "runs" ? m.calls : m.total_tokens);
   const rawMax = Math.max(...shown.map(value), 0);
   const max = rawMax > 0 ? rawMax : 1;
-  const barLabel = metric === "cost" ? "cost" : metric === "runs" ? "model calls" : "tokens";
+  const barLabel = barMetric === "cost" ? "cost" : barMetric === "runs" ? "model calls" : "tokens";
   return (
     <section aria-labelledby="usage-models" className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
       <div className="flex flex-wrap items-baseline justify-between gap-3">
@@ -120,14 +131,26 @@ function ModelUsage({
           </h2>
           <p className="mt-0.5 text-xs text-secondary">All model calls in the last {windowLabel.toLowerCase()} across all modes and statuses. Bars show {barLabel}.</p>
         </div>
-        {providers.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2">
           <FilterChips
-            label="Provider"
-            value={active}
-            onChange={onProvider}
-            options={[{ value: "all", label: "All providers" }, ...providers.map((p) => ({ value: p, label: providerLabel(p) }))]}
+            label="Model metric"
+            value={barMetric}
+            onChange={setBarMetric}
+            options={[
+              { value: "tokens", label: "Tokens" },
+              { value: "cost", label: "Cost" },
+              { value: "runs", label: "Calls" },
+            ]}
           />
-        )}
+          {providers.length > 1 && (
+            <FilterChips
+              label="Provider"
+              value={active}
+              onChange={onProvider}
+              options={[{ value: "all", label: "All providers" }, ...providers.map((p) => ({ value: p, label: providerLabel(p) }))]}
+            />
+          )}
+        </div>
       </div>
       {loading ? (
         <SkeletonRows rows={3} />
@@ -145,7 +168,7 @@ function ModelUsage({
               {shown.map((m) => (
                 <tr key={`${m.provider_id}:${m.model_id}`} className="border-t border-border">
                   <td className="px-3.5 py-3">
-                    <span className="block font-medium text-ink">{m.model_id}</span>
+                    <span className="block font-mono text-sm font-medium text-ink">{m.model_id}</span>
                     <span className="block text-xs text-secondary">{providerLabel(m.provider_id)}</span>
                   </td>
                   <td className="px-3.5 py-3">
@@ -222,27 +245,89 @@ function ToolUsage({ tools, loading }: { tools: ToolUsageOut[]; loading: boolean
   );
 }
 
+function formatBucketLabel(date: Date, hourly: boolean): string {
+  return hourly
+    ? date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+    : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function floorBucket(date: Date, hourly: boolean): Date {
+  const d = new Date(date);
+  if (hourly) d.setMinutes(0, 0, 0);
+  else d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** Fill empty hours/days inside bounded windows so sparse activity renders on a continuous timeline. */
+function fillBucketGaps(
+  points: { startMs: number; key: string; label: string; tokens: number; cost: number; runs: number }[],
+  windowKey: WindowKey,
+) {
+  if (!points.length) return [];
+  const hourly = windowKey === "24h";
+  const byStart = new Map<number, { key: string; label: string; tokens: number; cost: number; runs: number }>();
+  for (const pt of points) {
+    const prev = byStart.get(pt.startMs);
+    if (prev) {
+      prev.tokens += pt.tokens;
+      prev.cost += pt.cost;
+      prev.runs += pt.runs;
+    } else {
+      byStart.set(pt.startMs, { key: pt.key, label: pt.label, tokens: pt.tokens, cost: pt.cost, runs: pt.runs });
+    }
+  }
+  const end = floorBucket(new Date(), hourly);
+  let cursor: Date;
+  if (windowKey === "24h") {
+    cursor = new Date(end);
+    cursor.setHours(cursor.getHours() - 23);
+  } else if (windowKey === "7d" || windowKey === "30d" || windowKey === "90d") {
+    const days = windowKey === "7d" ? 7 : windowKey === "30d" ? 30 : 90;
+    cursor = new Date(end);
+    cursor.setDate(cursor.getDate() - (days - 1));
+  } else {
+    const sorted = Array.from(byStart.entries()).sort((a, b) => a[0] - b[0]);
+    return sorted.map(([, v]) => v);
+  }
+  const maxStart = Math.max(end.getTime(), ...byStart.keys());
+  const minStart = Math.min(cursor.getTime(), ...byStart.keys());
+  cursor = floorBucket(new Date(minStart), hourly);
+  const out: { key: string; label: string; tokens: number; cost: number; runs: number }[] = [];
+  for (let guard = 0; guard < 400 && cursor.getTime() <= maxStart; guard++) {
+    const ms = cursor.getTime();
+    out.push(
+      byStart.get(ms) ?? {
+        key: cursor.toISOString(),
+        label: formatBucketLabel(cursor, hourly),
+        tokens: 0,
+        cost: 0,
+        runs: 0,
+      },
+    );
+    if (hourly) cursor.setHours(cursor.getHours() + 1);
+    else cursor.setDate(cursor.getDate() + 1);
+  }
+  return out;
+}
+
 /** Bucket runs by hour (24 h view) or by day (longer views) so the chart stays readable at any volume. */
 function bucketRuns(runs: RunUsageItem[], windowKey: WindowKey) {
   const hourly = windowKey === "24h";
-  const buckets = new Map<string, { key: string; label: string; tokens: number; cost: number; runs: number }>();
+  const points: { startMs: number; key: string; label: string; tokens: number; cost: number; runs: number }[] = [];
   for (const r of runs) {
     const t = r.created_at ? new Date(r.created_at) : null;
     if (!t || Number.isNaN(t.getTime())) continue;
-    const start = new Date(t);
-    if (hourly) start.setMinutes(0, 0, 0);
-    else start.setHours(0, 0, 0, 0);
-    const key = start.toISOString();
-    const label = hourly
-      ? start.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
-      : start.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-    const b = buckets.get(key) ?? { key, label, tokens: 0, cost: 0, runs: 0 };
-    b.tokens += r.total_tokens;
-    b.cost += Number(r.total_cost_usd) || 0;
-    b.runs += 1;
-    buckets.set(key, b);
+    const start = floorBucket(t, hourly);
+    points.push({
+      startMs: start.getTime(),
+      key: start.toISOString(),
+      label: formatBucketLabel(start, hourly),
+      tokens: r.total_tokens,
+      cost: Number(r.total_cost_usd) || 0,
+      runs: 1,
+    });
   }
-  return Array.from(buckets.values()).sort((a, b) => a.key.localeCompare(b.key));
+  return fillBucketGaps(points, windowKey);
 }
 
 export function UsageView() {
@@ -333,18 +418,22 @@ export function UsageView() {
     const buckets = data?.buckets;
     if (!buckets?.length) return bucketRuns(runs, windowFilter);
     const hourly = windowFilter === "24h";
-    return buckets.map((b) => {
-      const start = new Date(b.start);
-      return {
-        key: b.start,
-        label: hourly
-          ? start.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
-          : start.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-        tokens: b.tokens,
-        cost: Number(b.cost_usd) || 0,
-        runs: b.runs,
-      };
-    });
+    const points = buckets
+      .map((b) => {
+        const parsed = new Date(b.start);
+        if (Number.isNaN(parsed.getTime())) return null;
+        const start = floorBucket(parsed, hourly);
+        return {
+          startMs: start.getTime(),
+          key: b.start,
+          label: formatBucketLabel(start, hourly),
+          tokens: b.tokens,
+          cost: Number(b.cost_usd) || 0,
+          runs: b.runs,
+        };
+      })
+      .filter((pt): pt is NonNullable<typeof pt> => pt !== null);
+    return fillBucketGaps(points, windowFilter);
   }, [data, runs, windowFilter]);
   const metricLabel = metric === "tokens" ? "Tokens" : metric === "cost" ? "Cost (USD)" : "Runs";
   const hasAnyWorkspaceRuns = (data?.run_count ?? 0) > 0;
@@ -418,7 +507,7 @@ export function UsageView() {
       <dl
         className={cx(
           cardCls,
-          "grid grid-cols-2 divide-border overflow-hidden max-lg:last:col-span-2 max-lg:[&>*:last-child]:col-span-2 max-lg:[&>*:nth-child(-n+4)]:border-b max-lg:[&>*:nth-child(odd):not(:last-child)]:border-r lg:grid-cols-5 lg:divide-x"
+          "grid grid-cols-2 divide-border overflow-hidden max-lg:[&>*:last-child]:col-span-2 max-lg:[&>*:nth-child(-n+4)]:border-b max-lg:[&>*:nth-child(odd):not(:last-child)]:border-r lg:grid-cols-5 lg:divide-x"
         )}
       >
         <Stat label="Questions" value={totals.runs.toLocaleString()} hint={totals.byMode.map((m) => `${m.runs} ${m.mode}`).join(" · ")} loading={isLoading} />
@@ -474,7 +563,7 @@ export function UsageView() {
                     data={chartData}
                     dataKey={metric}
                     seriesLabel={metricLabel}
-                    formatAxis={(v) => (metric === "cost" ? `$${compact.format(v)}` : compact.format(v))}
+                    formatAxis={(v) => (metric === "cost" ? formatAxisCost(v) : compact.format(v))}
                     formatValue={(v) => (metric === "cost" ? formatCost(v) : v.toLocaleString())}
                   />
                 </div>
@@ -483,7 +572,6 @@ export function UsageView() {
 
           <ModelUsage
             models={data?.models ?? []}
-            metric={metric}
             provider={providerFilter}
             onProvider={setProviderFilter}
             windowLabel={WINDOW_OPTIONS.find((o) => o.value === windowFilter)?.label ?? ""}
@@ -541,7 +629,7 @@ export function UsageView() {
                           <td className="whitespace-nowrap px-3.5 py-3">
                             <span className="inline-flex items-center gap-1.5 capitalize text-body">
                               <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[status] ?? "bg-secondary"}`} />
-                              {status.replaceAll("_", " ")}
+                              {status === "awaiting_input" ? "Needs input" : status.replaceAll("_", " ")}
                             </span>
                           </td>
                           <td className="px-3.5 py-3 text-right tabular-nums">{r.used_attempts}</td>
