@@ -136,3 +136,64 @@ class TestUnresolvedReservationsAreReleased(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestUsageIsTotalledByTheDatabase(unittest.TestCase):
+    """The window queries must give the same numbers as the per-run-id queries they replace."""
+
+    def test_window_queries_match_the_per_run_queries_and_respect_workspace_and_time(self) -> None:
+        from unittest.mock import patch
+
+        from app.application.ports.tools import ToolExecution, summarize_tool_executions
+
+        with tempfile.TemporaryDirectory() as td:
+            container = build_container(artifact_root=td)
+            app = create_app(container)
+            ledger = PgBudgetLedger(app.state.session_factory)
+            container.budget_ledger = ledger
+            client = TestClient(app)
+
+            def ask(workspace: str, question: str) -> str:
+                return client.post(f"/api/v1/workspaces/{workspace}/runs", json={"question": question, "background_async": False}).json()["run_id"]
+
+            mine = [ask("ws1", "refund totals"), ask("ws1", "fees by month")]
+            theirs = ask("ws2", "someone else's question")
+            a = ledger.reserve(mine[0], "op1", "a1", 1000, Decimal("0.01"), False, None, provider_id="openai", model_id="gpt-x", role="planner")
+            ledger.settle(a.reservation_id, 800, Decimal("0.008"), latency_ms=300)
+            ledger.reserve(mine[1], "op2", "a2", 400, None, True, None, provider_id="moonshot", model_id="kimi", role="analyst")
+            b = ledger.reserve(theirs, "op3", "a3", 5000, Decimal("0.5"), False, None, provider_id="openai", model_id="gpt-x", role="planner")
+            ledger.settle(b.reservation_id, 5000, Decimal("0.5"), latency_ms=900)
+            for i, (run_id, status, code, hit) in enumerate(
+                [(mine[0], "success", None, False), (mine[0], "failed", "INVALID_ARGUMENT", False), (mine[1], "success", None, True), (theirs, "success", None, False)]
+            ):
+                container.tool_executions.record(ToolExecution(f"tex_{i}", run_id, "t1", "run_query_ir", "1", f"fp{i}", status, code, 10 * (i + 1), None, cache_hit=hit))
+
+            totals = ledger.usage_totals("ws1")
+            self.assertEqual(set(totals), set(mine))
+            legacy = ledger.get_runs_totals(mine)
+            self.assertEqual({k: {f: str(v) for f, v in row.items()} for k, row in totals.items()}, {k: {f: str(v) for f, v in row.items()} for k, row in legacy.items()})
+            self.assertEqual(ledger.usage_by_model("ws1"), ledger.get_model_usage(mine))
+            self.assertEqual(container.tool_executions.usage_by_tool("ws1"), summarize_tool_executions(container.tool_executions.list_for_runs(mine)))
+            future = datetime.now(timezone.utc) + timedelta(hours=1)
+            self.assertEqual((ledger.usage_totals("ws1", future), ledger.usage_by_model("ws1", future), container.tool_executions.usage_by_tool("ws1", future)), ({}, [], []))
+
+            usage = client.get("/api/v1/workspaces/ws1/usage", params={"q": "REFUND"}).json()
+            self.assertEqual([r["run_id"] for r in usage["runs"]], [mine[0]])
+            self.assertEqual((usage["summary"]["tokens"], usage["models"][0]["model_id"], usage["tools"][0]["calls"]), (1200, "gpt-x", 3))
+
+            # Sort and filter changes inside the cache window reuse one set of queries.
+            with patch.object(app.state.repo_runs, "usage_rows", side_effect=AssertionError("the cached window was not reused")):
+                again = client.get("/api/v1/workspaces/ws1/usage", params={"sort": "cost"}).json()
+            self.assertEqual(again["run_count"], 2)
+
+    def test_the_question_is_stored_in_its_own_column(self) -> None:
+        from sqlalchemy import select
+
+        from app.adapters.persistence.orm_models import RunRow
+
+        with tempfile.TemporaryDirectory() as td:
+            app = create_app(build_container(artifact_root=td))
+            client = TestClient(app)
+            run_id = client.post("/api/v1/workspaces/ws1/runs", json={"question": "Net sales?", "background_async": False}).json()["run_id"]
+            with app.state.session_factory() as db:
+                self.assertEqual(db.scalar(select(RunRow.question).where(RunRow.run_id == run_id)), "Net sales?")

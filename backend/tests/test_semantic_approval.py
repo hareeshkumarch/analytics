@@ -63,6 +63,34 @@ class TestSemanticApproval(unittest.TestCase):
         self.assertEqual(codes.count(200), 1)
         self.assertTrue(all(code == 409 for code in codes if code != 200), codes)
 
+    def test_semantics_can_be_edited_before_approval(self) -> None:
+        first_metric = self.proposed["metrics"][0]
+        patched = self.client.patch(
+            f"/api/v1/workspaces/ws1/semantics/{self.snapshot_id}",
+            json={
+                "expected_version": self.proposed["version"],
+                "metrics": [
+                    {
+                        "metric_id": first_metric["metric_id"],
+                        "display_name": "Order Value",
+                        "unit": "INR",
+                        "currency": "INR",
+                    }
+                ],
+            },
+        )
+        self.assertEqual(patched.status_code, 200, patched.text)
+        body = patched.json()
+        self.assertEqual(body["version"], 2)
+        self.assertFalse(body["approved"])
+        self.assertEqual(body["metrics"][0]["display_name"], "Order Value")
+        self.assertEqual(body["metrics"][0]["expression"], first_metric["expression"])
+
+        approved = self._approve(2)
+        self.assertEqual(approved.status_code, 200, approved.text)
+        self.assertTrue(approved.json()["approved"])
+        self.assertEqual(approved.json()["version"], 3)
+
 
 if __name__ == "__main__":
     unittest.main()

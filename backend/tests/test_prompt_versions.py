@@ -32,7 +32,11 @@ class TestTemplates(unittest.TestCase):
     def test_shared_instructions_reach_the_specialist(self) -> None:
         for phrase in ("business_timezone", "denied (do not retry", "safe_message"):
             self.assertIn(phrase, prompts.SPECIALIST.text)
-        self.assertTrue(prompts.EVIDENCE_REVIEWER.text.startswith(prompts.SPECIALIST.text))
+        # The reviewer and the delegate get the same tool rules, but each has its own role and output format.
+        for template in (prompts.EVIDENCE_REVIEWER, prompts.DELEGATE):
+            for phrase in ("business_timezone", "denied (do not retry", "safe_message"):
+                self.assertIn(phrase, template.text)
+        self.assertFalse(prompts.EVIDENCE_REVIEWER.text.startswith(prompts.SPECIALIST.text))
 
 
 class RecordingGateway(RoleCountingGateway):

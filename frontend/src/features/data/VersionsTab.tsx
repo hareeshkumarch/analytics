@@ -15,18 +15,18 @@ export function VersionsTab({
   const sorted = [...versions].sort((a, b) => b.version - a.version);
   return (
     <div className="space-y-3">
-      <p className="text-[13px] leading-relaxed text-body">
+      <p className="text-sm leading-relaxed text-body">
         {sorted.length === 1
           ? "This is the only version of this source. Importing the same source again adds a new version here; pinned answers keep the version they used."
           : `${sorted.length} versions of this source, newest first. Each version is a separate, immutable snapshot.`}
       </p>
-      <DataTable label="Versions of this source" head={["Version", "Imported", "Rows", "Tables", "Status", "Open"]}>
+      <DataTable label="Versions of this source" head={["Version", "Imported", { label: "Rows", align: "right" }, "Tables", "Status", "Open"]}>
         {sorted.map((s) => (
           <tr key={s.snapshot_id} className={rowCls}>
             <td className={cx(cellCls, "font-medium text-ink")}>v{s.version}</td>
             <td className={cx(cellCls, "whitespace-nowrap text-secondary")}>{relativeTime(s.created_at)}</td>
-            <td className={cellCls}>{s.total_rows.toLocaleString()}</td>
-            <td className={cx(cellCls, "max-w-[220px] truncate font-mono text-[12px]")} title={s.tables.join(", ")}>
+            <td className={cx(cellCls, "text-right tabular-nums")}>{s.total_rows.toLocaleString()}</td>
+            <td className={cx(cellCls, "max-w-[220px] truncate font-mono text-xs")} title={s.tables.join(", ")}>
               {s.tables.join(", ")}
             </td>
             <td className={cellCls}>

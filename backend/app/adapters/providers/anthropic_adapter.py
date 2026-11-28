@@ -2,7 +2,7 @@ from typing import Any, Generator
 
 import httpx
 
-from app.adapters.providers.http_utils import classify_http_error, parse_strict_json, read_anthropic_event, stream_sse_text, raise_if_truncated, read_json_body
+from app.adapters.providers.http_utils import anthropic_input_tokens, classify_http_error, parse_strict_json, read_anthropic_event, stream_sse_text, raise_if_truncated, read_json_body
 from app.adapters.providers.message_format import to_anthropic
 from app.application.ports.providers import ModelRequest, ModelResponse, ToolCallResult
 from app.domain.errors import ProviderError, ValidationError
@@ -44,13 +44,13 @@ class AnthropicMessagesAdapter:
             ]
         if request.tools and request.tool_choice:
             payload["tool_choice"] = {"type": request.tool_choice}
+        output_config: dict[str, Any] = {}
+        if model.reasoning_effort:
+            output_config["effort"] = model.reasoning_effort
         if request.structured_schema:
-            payload["output_config"] = {
-                "format": {
-                    "type": "json_schema",
-                    "schema": request.structured_schema,
-                }
-            }
+            output_config["format"] = {"type": "json_schema", "schema": request.structured_schema}
+        if output_config:
+            payload["output_config"] = output_config
         return payload
 
     def stream(
@@ -65,7 +65,13 @@ class AnthropicMessagesAdapter:
         text, state = yield from stream_sse_text(
             f"{provider_profile.base_url.rstrip('/')}/v1/messages",
             {**self.build_payload(request, model_profile), "stream": True},
-            {"x-api-key": api_key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"},
+            {
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+                # The payload carries `fallbacks` for these models, which needs the same beta header as invoke().
+                **({"anthropic-beta": "server-side-fallback-2026-07-01"} if model_profile.capabilities.refusal_fallback else {}),
+            },
             request.timeout_seconds,
             self._transport,
             "Anthropic",
@@ -100,11 +106,12 @@ class AnthropicMessagesAdapter:
         with httpx.Client(timeout=request.timeout_seconds, transport=self._transport) as client:
             resp = client.post(f"{provider_profile.base_url.rstrip('/')}/v1/messages", json=payload, headers=headers)
         if resp.status_code >= 400:
-            raise classify_http_error(resp.status_code, resp.text, "Anthropic")
+            raise classify_http_error(resp.status_code, resp.text, "Anthropic", resp.headers.get("retry-after"))
 
         data = read_json_body(resp, "Anthropic")
         stop_reason = data.get("stop_reason", "end_turn")
-        raise_if_truncated(stop_reason, "Anthropic")
+        usage = data.get("usage", {})
+        raise_if_truncated(stop_reason, "Anthropic", usage=(anthropic_input_tokens(usage), int(usage.get("output_tokens") or 0)))
         refusal = "Model refused request" if stop_reason == "refusal" else None
 
         text_parts: list[str] = []
@@ -128,7 +135,6 @@ class AnthropicMessagesAdapter:
             if request.structured_schema and not refusal and not tool_calls
             else None
         )
-        usage = data.get("usage", {})
         return ModelResponse(
             provider_id=self.provider_id,
             model_id=model_profile.model_id,
@@ -137,7 +143,7 @@ class AnthropicMessagesAdapter:
             structured_output=structured,
             finish_reason=stop_reason,
             refusal_reason=refusal,
-            input_tokens=int(usage.get("input_tokens", 0)),
+            input_tokens=anthropic_input_tokens(usage),
             cached_input_tokens=int(usage.get("cache_read_input_tokens") or 0),
             output_tokens=int(usage.get("output_tokens", 0)),
             continuation_state={"content": data.get("content", [])} if tool_calls else None,

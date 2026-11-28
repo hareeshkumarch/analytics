@@ -8,7 +8,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { HScroll } from "@/components/HScroll";
 import { RichSelect } from "@/components/RichSelect";
 import { ActionMenu } from "@/components/ActionMenu";
-import { Badge, Notice, Spinner, btn, cx } from "@/components/ui";
+import { Badge, Notice, Spinner, btn, cx, dangerConfirmBtnCls } from "@/components/ui";
 import { ApiError, errorMessage } from "@/lib/api/client";
 import { useSemantics } from "@/lib/api/semantics";
 import { deleteSnapshot } from "@/lib/api/snapshots";
@@ -16,6 +16,7 @@ import { familyLabel } from "@/lib/connectors";
 import { SnapshotSummary, datasetLabel, formatBytes, relativeTime, useWorkspace } from "@/lib/workspace";
 import { DefinitionsTab } from "@/features/data/DefinitionsTab";
 import { DiagnosticsTab } from "@/features/data/DiagnosticsTab";
+import { NotesTab } from "@/features/data/NotesTab";
 import { PreviewTab } from "@/features/data/PreviewTab";
 import { ProfileTab } from "@/features/data/ProfileTab";
 import { VersionsTab } from "@/features/data/VersionsTab";
@@ -24,6 +25,7 @@ const TABS = [
   { id: "definitions", label: "Definitions" },
   { id: "profile", label: "Profile" },
   { id: "preview", label: "Preview" },
+  { id: "notes", label: "Notes" },
   { id: "versions", label: "Versions" },
   { id: "diagnostics", label: "Diagnostics" },
 ] as const;
@@ -88,8 +90,14 @@ export function DatasetPanel({
   const [table, setTable] = useState(snapshot.tables[0] ?? "");
   const headingRef = useRef<HTMLHeadingElement>(null);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
+  const actionsWrapRef = useRef<HTMLDivElement>(null);
   const versions = snapshots.filter((s) => s.source_id === snapshot.source_id);
   const tableDetails = new Map((snapshot.table_details ?? []).map((t) => [t.name, t]));
+
+  useEffect(() => {
+    if (confirmDelete !== "idle") cancelDeleteRef.current?.focus();
+  }, [confirmDelete]);
 
   useEffect(() => {
     if (!reveal) return;
@@ -128,6 +136,8 @@ export function DatasetPanel({
         return <ProfileTab snapshot={snapshot} table={table} />;
       case "preview":
         return <PreviewTab snapshot={snapshot} table={table} />;
+      case "notes":
+        return <NotesTab snapshot={snapshot} />;
       case "versions":
         return <VersionsTab snapshot={snapshot} versions={versions} onOpen={onOpenVersion} />;
       case "diagnostics":
@@ -136,18 +146,18 @@ export function DatasetPanel({
   }
 
   return (
-    <div className="space-y-4 border-t border-border pt-5">
+    <div className="min-w-0 space-y-4 border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
           <ConnectorLogo id={logoIdForFamily(snapshot.source_family) ?? "file"} size="md" />
           <div className="min-w-0">
-            <h3 ref={headingRef} tabIndex={-1} className="break-words font-display text-[17px] font-semibold leading-snug text-ink outline-none">
+            <h3 ref={headingRef} tabIndex={-1} className="break-words text-[17px] font-semibold leading-snug text-ink outline-none">
               {datasetLabel(snapshot)}
             </h3>
             <p className="mt-0.5 text-xs text-secondary">{meta.join(" · ")}</p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div ref={actionsWrapRef} className="flex flex-wrap items-center gap-2">
           {snapshot.unavailable_tables?.length ? (
             <Badge tone="err" dot>
               Files missing for {snapshot.unavailable_tables.join(", ")}: import a new version
@@ -182,7 +192,7 @@ export function DatasetPanel({
             <>
               <button
                 type="button"
-                className={cx(btn.secondary, "border-err text-err hover:border-err")}
+                className={dangerConfirmBtnCls}
                 disabled={deleting}
                 onClick={() => void removeDataset(confirmDelete === "force")}
               >
@@ -190,12 +200,14 @@ export function DatasetPanel({
                 {deleting ? "Deleting…" : confirmDelete === "force" ? "Delete anyway" : "Confirm delete"}
               </button>
               <button
+                ref={cancelDeleteRef}
                 type="button"
                 className={btn.ghost}
                 disabled={deleting}
                 onClick={() => {
                   setConfirmDelete("idle");
                   setForceReason(null);
+                  requestAnimationFrame(() => actionsWrapRef.current?.querySelector<HTMLButtonElement>("[aria-haspopup='menu']")?.focus());
                 }}
               >
                 Cancel
@@ -250,12 +262,12 @@ export function DatasetPanel({
                 onClick={() => onTabChange(t.id)}
                 onKeyDown={(e) => handleTabKey(e, i)}
                 className={cx(
-                  "-mb-px inline-flex min-h-[40px] items-center gap-1.5 border-b-2 px-3.5 text-[13px] transition-colors",
-                  active ? "border-ink font-medium text-ink" : "border-transparent text-secondary hover:text-ink"
+                  "-mb-px inline-flex min-h-[40px] items-center gap-1.5 border-b-2 px-3.5 text-sm transition-colors",
+                  active ? "border-accent font-medium text-ink" : "border-transparent text-secondary hover:text-ink"
                 )}
               >
                 {t.label}
-                {t.id === "versions" && versions.length > 1 && <span className="tabular-nums text-[11px] text-secondary">{versions.length}</span>}
+                {t.id === "versions" && versions.length > 1 && <span className="tabular-nums text-2xs text-secondary">{versions.length}</span>}
               </button>
             );
           })}

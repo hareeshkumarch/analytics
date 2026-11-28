@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { inputBaseCls } from "@/components/ui";
+import { Icon } from "@/components/Icon";
+import { inputSmCls } from "@/components/ui";
 import type { RichOption } from "@/lib/types";
 
 export type { RichOption };
@@ -182,7 +183,7 @@ export function RichSelect({
         <span
           id={labelId}
           className={
-            label ? "mb-1.5 block text-[12.5px] font-medium text-body" : "sr-only"
+            label ? "mb-1.5 block text-sm font-medium text-body" : "sr-only"
           }
         >
           {nameText}
@@ -202,35 +203,29 @@ export function RichSelect({
         disabled={disabled}
         onClick={() => (open ? setOpen(false) : openList())}
         onKeyDown={handleKeyDown}
-        className={`flex w-full items-center justify-between gap-2 border bg-surface text-left text-[13.5px] text-ink transition-colors hover:border-plum disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border-strong ${
-          open ? "border-plum ring-[3px] ring-plum-soft" : "border-border-strong"
-        } ${dense ? "h-9 px-3 py-1.5" : compact ? "min-h-[40px] px-3" : "min-h-[44px] px-3.5"} ${triggerClassName}`}
+        className={`flex w-full items-center justify-between gap-1.5 rounded-md text-left text-base text-ink transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+          dense
+            ? // Filter-bar selectors read as text with a chevron, and fill only on hover.
+              `h-7 px-2.5 font-medium hover:bg-ink/[0.05] dark:hover:bg-ink/[0.08] ${open ? "bg-ink/[0.05] dark:bg-ink/[0.08]" : ""}`
+            : `min-h-[32px] border bg-surface px-2.5 dark:bg-ink/[0.05] ${open ? "border-focus ring-[3px] ring-focus/15" : "border-border-strong"}`
+        } ${triggerClassName}`}
       >
         <span id={`${id}-value`} className={`flex min-w-0 items-center gap-2 ${selected ? "" : "text-secondary"}`}>
           {selected?.icon}
           <span className="truncate">{selected ? selected.label : placeholder}</span>
           {selected?.badge && !compact && (
-            <span className="hidden shrink-0 bg-canvas px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-secondary sm:inline">
+            <span className="hidden shrink-0 rounded-sm bg-canvas px-1.5 py-0.5 text-2xs font-medium uppercase tracking-wide text-secondary sm:inline">
               {selected.badge}
             </span>
           )}
         </span>
-        <svg
-          aria-hidden="true"
-          className={`h-3.5 w-3.5 shrink-0 text-secondary transition-transform ${open ? "rotate-180" : ""}`}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
+        <Icon name="chevron-down" className={`h-3.5 w-3.5 shrink-0 text-secondary transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
-      {hint && <p id={`${id}-hint`} className="mt-1.5 text-[11px] leading-snug text-secondary">{hint}</p>}
+      {hint && <p id={`${id}-hint`} className="mt-1.5 text-2xs leading-snug text-secondary">{hint}</p>}
 
       {open && (
         <div
-          className={`absolute z-50 w-full min-w-[min(260px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] border border-border-strong bg-surface shadow-pop ${
+          className={`absolute z-50 w-full min-w-[min(260px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-ink/[0.08] bg-popover p-1 shadow-pop ${
             dropUp ? "bottom-full mb-1.5" : "top-full mt-1.5"
           } ${alignRight ? "right-0" : "left-0"}`}
         >
@@ -246,7 +241,7 @@ export function RichSelect({
                 aria-controls={listId}
                 aria-activedescendant={activeIdx >= 0 ? optionId(activeIdx) : undefined}
                 placeholder="Search…"
-                className={`${inputBaseCls} h-9`}
+                className={inputSmCls}
               />
             </div>
           )}
@@ -259,7 +254,7 @@ export function RichSelect({
             tabIndex={-1}
             className="max-h-72 space-y-0.5 overflow-y-auto overscroll-contain p-1.5"
           >
-            {shown.length === 0 && <li className="px-3 py-2.5 text-[13px] text-secondary">No matches</li>}
+            {shown.length === 0 && <li className="px-3 py-2.5 text-sm text-secondary">No matches</li>}
             {shown.map((opt, idx) => {
               const isSelected = opt.value === value;
               const isActive = idx === activeIdx;
@@ -274,34 +269,23 @@ export function RichSelect({
                   onPointerEnter={() => !opt.disabled && setActiveIdx(idx)}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => choose(idx)}
-                  className={`flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 text-[13.5px] transition-colors ${
+                  className={`flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-1.5 text-base transition-colors ${
                     opt.disabled ? "cursor-not-allowed opacity-50" : ""
-                  } ${isActive ? "bg-sidebar" : ""} text-ink`}
+                  } ${isActive ? "bg-ink/[0.08] dark:bg-ink/[0.14]" : ""} text-ink`}
                 >
                   {opt.icon}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className={`truncate ${isSelected ? "font-medium" : ""}`}>{opt.label}</span>
                       {opt.badge && (
-                        <span className="shrink-0 bg-surface px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-secondary ring-1 ring-border">
+                        <span className="shrink-0 rounded-sm bg-surface px-1.5 py-0.5 text-2xs font-medium uppercase tracking-wide text-secondary ring-1 ring-border">
                           {opt.badge}
                         </span>
                       )}
                     </div>
                     {opt.sublabel && <div className="mt-0.5 truncate text-xs text-secondary">{opt.sublabel}</div>}
                   </div>
-                  {isSelected && (
-                    <svg
-                      aria-hidden="true"
-                      className="h-4 w-4 shrink-0 text-plum"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path d="M20 6 9 17l-5-5" />
-                    </svg>
-                  )}
+                  {isSelected && <Icon name="check" className="h-4 w-4 shrink-0 text-ink" strokeWidth={2} />}
                 </li>
               );
             })}

@@ -46,6 +46,17 @@ class WorkspaceSettingsOut(ApiResponse):
     business_timezone: str
 
 
+class WorkspaceOut(ApiResponse):
+    workspace_id: str
+    name: str
+    business_timezone: str = "UTC"
+    created_at: str | None = None
+
+
+class WorkspaceListOut(ApiResponse):
+    workspaces: list[WorkspaceOut]
+
+
 class TaskBudgetOut(ApiResponse):
     tokens: int
     tool_calls: int
@@ -107,7 +118,7 @@ class ChartOut(ApiResponse):
 
 class CriterionOut(ApiResponse):
     criterion: str
-    status: Literal["verified", "failed", "blocked", "not_applicable"]
+    status: Literal["verified", "failed", "blocked", "unreviewed", "not_applicable"]
     evidence_ids: list[str] = []
     detail: str = ""
 
@@ -119,6 +130,8 @@ class RunAnswerOut(ApiResponse):
     outcome: str | None = None
     criteria: list[CriterionOut] | None = None
     route: str | None = None
+    follow_ups: list[str] | None = None
+    limitations: list[str] | None = None
 
 
 class RunOut(ApiResponse):
@@ -188,6 +201,22 @@ class SnapshotListOut(ApiResponse):
     snapshots: list[SnapshotOut]
 
 
+class DatasetNoteOut(ApiResponse):
+    note_id: str
+    text: str
+    created_at: str
+
+
+class DatasetNoteListOut(ApiResponse):
+    notes: list[DatasetNoteOut]
+    limit: int
+
+
+class PinAlertOut(ApiResponse):
+    direction: Literal["above", "below"]
+    value: float
+
+
 class PinOut(ApiResponse):
     pin_id: str
     title: str
@@ -197,10 +226,38 @@ class PinOut(ApiResponse):
     created_at: str
     auto_refresh: bool = False
     latest_run_id: str | None = None
+    # Present on the pin list, so a dashboard card needs no further requests.
+    shown_run: RunOut | None = None
+    latest_run_status: str | None = None
+    snapshot: SnapshotOut | None = None
+    newer_version: int | None = None
+    # Scheduled re-runs, and a threshold on the answer's headline figure.
+    schedule: Literal["off", "daily", "weekly"] = "off"
+    next_run_at: str | None = None
+    alert: PinAlertOut | None = None
+    headline_value: float | None = None
+    alert_triggered: bool | None = None
 
 
 class PinListOut(ApiResponse):
     pins: list[PinOut]
+
+
+class PinRefreshOut(ApiResponse):
+    pin_id: str
+    refresh_run_id: str
+    status: str
+    already_running: bool = False
+
+
+class PinRefreshFailureOut(ApiResponse):
+    pin_id: str
+    detail: str
+
+
+class PinRefreshBatchOut(ApiResponse):
+    refreshed: list[PinRefreshOut]
+    failed: list[PinRefreshFailureOut] = []
 
 
 class RunUsageOut(ApiResponse):
@@ -257,11 +314,21 @@ class UsageSummaryOut(ApiResponse):
     by_mode: list[ModeUsageOut]
 
 
+class UsageBucketOut(ApiResponse):
+    start: str
+    runs: int
+    tokens: int
+    cost_usd: str
+
+
 class UsageOut(ApiResponse):
     workspace_id: str
     run_count: int
     runs: list[RunUsageOut]
     runs_truncated: bool = False
+    # Runs matching the status, mode and search filters, before limit and offset.
+    matched_count: int | None = None
+    buckets: list[UsageBucketOut] = []
     summary: UsageSummaryOut | None = None
     models: list[ModelUsageOut]
     tools: list[ToolUsageOut] = []

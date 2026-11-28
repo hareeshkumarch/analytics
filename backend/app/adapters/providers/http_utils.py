@@ -26,14 +26,18 @@ def parse_retry_after(value: str | None) -> float | None:
         return None
 
 
-def classify_http_error(status_code: int, body_text: str, provider_name: str) -> ProviderError:
+def classify_http_error(
+    status_code: int, body_text: str, provider_name: str, retry_after: str | None = None
+) -> ProviderError:
     logger.warning("%s returned HTTP %s: %s", provider_name, status_code, body_text[:LOG_EXCERPT_CHARS])
     if status_code == 429 or status_code >= 500:
-        return ProviderError(
+        error = ProviderError(
             f"{provider_name} is temporarily unavailable (HTTP {status_code})",
             code="provider_transient_error",
             retryable=True,
         )
+        error.retry_after = parse_retry_after(retry_after)
+        return error
     if status_code in (401, 403):
         return ProviderError(
             f"{provider_name} authentication failed ({status_code})",
@@ -70,15 +74,22 @@ def read_json_body(response: httpx.Response, provider_name: str) -> dict[str, An
         raise ProviderError(f"{provider_name} reported the request as {status}", code="provider_failed_response", retryable=True)
     if status == "incomplete":
         reason = (data.get("incomplete_details") or {}).get("reason") or "unknown reason"
-        raise_if_truncated(str(reason), provider_name, always=True)
+        usage = data.get("usage") or {}
+        raise_if_truncated(
+            str(reason), provider_name, always=True, usage=(int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0))
+        )
     return data
 
 
-def raise_if_truncated(reason: str | None, provider_name: str, *, always: bool = False) -> None:
+def raise_if_truncated(
+    reason: str | None, provider_name: str, *, always: bool = False, usage: tuple[int, int] | None = None
+) -> None:
     if always or (reason or "") in _TRUNCATED_REASONS:
-        raise ProviderError(
+        error = ProviderError(
             f"{provider_name} stopped before finishing the reply ({reason})", code="provider_incomplete", retryable=False
         )
+        error.billed_tokens = usage if usage and any(usage) else None
+        raise error
 
 
 def parse_strict_json(text: str, schema: dict[str, Any] | None) -> dict[str, Any]:
@@ -134,7 +145,7 @@ def stream_sse_text(
         with client.stream("POST", url, json=body, headers={**headers, "Accept": "text/event-stream"}) as response:
             if response.status_code >= 400:
                 response.read()
-                raise classify_http_error(response.status_code, response.text, provider_name)
+                raise classify_http_error(response.status_code, response.text, provider_name, response.headers.get("retry-after"))
             if "text/event-stream" not in response.headers.get("content-type", ""):
                 raise ProviderError(
                     f"{provider_name} answered without streaming", code=STREAM_UNSUPPORTED, retryable=False
@@ -144,10 +155,22 @@ def stream_sse_text(
                 if piece:
                     parts.append(piece)
                     yield piece
+    # A stream can end three ways: finished, cut off at the token limit, or failed part-way.
+    # Only the first is an answer; the text streamed so far must not be passed on as complete.
+    usage = (int(state["input_tokens"]), int(state["output_tokens"]))
+    if state.get("error"):
+        logger.warning("%s stream failed part-way: %s", provider_name, str(state["error"])[:LOG_EXCERPT_CHARS])
+        error = ProviderError(f"{provider_name} failed while streaming the reply", code="provider_stream_error", retryable=True)
+        error.billed_tokens = usage if any(usage) else None
+        raise error
+    raise_if_truncated(str(state["finish_reason"]), provider_name, usage=usage)
     return "".join(parts), state
 
 
 def read_chat_completions_event(event: dict[str, Any], state: StreamState) -> str | None:
+    if event.get("error"):
+        state["error"] = event["error"]
+        return None
     usage = event.get("usage") or {}
     if usage:
         state["input_tokens"] = int(usage.get("prompt_tokens", 0))
@@ -162,17 +185,45 @@ def read_chat_completions_event(event: dict[str, Any], state: StreamState) -> st
 def read_responses_event(event: dict[str, Any], state: StreamState) -> str | None:
     if event.get("type") == "response.output_text.delta":
         return str(event.get("delta") or "")
-    if event.get("type") == "response.completed":
-        usage = (event.get("response") or {}).get("usage") or {}
+    kind = event.get("type")
+    if kind in ("response.completed", "response.incomplete", "response.failed"):
+        response = event.get("response") or {}
+        usage = response.get("usage") or {}
         state["input_tokens"] = int(usage.get("input_tokens", 0))
         state["output_tokens"] = int(usage.get("output_tokens", 0))
+        if kind == "response.incomplete":
+            reason = str((response.get("incomplete_details") or {}).get("reason") or "incomplete")
+            if reason in _TRUNCATED_REASONS:
+                state["finish_reason"] = reason
+            else:
+                state["error"] = f"incomplete: {reason}"
+        elif kind == "response.failed":
+            state["error"] = response.get("error") or "response failed"
+    elif kind == "error":
+        state["error"] = event.get("message") or event.get("error") or "stream error"
     return None
+
+
+def anthropic_input_tokens(usage: dict[str, Any]) -> int:
+    """Every input token of an Anthropic call.
+
+    Anthropic reports `input_tokens` as the uncached part only; tokens read from or written to the prompt
+    cache are counted separately. This adapter always caches the system prompt, so leaving them out would
+    hide most of the input from the run's token budget.
+    """
+    return (
+        int(usage.get("input_tokens") or 0)
+        + int(usage.get("cache_read_input_tokens") or 0)
+        + int(usage.get("cache_creation_input_tokens") or 0)
+    )
 
 
 def read_anthropic_event(event: dict[str, Any], state: StreamState) -> str | None:
     kind = event.get("type")
     if kind == "message_start":
-        state["input_tokens"] = int(((event.get("message") or {}).get("usage") or {}).get("input_tokens", 0))
+        state["input_tokens"] = anthropic_input_tokens((event.get("message") or {}).get("usage") or {})
+    elif kind == "error":
+        state["error"] = event.get("error") or "stream error"
     elif kind == "message_delta":
         state["output_tokens"] = int((event.get("usage") or {}).get("output_tokens", 0))
         state["finish_reason"] = (event.get("delta") or {}).get("stop_reason") or state["finish_reason"]

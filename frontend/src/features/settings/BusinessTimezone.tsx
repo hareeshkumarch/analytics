@@ -2,8 +2,9 @@
 
 import React, { useId, useState } from "react";
 import { errorMessage } from "@/lib/api/client";
-import { Badge, Notice, cardCls, cx } from "@/components/ui";
+import { Badge, Notice, cardCls, cx, sectionTitleCls } from "@/components/ui";
 import { RichSelect } from "@/components/RichSelect";
+import { toast } from "@/lib/toast";
 import { timeZoneOptions, useWorkspaceSettings } from "@/lib/workspaceSettings";
 
 export function BusinessTimezone({ workspaceId }: { workspaceId: string }) {
@@ -15,12 +16,12 @@ export function BusinessTimezone({ workspaceId }: { workspaceId: string }) {
     <section aria-labelledby={`${id}-title`} className={cx(cardCls, "space-y-4 p-5 sm:p-6")}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 id={`${id}-title`} className="font-display text-lg font-semibold leading-snug tracking-[-0.01em] text-ink">
+          <h2 id={`${id}-title`} className={sectionTitleCls}>
             Business time zone
           </h2>
           <p className="mt-1 text-xs text-secondary">
-            Dates in questions, such as &ldquo;October&rdquo;, start and end at midnight in this zone. Timestamps stored with a zone are
-            converted to it; timestamps without one are read as already local.
+            Saves automatically when picked. Dates in questions, such as &ldquo;October&rdquo;, start and end at midnight in this zone.
+            Timestamps stored with a zone are converted to it; timestamps without one are read as already local.
           </p>
         </div>
         {settings.saving && <Badge>Saving…</Badge>}
@@ -34,7 +35,13 @@ export function BusinessTimezone({ workspaceId }: { workspaceId: string }) {
         options={settings.data ? timeZoneOptions(current).map((zone) => ({ value: zone, label: zone.replaceAll("_", " ") })) : []}
         onChange={(zone) => {
           setError(null);
-          settings.save({ business_timezone: zone }, { onError: (err) => setError(errorMessage(err, "Couldn't save the time zone.")) });
+          settings.save(
+            { business_timezone: zone },
+            {
+              onSuccess: () => toast(`Business time zone set to ${zone.replaceAll("_", " ")}.`),
+              onError: (err) => setError(errorMessage(err, "Couldn't save the time zone.")),
+            },
+          );
         }}
       />
       {error && <Notice tone="err" title={error} />}

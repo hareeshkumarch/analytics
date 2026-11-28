@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { citationNumbers, headlineFigure, parseEvidenceCitation, stripEvidenceIds } from "./text";
+import { citationNumbers, excerptMarkdown, headlineFigure, parseEvidenceCitation, stripEvidenceIds } from "./text";
 
 describe("stripEvidenceIds", () => {
   it("removes single and grouped evidence citations", () => {
@@ -48,5 +48,34 @@ describe("headlineFigure", () => {
 
   it("ignores bold text without a number", () => {
     expect(headlineFigure("**Note:** no figures here.")).toBeNull();
+  });
+
+  it("ignores dates, years, ordinals, leading-zero IDs, and structural counts", () => {
+    expect(headlineFigure("**Top 5** products made **$12,400**.")).toBe("$12,400");
+    expect(headlineFigure("**In 2026**, net sales were **₹9,000**.")).toBe("₹9,000");
+    expect(headlineFigure("**Q3 2025** revenue hit **4.5%**.")).toBe("4.5%");
+    expect(headlineFigure("**Order #0042** on **2026-11-27** totaled **1st** place **₹500**.")).toBe("₹500");
+    expect(headlineFigure("**Top 5** items only.")).toBeNull();
+  });
+});
+
+describe("excerptMarkdown", () => {
+  it("skips a leading heading so it doesn't run into the first sentence", () => {
+    expect(excerptMarkdown("## Summary\n\nRevenue grew **14.2%** to $1.24M. North led.\n\n- North: $512K")).toBe(
+      "Revenue grew 14.2% to $1.24M.",
+    );
+  });
+
+  it("drops evidence ids and list markers", () => {
+    expect(excerptMarkdown("- Sales were 10 [ev_0123456789ab]. More follows.")).toBe("Sales were 10.");
+  });
+
+  it("falls back to the heading when the answer is only a heading", () => {
+    expect(excerptMarkdown("### Revenue is flat")).toBe("Revenue is flat");
+  });
+
+  it("returns an empty string for a missing answer and trims long text", () => {
+    expect(excerptMarkdown(undefined)).toBe("");
+    expect(excerptMarkdown("a".repeat(300), 10)).toBe("aaaaaaaaaa…");
   });
 });

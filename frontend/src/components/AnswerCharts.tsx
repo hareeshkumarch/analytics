@@ -3,12 +3,17 @@
 import React, { useContext, useMemo } from "react";
 import dynamic from "next/dynamic";
 import type { ChartOut } from "@/lib/api/types";
+import { HScroll } from "@/components/HScroll";
 import { EvidenceContext } from "@/components/SafeMarkdown";
+import { Skeleton, tableHeadCls } from "@/components/ui";
 import { useThemeColor } from "@/lib/theme";
 
 export type AnswerChart = ChartOut;
 
-const ChartPlot = dynamic(() => import("@/components/ChartPlot").then((m) => m.ChartPlot), { ssr: false });
+const ChartPlot = dynamic(() => import("@/components/ChartPlot").then((m) => m.ChartPlot), {
+  ssr: false,
+  loading: () => <Skeleton className="h-full w-full" />,
+});
 
 const compact = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
 const full = new Intl.NumberFormat(undefined, { maximumFractionDigits: 4 });
@@ -34,7 +39,7 @@ function numberFormats(currency: string | null | undefined): NumberFormats {
 function ChartCard({ chart, small, showTitle }: { chart: AnswerChart; small: boolean; showTitle: boolean }) {
   const openEvidence = useContext(EvidenceContext);
   const formats = useMemo(() => numberFormats(chart.currency), [chart.currency]);
-  const palette = [useThemeColor("data-1", "#1B6E9C"), useThemeColor("data-2", "#C2652A"), useThemeColor("data-3", "#B0407A")];
+  const palette = [useThemeColor("data-1", "#257DE0"), useThemeColor("data-2", "#C2652A"), useThemeColor("data-3", "#B0407A")];
   const colorFor = (idx: number) => palette[Math.min(idx, palette.length - 1)];
   const keys = chart.y_fields.map((_, i) => `s${i}`);
   const data = chart.rows.map((row) => {
@@ -48,15 +53,15 @@ function ChartCard({ chart, small, showTitle }: { chart: AnswerChart; small: boo
   const label = `${chart.title}: ${chart.y_fields.map(humanize).join(", ")} by ${humanize(chart.x_field)}, ${chart.rows.length} points.`;
 
   return (
-    <figure className="border border-border bg-surface p-3.5">
+    <figure className="rounded-lg border border-border bg-surface p-3.5">
       {(showTitle || keys.length > 1) && (
         <figcaption className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-          {showTitle && <span className="text-[13px] font-medium text-ink">{chart.title}</span>}
+          {showTitle && <span className="text-sm font-medium text-ink">{chart.title}</span>}
           {keys.length > 1 && (
-            <span className="flex flex-wrap gap-3 text-[11.5px] text-secondary">
+            <span className="flex flex-wrap gap-3 text-xs text-secondary">
               {keys.map((key, i) => (
                 <span key={key} className="inline-flex items-center gap-1.5">
-                  <span aria-hidden="true" className="inline-block h-2 w-2" style={{ background: colorFor(i) }} />
+                  <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full" style={{ background: colorFor(i) }} />
                   {names[key]}
                 </span>
               ))}
@@ -68,41 +73,45 @@ function ChartCard({ chart, small, showTitle }: { chart: AnswerChart; small: boo
         <ChartPlot chart={chart} data={data} keys={keys} names={names} colors={palette} formats={formats} />
       </div>
       {!small && (
-        <details className="mt-2 text-[12px] text-secondary">
-          <summary className="cursor-pointer select-none hover:text-ink">Show data</summary>
-          <div className="mt-2 max-h-56 overflow-auto">
-            <table className="w-full border-collapse text-left">
-              <thead>
-                <tr>
-                  {[chart.x_field, ...chart.y_fields].map((h) => (
-                    <th key={h} scope="col" className="border-b border-border py-1 pr-3 font-medium text-body">
-                      {humanize(h)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {chart.rows.map((row, r) => (
-                  <tr key={r}>
-                    {row.map((cell, c) => (
-                      <td key={c} className="border-b border-border py-1 pr-3 tabular-nums">
-                        {typeof cell === "number" ? (c > 0 ? formats.value : full).format(cell) : cell ?? "—"}
-                      </td>
+        <details className="mt-2 text-xs text-secondary">
+          <summary className="inline-flex min-h-[28px] cursor-pointer list-none select-none items-center hover:text-ink [&::-webkit-details-marker]:hidden">
+            Show data
+          </summary>
+          <div className="mt-1.5 max-h-56 overflow-auto rounded-lg border border-border">
+            <HScroll label={`${chart.title} data`}>
+              <table className="w-full border-collapse text-left">
+                <thead>
+                  <tr className={tableHeadCls}>
+                    {[chart.x_field, ...chart.y_fields].map((h, i) => (
+                      <th key={h} scope="col" className={`whitespace-nowrap px-3 py-2 font-medium ${i > 0 ? "text-right" : ""}`}>
+                        {humanize(h)}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {chart.rows.map((row, r) => (
+                    <tr key={r} className="border-t border-border">
+                      {row.map((cell, c) => (
+                        <td key={c} className={`whitespace-nowrap px-3 py-1.5 tabular-nums text-body ${c > 0 ? "text-right" : ""}`}>
+                          {typeof cell === "number" ? (c > 0 ? formats.value : full).format(cell) : cell ?? "—"}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </HScroll>
           </div>
         </details>
       )}
       {(openEvidence || chart.truncated) && (
-        <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[11px] text-secondary">
+        <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-xs text-secondary">
           {openEvidence && (
             <button
               type="button"
               onClick={() => openEvidence(chart.evidence_id)}
-              className="underline decoration-border-strong underline-offset-4 hover:text-ink"
+              className="inline-flex min-h-[28px] items-center underline decoration-border-strong underline-offset-4 hover:text-ink"
             >
               View source query
             </button>
@@ -120,7 +129,7 @@ export function AnswerCharts({ charts, small = false, contextTitle }: { charts?:
   if (!charts?.length) return null;
   const shown = small ? charts.slice(0, 1) : charts;
   return (
-    <div className={small ? undefined : "mt-4 grid gap-3 lg:grid-cols-2"}>
+    <div className={small ? undefined : shown.length > 1 ? "mt-4 grid gap-3 lg:grid-cols-2" : "mt-4"}>
       {shown.map((chart) => (
         <ChartCard key={chart.chart_id} chart={chart} small={small} showTitle={!contextTitle || !sameTitle(chart.title, contextTitle)} />
       ))}

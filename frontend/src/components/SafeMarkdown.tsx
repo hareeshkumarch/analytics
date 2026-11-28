@@ -18,11 +18,18 @@ function safeHref(href: string): string | null {
 export const EvidenceContext = createContext<((evidenceId: string) => void) | null>(null);
 const CitationNumbers = createContext<Map<string, number>>(new Map());
 
-function EvidenceChip({ id }: { id: string }) {
+function EvidenceChip({ id, suffix }: { id: string; suffix?: string }) {
   const open = useContext(EvidenceContext);
   const number = useContext(CitationNumbers).get(id) ?? 0;
   const label = number ? String(number) : "•";
-  if (!open) return <sup className="ml-0.5 text-[0.72em] font-medium text-secondary">{label}</sup>;
+  if (!open) {
+    return (
+      <sup className="ml-0.5 text-[0.72em] font-medium text-secondary">
+        {label}
+        {suffix}
+      </sup>
+    );
+  }
   return (
     <sup className="ml-0.5">
       <button
@@ -30,7 +37,7 @@ function EvidenceChip({ id }: { id: string }) {
         onClick={() => open(id)}
         aria-label={`Source ${label}: show the query and rows behind this figure`}
         title="Show the query and rows behind this figure"
-        className="inline-flex min-w-[1.4em] items-center justify-center bg-plum-soft px-1 text-[0.72em] font-semibold leading-[1.5] text-plum transition-colors hover:bg-plum hover:text-on-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-plum"
+        className="inline-flex min-w-[1.5em] items-center justify-center rounded-sm bg-accent-soft px-1.5 text-[0.72em] font-semibold leading-[1.5] text-accent transition-colors hover:bg-accent hover:text-on-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
       >
         {label}
       </button>
@@ -96,7 +103,7 @@ function renderInline(text: string, keyPrefix: string, depth = 0): React.ReactNo
       if (close > pos + 1) {
         flushPlain(pos);
         out.push(
-          <code key={`${keyPrefix}-${seq++}`} className="bg-panel px-1.5 py-0.5 font-mono text-[0.86em] text-ink">
+          <code key={`${keyPrefix}-${seq++}`} className="rounded-sm bg-panel px-1.5 py-0.5 font-mono text-[0.86em] text-ink">
             {text.slice(pos + 1, close)}
           </code>
         );
@@ -113,7 +120,9 @@ function renderInline(text: string, keyPrefix: string, depth = 0): React.ReactNo
       if (citation) {
         flushPlain(pos);
         const key = `${keyPrefix}-${seq++}`;
-        citation.ids.forEach((id, n) => out.push(<EvidenceChip key={`${key}-${n}`} id={id} />));
+        citation.ids.forEach((id, n) =>
+          out.push(<EvidenceChip key={`${key}-${n}`} id={id} suffix={n < citation.ids.length - 1 ? "," : undefined} />)
+        );
         pos = citation.end;
         plainStart = pos;
         continue;
@@ -141,7 +150,7 @@ function renderInline(text: string, keyPrefix: string, depth = 0): React.ReactNo
                 href={href}
                 target="_blank"
                 rel="noopener noreferrer nofollow"
-                className="font-medium text-plum underline decoration-plum/30 underline-offset-2 hover:decoration-plum"
+                className="font-medium text-accent underline decoration-accent/30 underline-offset-2 hover:decoration-accent"
               >
                 {label}
                 <span className="ml-1 text-[0.8em] font-normal text-secondary">({new URL(href).host || "email"})</span>
@@ -290,7 +299,7 @@ function parse(src: string): Block[] {
       continue;
     }
 
-    const heading = /^(#{1,4})\s+(.*)$/.exec(trimmed);
+    const heading = /^(#{1,6})\s+(.*)$/.exec(trimmed);
     if (heading) {
       blocks.push({ kind: "heading", level: heading[1].length, text: stripTrailingHeadingHashes(heading[2]) });
       i++;
@@ -349,7 +358,7 @@ function parse(src: string): Block[] {
     while (
       i < lines.length &&
       lines[i].trim() &&
-      !/^(#{1,4}\s|```|~~~|>|\||(-{3,}|\*{3,})$)/.test(lines[i].trim()) &&
+      !/^(#{1,6}\s|```|~~~|>|\||(-{3,}|\*{3,})$)/.test(lines[i].trim()) &&
       !listItem.test(lines[i])
     ) {
       para.push(lines[i++].trim());
@@ -360,10 +369,12 @@ function parse(src: string): Block[] {
 }
 
 const HEADING_CLS: Record<number, string> = {
-  1: "font-display text-[22px] font-semibold tracking-[-0.015em]",
-  2: "font-display text-[19px] font-semibold tracking-[-0.01em]",
-  3: "font-display text-[17px] font-semibold",
-  4: "text-[15px] font-semibold",
+  1: "text-[22px] font-semibold tracking-[-0.015em]",
+  2: "text-[19px] font-semibold tracking-[-0.01em]",
+  3: "text-[17px] font-semibold",
+  4: "text-md font-semibold",
+  5: "text-base font-semibold",
+  6: "text-sm font-semibold text-secondary",
 };
 
 export const SafeMarkdown = memo(function SafeMarkdown({ content }: { content: string }) {
@@ -371,12 +382,12 @@ export const SafeMarkdown = memo(function SafeMarkdown({ content }: { content: s
   const numbers = useMemo(() => citationNumbers(content), [content]);
   return (
     <CitationNumbers.Provider value={numbers}>
-      <div className="space-y-3.5 break-words text-[14.5px] leading-[1.7] text-body">
+      <div className="space-y-3.5 break-words text-base leading-[1.7] text-body">
         {blocks.map((b, idx) => {
           const key = `b${idx}`;
           switch (b.kind) {
             case "heading": {
-              const Tag = (["h2", "h3", "h4", "h5"] as const)[Math.min(Math.max(b.level, 1), 4) - 1];
+              const Tag = (["h2", "h3", "h4", "h5", "h6", "h6"] as const)[Math.min(Math.max(b.level, 1), 6) - 1];
               return (
                 <Tag key={key} className={`pt-1.5 text-ink first:pt-0 ${HEADING_CLS[b.level]}`}>
                   {renderInline(b.text, key)}
@@ -389,20 +400,20 @@ export const SafeMarkdown = memo(function SafeMarkdown({ content }: { content: s
               return <hr key={key} className="border-border" />;
             case "quote":
               return (
-                <blockquote key={key} className="border-l-2 border-plum/40 bg-panel/60 py-2 pl-4 pr-3 text-body">
+                <blockquote key={key} className="border-l-2 border-accent/40 bg-panel/60 py-2 pl-4 pr-3 text-body">
                   {renderInline(b.text, key)}
                 </blockquote>
               );
             case "code":
               return (
-                <div key={key} className="overflow-hidden border border-border bg-panel">
+                <div key={key} className="overflow-hidden rounded-lg border border-border bg-panel">
                   {b.lang && (
-                    <div className="border-b border-border px-3.5 py-1.5 font-mono text-[11px] uppercase tracking-wide text-secondary">
+                    <div className="border-b border-border px-3.5 py-1.5 font-mono text-2xs uppercase tracking-wide text-secondary">
                       {b.lang}
                     </div>
                   )}
                   <HScroll label={b.lang ? `${b.lang} code block` : "Code block"}>
-                    <pre className="px-3.5 py-3 font-mono text-[12.5px] leading-relaxed text-ink">
+                    <pre className="px-3.5 py-3 font-mono text-sm leading-relaxed text-ink">
                       <code>{b.text}</code>
                     </pre>
                   </HScroll>
@@ -412,14 +423,14 @@ export const SafeMarkdown = memo(function SafeMarkdown({ content }: { content: s
               return (
                 <HScroll
                   key={key}
-                  className="border border-border"
+                  className="rounded-lg border border-border"
                   label={`Table: ${b.head.slice(0, 3).join(", ")}`}
                 >
-                  <table className="w-full border-collapse text-left text-[13px]">
+                  <table className="w-full border-collapse text-left text-sm">
                     <thead>
                       <tr className="bg-panel">
                         {b.head.map((h, c) => (
-                          <th key={c} className="whitespace-nowrap px-3.5 py-2.5 text-[12px] font-semibold text-ink">
+                          <th key={c} className="whitespace-nowrap px-3.5 py-2.5 text-xs font-medium text-secondary">
                             {renderInline(h, `${key}h${c}`)}
                           </th>
                         ))}
@@ -444,7 +455,7 @@ export const SafeMarkdown = memo(function SafeMarkdown({ content }: { content: s
               return (
                 <ListTag
                   key={key}
-                  className={`space-y-1.5 pl-5 ${b.ordered ? "list-decimal marker:text-secondary" : "list-disc marker:text-plum-muted"}`}
+                  className={`space-y-1.5 pl-5 ${b.ordered ? "list-decimal marker:text-secondary" : "list-disc marker:text-secondary"}`}
                 >
                   {b.items.map((it, n) => (
                     <li key={n} className="pl-1">

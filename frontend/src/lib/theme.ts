@@ -8,7 +8,7 @@ export type ThemePreference = "system" | "light" | "dark";
 
 export const THEME_KEY = "ledgerline.theme";
 
-export const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem("${THEME_KEY}");if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();`;
+export const THEME_INIT_SCRIPT = `(function(){var t=null;try{t=localStorage.getItem("${THEME_KEY}");}catch(e){}if(t!=="light"&&t!=="dark"){t=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";}document.documentElement.setAttribute("data-theme",t);})();`;
 
 function readPreference(): ThemePreference {
   try {
@@ -19,9 +19,8 @@ function readPreference(): ThemePreference {
 }
 
 function applyPreference(pref: ThemePreference): void {
-  const root = document.documentElement;
-  if (pref === "system") root.removeAttribute("data-theme");
-  else root.setAttribute("data-theme", pref);
+  const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.setAttribute("data-theme", pref === "system" ? (systemDark ? "dark" : "light") : pref);
 }
 
 export function useTheme() {
@@ -32,7 +31,11 @@ export function useTheme() {
     setPreference(readPreference());
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     setSystemDark(mq.matches);
-    const onChange = (e: MediaQueryListEvent) => setSystemDark(e.matches);
+    const onChange = (e: MediaQueryListEvent) => {
+      setSystemDark(e.matches);
+      // Following the system: re-resolve the explicit attribute the stylesheet keys on.
+      if (readPreference() === "system") applyPreference("system");
+    };
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, []);

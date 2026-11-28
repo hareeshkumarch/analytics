@@ -11,7 +11,7 @@ MAX_SERIES = 3
 MAX_TITLE_CHARS = 120
 MIN_CHART_POINTS = 2
 CHARTABLE_OPERATIONS = frozenset(
-    {"aggregate", "contribution_breakdown", "compare_periods", "distribution", "reconciliation_lookup"}
+    {"aggregate", "contribution_breakdown", "compare_periods", "distribution", "reconciliation_lookup", "trend"}
 )
 _NUMBER = re.compile(r"-?\d+(\.\d+)?([eE][-+]?\d+)?")
 _ISO_DATE = re.compile(r"\d{4}-\d{2}(-\d{2})?([ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?")
@@ -79,6 +79,16 @@ def _reconciliation(columns: list[str], rows: list[list[Any]]) -> tuple[str, str
     return "bar", "match_key", ("left_total", "right_total"), points
 
 
+def _trend(columns: list[str], rows: list[list[Any]]) -> tuple[str, str, tuple[str, ...], list[Row]] | None:
+    if "period" not in columns or "moving_average" not in columns or len(columns) < 3:
+        return None
+    period, average = columns.index("period"), columns.index("moving_average")
+    value = next(i for i in range(len(columns)) if i not in (period, average))
+    points: list[Row] = [(_label(r[period]), _number(r[value]), _number(r[average])) for r in rows]
+    points.sort(key=lambda p: str(p[0]))
+    return "line", "period", (columns[value], "moving_average"), points
+
+
 def _grouped(columns: list[str], rows: list[list[Any]]) -> tuple[str, str, tuple[str, ...], list[Row]] | None:
     if len(rows) < MIN_CHART_POINTS or len(columns) < MIN_CHART_POINTS:
         return None
@@ -107,6 +117,8 @@ def _chart_for(evidence: dict[str, Any]) -> ChartSpec | None:
         shape = _compare_periods(columns, rows)
     elif operation == "reconciliation_lookup":
         shape = _reconciliation(columns, rows)
+    elif operation == "trend":
+        shape = _trend(columns, rows)
     else:
         shape = _grouped(columns, rows)
     if shape is None:

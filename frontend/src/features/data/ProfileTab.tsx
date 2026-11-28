@@ -15,7 +15,7 @@ function typeText(c: ColumnDetail | undefined): string {
 function Bound({ value }: { value: string | null }) {
   if (value === null) return <td className={cx(cellCls, "text-secondary")}>—</td>;
   return (
-    <td className={cx(cellCls, "max-w-[200px] truncate font-mono text-[12px]")} title={value}>
+    <td className={cx(cellCls, "max-w-[200px] truncate font-mono text-xs")} title={value}>
       {value}
     </td>
   );
@@ -46,7 +46,7 @@ export function ProfileTab({ snapshot, table }: { snapshot: SnapshotSummary; tab
   const columns = profile.data.columns;
   return (
     <div className="space-y-3">
-      <p className="text-[13px] text-body">
+      <p className="text-sm text-body">
         {columns.length} column{columns.length === 1 ? "" : "s"}
         {details ? ` · ${details.row_count.toLocaleString()} rows` : ""}
       </p>
@@ -55,14 +55,26 @@ export function ProfileTab({ snapshot, table }: { snapshot: SnapshotSummary; tab
           This snapshot holds a sample of the source, so these counts describe the sample.
         </Notice>
       )}
-      <DataTable label={`Column profile of ${table}`} head={["Column", "Type", "Nulls", "Distinct", "Duplicates", "Min", "Max"]} minWidth="min-w-[760px]">
+      <DataTable
+        label={`Column profile of ${table}`}
+        head={[
+          "Column",
+          "Type",
+          { label: "Nulls", align: "right" },
+          { label: "Distinct", align: "right" },
+          { label: "Duplicates", align: "right" },
+          "Min",
+          "Max",
+        ]}
+        minWidth="min-w-[760px]"
+      >
         {columns.map((c) => (
           <tr key={c.column_name} className={rowCls}>
-            <td className={cx(cellCls, "font-mono text-[12.5px] text-ink")}>{c.column_name}</td>
-            <td className={cx(cellCls, "font-mono text-[12px] text-secondary")}>{typeText(types.get(c.column_name))}</td>
-            <td className={cellCls}>{c.null_count.toLocaleString()}</td>
-            <td className={cellCls}>{c.distinct_count.toLocaleString()}</td>
-            <td className={cellCls}>{c.duplicate_count.toLocaleString()}</td>
+            <td className={cx(cellCls, "font-mono text-sm text-ink")}>{c.column_name}</td>
+            <td className={cx(cellCls, "font-mono text-xs text-secondary")}>{typeText(types.get(c.column_name))}</td>
+            <td className={cx(cellCls, "text-right tabular-nums")}>{c.null_count.toLocaleString()}</td>
+            <td className={cx(cellCls, "text-right tabular-nums")}>{c.distinct_count.toLocaleString()}</td>
+            <td className={cx(cellCls, "text-right tabular-nums")}>{c.duplicate_count.toLocaleString()}</td>
             <Bound value={c.min_value} />
             <Bound value={c.max_value} />
           </tr>

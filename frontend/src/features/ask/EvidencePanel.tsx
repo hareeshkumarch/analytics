@@ -79,10 +79,10 @@ export function EvidencePanel({
         >
           <header className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
             <div className="min-w-0">
-              <p className="text-[12px] font-medium uppercase tracking-wide text-secondary">Evidence</p>
-              <Dialog.Title className="mt-1 font-display text-[17px] font-semibold text-ink">{ev?.purpose || "Query behind this figure"}</Dialog.Title>
+              <p className="text-xs font-medium uppercase tracking-wide text-secondary">Evidence</p>
+              <Dialog.Title className="mt-1 text-[17px] font-semibold text-ink">{ev?.purpose || "Query behind this figure"}</Dialog.Title>
               {ev && (
-                <p className="mt-1 text-[12.5px] text-secondary">
+                <p className="mt-1 text-sm text-secondary">
                   {(ev.operation ?? "query").replaceAll("_", " ")} · {(ev.row_count ?? 0).toLocaleString()} row{ev.row_count === 1 ? "" : "s"}
                   {ev.execution_ms !== undefined ? ` · ${ev.execution_ms} ms` : ""}
                 </p>
@@ -109,15 +109,15 @@ export function EvidencePanel({
             {ev && (
               <>
                 <section aria-label="Result rows" className="space-y-2">
-                  <h3 className="text-[12px] font-semibold uppercase tracking-wide text-secondary">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-secondary">
                     Result{shown < ev.row_count ? ` · first ${shown} of ${ev.row_count.toLocaleString()}` : ""}
                     {ev.truncated ? " · limited by the row cap" : ""}
                   </h3>
                   {shown === 0 ? (
-                    <p className="text-[13px] text-secondary">The query returned no rows.</p>
+                    <p className="text-sm text-secondary">The query returned no rows.</p>
                   ) : (
-                    <HScroll className="border border-border" label="Evidence rows">
-                      <table className="w-full border-collapse text-left text-[12.5px]">
+                    <HScroll className="rounded-lg border border-border" label="Evidence rows">
+                      <table className="w-full border-collapse text-left text-sm">
                         <thead>
                           <tr className="bg-panel">
                             {ev.columns.map((col) => (
@@ -145,20 +145,20 @@ export function EvidencePanel({
 
                 <section aria-label="SQL" className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-[12px] font-semibold uppercase tracking-wide text-secondary">Query (read-only SQL)</h3>
-                    <button type="button" onClick={() => void copySql()} className="inline-flex min-h-[32px] items-center px-2 text-xs text-secondary transition-colors hover:text-ink">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-secondary">Query (read-only SQL)</h3>
+                    <button type="button" onClick={() => void copySql()} className="inline-flex min-h-[32px] items-center rounded-full px-2.5 text-xs text-secondary transition-colors hover:text-ink">
                       {copiedSql ? "Copied SQL" : "Copy SQL"}
                     </button>
                   </div>
-                  <HScroll className="border border-border bg-panel" label="SQL query">
-                    <pre className="px-3.5 py-3 font-mono text-[12px] leading-relaxed text-ink">
+                  <HScroll className="rounded-lg border border-border bg-panel" label="SQL query">
+                    <pre className="px-3.5 py-3 font-mono text-xs leading-relaxed text-ink">
                       <code>{ev.sql}</code>
                     </pre>
                   </HScroll>
                 </section>
 
                 <Details summary="Technical identifiers">
-                  <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[12px]">
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
                     <dt className="text-secondary">Evidence</dt>
                     <dd className="break-all font-mono text-body">{evidenceId}</dd>
                     <dt className="text-secondary">Snapshot</dt>

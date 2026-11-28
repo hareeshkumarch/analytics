@@ -21,6 +21,8 @@ from app.jobs.outbox import dispatch_pending
 logger = logging.getLogger(__name__)
 
 OUTBOX_POLL_SECONDS = 5.0
+# How often scheduled pins are checked. Schedules are daily or weekly, so a minute is precise enough.
+PIN_SCHEDULE_POLL_SECONDS = 60.0
 
 
 def register(ctx: ApiContext) -> None:
@@ -42,7 +44,11 @@ def register(ctx: ApiContext) -> None:
         semantic_version_id = str(run_rec.get("semantic_version_id") or "")
 
         def _is_cancelled() -> bool:
-            return run_rec.get("status") == RunStatus.CANCELLED.value
+            # The cancel route (and every read of the run) replaces the entry in app.state.runs with a fresh
+            # record, so the copy this executor captured never changes. Look at the current entry as well.
+            current = app.state.runs.get(run_id) or run_rec
+            cancelled = RunStatus.CANCELLED.value
+            return run_rec.get("status") == cancelled or current.get("status") == cancelled
 
         run_token = run_id_var.set(run_id)
         try:
@@ -56,6 +62,10 @@ def register(ctx: ApiContext) -> None:
                     snapshot = app.state.repo_snapshots.get_snapshot(snapshot_id)
                     if snapshot is not None:
                         app.state.snapshots[snapshot_id] = snapshot
+                if snapshot is not None:
+                    # Read fresh on every run (the snapshot record itself is cached): a note added a minute ago must count.
+                    notes = app.state.repo_snapshots.list_dataset_notes(workspace_id, str(snapshot.get("source_id") or ""))
+                    snapshot = {**snapshot, "dataset_notes": [n["text"] for n in notes]}
                 semantics = app.state.semantics.get(snapshot_id)
                 if semantics is None and snapshot_id:
                     semantics = app.state.repo_snapshots.get_semantics(snapshot_id)
@@ -172,14 +182,25 @@ def register(ctx: ApiContext) -> None:
                 logger.exception("Artifact sweep failed")
             await asyncio.sleep(SWEEP_INTERVAL_SECONDS)
 
+    async def _run_due_pins_forever() -> None:
+        while True:
+            try:
+                started = await ctx.run_due_pins()
+                if started:
+                    logger.info("Scheduled re-run started for %s pinned answers", len(started))
+            except Exception:
+                logger.exception("Scheduled pin check failed")
+            await asyncio.sleep(PIN_SCHEDULE_POLL_SECONDS)
+
     async def _stop_outbox_dispatcher() -> None:
-        for name in ("outbox_task", "artifact_sweep_task"):
+        for name in ("outbox_task", "artifact_sweep_task", "pin_schedule_task"):
             task = getattr(app.state, name, None)
             if task is not None:
                 task.cancel()
 
     async def _resume_active_runs() -> None:
         app.state.artifact_sweep_task = asyncio.create_task(_sweep_artifacts_forever())
+        app.state.pin_schedule_task = asyncio.create_task(_run_due_pins_forever())
         if uses_celery():
             app.state.outbox_task = asyncio.create_task(_dispatch_outbox_forever())
             return

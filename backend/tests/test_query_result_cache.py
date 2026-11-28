@@ -77,8 +77,10 @@ class TestQueryResultCache(unittest.TestCase):
     def test_hits_keep_per_query_evidence_and_are_recorded(self) -> None:
         box = AnalyticsToolbox(engine=self.engine, snapshot=self.snapshot, semantics=None, budget=ToolBudget(10, 10))
         first = box.execute(ToolCallResult("a", "run_query_ir", QUERY))
+        # The first call runs the query and the data-policy check on its grouping column; both are then cached.
+        after_first = self.executor.calls
         again = box.execute(ToolCallResult("b", "run_query_ir", {**QUERY, "purpose": "again"}))
-        self.assertEqual(self.executor.calls, 1)
+        self.assertEqual(self.executor.calls, after_first)
         self.assertEqual((first.summary["cache_hit"], again.summary["cache_hit"]), (False, True))
         self.assertTrue(again.evidence["cache_hit"])
         self.assertEqual(first.evidence["result_hash"], again.evidence["result_hash"])

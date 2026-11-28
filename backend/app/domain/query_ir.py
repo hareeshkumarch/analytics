@@ -130,6 +130,56 @@ class ReconciliationLookupQueryIR:
     purpose: str = ""
 
 
+TREND_GRAINS = ("day", "week", "month", "quarter", "year")
+MAX_TREND_WINDOW = 24
+MAX_PERCENTILES = 5
+DEFAULT_PERCENTILES = (0.25, 0.5, 0.75, 0.9)
+
+
+@dataclass(frozen=True, slots=True)
+class TrendQueryIR:
+    """One metric per period, with its moving average and the change from the period before."""
+
+    operation: Literal["trend"] = "trend"
+    table_id: str = ""
+    date_field: str = ""
+    metric: AggregateMetricSpec = field(
+        default_factory=lambda: AggregateMetricSpec("value", AggregateFunction.SUM, "")
+    )
+    grain: str = "month"
+    window: int = 3
+    filters: tuple[FilterPredicate, ...] = ()
+    limit: int = MAX_QUERY_ROWS
+    purpose: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class PercentilesQueryIR:
+    """Chosen percentiles of a numeric column, overall or per group."""
+
+    operation: Literal["percentiles"] = "percentiles"
+    table_id: str = ""
+    field_id: str = ""
+    percentiles: tuple[float, ...] = DEFAULT_PERCENTILES
+    group_by: tuple[str, ...] = ()
+    filters: tuple[FilterPredicate, ...] = ()
+    limit: int = DEFAULT_LIST_ROWS
+    purpose: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class OutliersQueryIR:
+    """How many values of a numeric column fall outside 1.5 interquartile ranges, and where the bounds are."""
+
+    operation: Literal["outliers"] = "outliers"
+    table_id: str = ""
+    field_id: str = ""
+    group_by: tuple[str, ...] = ()
+    filters: tuple[FilterPredicate, ...] = ()
+    limit: int = DEFAULT_LIST_ROWS
+    purpose: str = ""
+
+
 QueryIR = Union[
     AggregateQueryIR,
     DetailQueryIR,
@@ -137,6 +187,9 @@ QueryIR = Union[
     ContributionBreakdownQueryIR,
     DistributionQueryIR,
     ReconciliationLookupQueryIR,
+    TrendQueryIR,
+    PercentilesQueryIR,
+    OutliersQueryIR,
 ]
 
 
@@ -252,10 +305,45 @@ def _purpose(payload: dict[str, Any]) -> str:
     return value[:PUBLIC_ERROR_CHARS] if isinstance(value, str) else ""
 
 
+_COMMON_KEYS = frozenset({"operation", "purpose", "filters", "limit"})
+SUPPORTED_KEYS: dict[str, frozenset[str]] = {
+    "aggregate": frozenset({"table_id", "metrics", "group_by", "order_by"}),
+    "detail": frozenset({"table_id", "select_fields", "order_by"}),
+    "compare_periods": frozenset(
+        {"table_id", "date_field", "metric", "current_start", "current_end", "previous_start", "previous_end", "group_by"}
+    ),
+    "contribution_breakdown": frozenset({"table_id", "metric", "dimension_field"}),
+    "distribution": frozenset({"table_id", "field_id", "buckets"}),
+    "reconciliation_lookup": frozenset(
+        {"left_table_id", "right_table_id", "left_key", "right_key", "left_amount_field", "right_amount_field"}
+    ),
+    "trend": frozenset({"table_id", "date_field", "metric", "grain", "window"}),
+    "percentiles": frozenset({"table_id", "field_id", "percentiles", "group_by"}),
+    "outliers": frozenset({"table_id", "field_id", "group_by"}),
+}
+
+
+def _reject_unsupported(payload: dict[str, Any], operation: str) -> None:
+    """Fail on parameters this operation ignores, so the model is never left believing a sort or grouping applied.
+
+    Empty values are let through: models often send `"group_by": []` or null for parameters they are not using.
+    """
+    supported = SUPPORTED_KEYS[operation] | _COMMON_KEYS
+    extra = sorted(key for key, value in payload.items() if key not in supported and value not in (None, "", [], {}))
+    if extra:
+        raise QueryIRParseError(
+            f"{operation} does not support {', '.join(repr(k) for k in extra)}. "
+            f"It accepts: {', '.join(sorted(SUPPORTED_KEYS[operation] | {'filters', 'limit'}))}",
+            failed_fields=tuple(extra),
+        )
+
+
 def parse_query_ir(payload: dict[str, Any]) -> QueryIR:
     if not isinstance(payload, dict):
         raise QueryIRParseError("query must be a JSON object")
     operation = payload.get("operation")
+    if isinstance(operation, str) and operation in SUPPORTED_KEYS:
+        _reject_unsupported(payload, operation)
     if operation == "aggregate":
         metrics_raw = payload.get("metrics") or []
         if not isinstance(metrics_raw, list) or not metrics_raw:
@@ -325,8 +413,53 @@ def parse_query_ir(payload: dict[str, Any]) -> QueryIR:
             limit=_limit(payload, MAX_QUERY_ROWS),
             purpose=_purpose(payload),
         )
+    if operation == "trend":
+        grain = payload.get("grain") or "month"
+        if grain not in TREND_GRAINS:
+            raise QueryIRParseError(f"'grain' must be one of: {', '.join(TREND_GRAINS)}", failed_fields=("grain",))
+        window = payload.get("window", 3)
+        if not isinstance(window, int) or isinstance(window, bool) or not 1 <= window <= MAX_TREND_WINDOW:
+            raise QueryIRParseError(f"'window' must be an integer between 1 and {MAX_TREND_WINDOW}", failed_fields=("window",))
+        return TrendQueryIR(
+            table_id=_ident(payload, "table_id"),
+            date_field=_ident(payload, "date_field"),
+            metric=_metric(payload.get("metric"), "metric"),
+            grain=grain,
+            window=window,
+            filters=_filters(payload),
+            limit=_limit(payload, MAX_QUERY_ROWS),
+            purpose=_purpose(payload),
+        )
+    if operation == "percentiles":
+        raw = payload.get("percentiles") or list(DEFAULT_PERCENTILES)
+        valid = isinstance(raw, list) and 1 <= len(raw) <= MAX_PERCENTILES and all(
+            isinstance(p, (int, float)) and not isinstance(p, bool) and 0 < p < 1 for p in raw
+        )
+        if not valid:
+            raise QueryIRParseError(
+                f"'percentiles' must be 1 to {MAX_PERCENTILES} numbers between 0 and 1, such as [0.5, 0.9]",
+                failed_fields=("percentiles",),
+            )
+        return PercentilesQueryIR(
+            table_id=_ident(payload, "table_id"),
+            field_id=_ident(payload, "field_id"),
+            percentiles=tuple(dict.fromkeys(round(float(p), 4) for p in raw)),
+            group_by=_ident_list(payload, "group_by"),
+            filters=_filters(payload),
+            limit=_limit(payload, DEFAULT_LIST_ROWS),
+            purpose=_purpose(payload),
+        )
+    if operation == "outliers":
+        return OutliersQueryIR(
+            table_id=_ident(payload, "table_id"),
+            field_id=_ident(payload, "field_id"),
+            group_by=_ident_list(payload, "group_by"),
+            filters=_filters(payload),
+            limit=_limit(payload, DEFAULT_LIST_ROWS),
+            purpose=_purpose(payload),
+        )
     raise QueryIRParseError(
         "'operation' must be one of: aggregate, detail, compare_periods, contribution_breakdown, "
-        "distribution, reconciliation_lookup",
+        "distribution, reconciliation_lookup, trend, percentiles, outliers",
         failed_fields=("operation",),
     )

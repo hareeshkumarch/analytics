@@ -57,12 +57,21 @@ class TestPromptBuilders(unittest.TestCase):
         self.assertTrue(all(f"Finding {i}" in compiled.text for i in range(4)))
         self.assertLessEqual(len(compiled.text), 6_000 * CHARS_PER_TOKEN + 4 * len(TRIM_MARK) + 100)
 
-    def test_composer_trims_older_findings_before_newer_ones(self) -> None:
-        compiled = composer_findings(["old " + "a" * 12_000, "new " + "b" * 12_000])
-        old, new = (s.text for s in compiled.sections)
-        self.assertLess(len(old), len(new))
-        self.assertGreaterEqual(len(old), FINDING_FLOOR_CHARS)
-        self.assertEqual(compiled.trimmed[0], "finding:0")
+    def test_composer_shares_the_cut_between_long_findings(self) -> None:
+        compiled = composer_findings(["old " + "a" * 12_000, "new " + "b" * 12_000, "short"])
+        old, new, short = (s.text for s in compiled.sections)
+        # Neither long finding is reduced to a stub so the other can stay whole.
+        self.assertLess(abs(len(old) - len(new)), 50)
+        self.assertGreater(len(old), 4_000)
+        self.assertEqual(short, "short")
+        self.assertEqual(set(compiled.trimmed), {"finding:0", "finding:1"})
+
+    def test_composer_cuts_reviewer_notes_first(self) -> None:
+        compiled = composer_findings(["analysis " + "a" * 12_000, "review " + "r" * 12_000], review_indexes=frozenset({1}))
+        analysis, review = (s.text for s in compiled.sections)
+        self.assertLess(len(review), len(analysis))
+        self.assertGreaterEqual(len(review), FINDING_FLOOR_CHARS - 40)
+        self.assertEqual(compiled.trimmed[0], "finding:1")
 
 
 if __name__ == "__main__":

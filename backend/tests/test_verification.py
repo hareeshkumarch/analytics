@@ -68,14 +68,25 @@ class TestOutcome(unittest.TestCase):
     def test_rules(self) -> None:
         outcome, criteria = self._assess(f"North sold 12.5 [{EV}].")
         self.assertEqual(outcome, "success")
-        self.assertEqual([(c.criterion, c.status) for c in criteria], [(GROUNDING_CRITERION, "verified"), ("Answer the question", "verified")])
+        # No evidence review ran, so the planned criterion is reported as not reviewed, not as verified.
+        self.assertEqual([(c.criterion, c.status) for c in criteria], [(GROUNDING_CRITERION, "verified"), ("Answer the question", "unreviewed")])
         self.assertEqual(criteria[0].evidence_ids, (EV,))
+        outcome, criteria = self._assess(f"North sold 12.5 [{EV}].", review_approved=True)
+        self.assertEqual((outcome, criteria[1].status), ("success", "verified"))
         self.assertEqual(self._assess(f"North sold 12.5 [{EV}].", steps_failed=True)[0], "partial_success")
         self.assertEqual(self._assess(f"North sold 12.5 [{EV}].", review_approved=False)[0], "partial_success")
         self.assertEqual(self._assess(f"North sold 12.5 [{EV}].", review_contradictions=True)[0], "needs_review")
         outcome, criteria = self._assess(f"North sold 99.75 [{EV}].", steps_failed=True)
         self.assertEqual(outcome, "needs_review")
         self.assertIn("99.75", criteria[0].detail)
+
+    def test_an_answer_with_no_evidence_is_not_reported_as_verified(self) -> None:
+        outcome, criteria = assess_answer(
+            answer_markdown="The data cannot answer this question.", evidence=[], criteria=("Answer the question",),
+            review_approved=None, review_contradictions=False, steps_failed=False, stopped_early=False,
+        )
+        self.assertEqual((outcome, criteria[0].status), ("partial_success", "blocked"))
+        self.assertIn("No query results", criteria[0].detail)
 
 
 class CitingGateway(ToolCallingGateway):

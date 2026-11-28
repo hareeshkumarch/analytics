@@ -53,13 +53,13 @@ export function ConnectorCatalog({ onSelect }: { onSelect: (id: ConnectorId) => 
               <button
                 type="button"
                 onClick={() => onSelect(c.id)}
-                className="flex h-full w-full items-start gap-3 border border-border bg-surface p-3.5 text-left transition-colors hover:border-plum"
+                className="flex h-full w-full items-start gap-3 rounded-lg border border-border bg-surface p-3.5 text-left transition-colors hover:border-border-strong hover:bg-sidebar"
               >
                 <ConnectorLogo id={c.id} size="md" />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[13.5px] font-medium leading-snug text-ink">{c.label}</span>
+                  <span className="block text-base font-medium leading-snug text-ink">{c.label}</span>
                   <span className="mt-0.5 block text-xs leading-snug text-secondary">{c.sublabel}</span>
-                  {c.basedOn && <span className="mt-1.5 inline-block bg-panel px-1.5 py-0.5 text-[11px] text-secondary">via {c.basedOn}</span>}
+                  {c.basedOn && <span className="mt-1.5 inline-block rounded-sm bg-panel px-1.5 py-0.5 text-2xs text-secondary">via {c.basedOn}</span>}
                 </span>
               </button>
             </li>

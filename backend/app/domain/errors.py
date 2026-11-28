@@ -124,6 +124,10 @@ class ClarificationRequired(Exception):
 class ProviderError(DomainError):
     code = "provider_error"
     http_status = 502
+    # Seconds the provider asked us to wait before trying again, when it said.
+    retry_after: float | None = None
+    # (input, output) tokens the provider reported for a reply it then cut off. The call failed, but it was billed.
+    billed_tokens: tuple[int, int] | None = None
 
 
 class CircuitOpenError(ProviderError):

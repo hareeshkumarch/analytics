@@ -13,12 +13,12 @@ routing:
     - nvidia_nim
   role_routes:
     planner:
-      - gpt-4o-2024-11-20
-      - claude-sonnet-4-5-20250929
+      - gpt-6.1-sol
+      - claude-sonnet-5-5
       - gemini-2.5-flash
       - claude-opus-5-5
-      - claude-sonnet-5-5
-      - gpt-6.1-sol
+      - claude-sonnet-4-5-20250929
+      - gpt-4o-2024-11-20
       - gpt-6-astra
       - grok-4.7
       - gemini-2.5-pro
@@ -29,10 +29,10 @@ routing:
       - openai/gpt-oss-120b
     data_specialist:
       - gemini-2.5-flash
-      - gpt-4o-2024-11-20
-      - claude-sonnet-4-5-20250929
-      - claude-sonnet-5-5
       - gpt-6.1-sol
+      - claude-sonnet-5-5
+      - claude-sonnet-4-5-20250929
+      - gpt-4o-2024-11-20
       - claude-opus-5-5
       - grok-4.7
       - gemini-2.5-pro
@@ -49,31 +49,31 @@ routing:
       - openai/gpt-oss-120b
       - openai/gpt-oss-20b
     reconciliation_specialist:
-      - claude-sonnet-4-5-20250929
-      - gpt-4o-2024-11-20
-      - claude-opus-5-5
-      - gpt-6.1-sol
       - claude-sonnet-5-5
+      - gpt-6.1-sol
+      - claude-opus-5-5
+      - gpt-4o-2024-11-20
+      - claude-sonnet-4-5-20250929
       - gpt-6-astra
       - grok-4.7
       - gpt-6.1-terra
       - gemini-2.5-pro
     evidence_reviewer:
-      - claude-sonnet-4-5-20250929
-      - gpt-4o-2024-11-20
-      - claude-opus-5-5
-      - gpt-6.1-sol
       - claude-sonnet-5-5
+      - gpt-6.1-sol
+      - claude-opus-5-5
+      - gpt-4o-2024-11-20
+      - claude-sonnet-4-5-20250929
       - gpt-6-astra
       - grok-4.7
       - gpt-6.1-terra
       - gemini-2.5-pro
     answer_composer:
-      - gpt-4o-2024-11-20
-      - gemini-2.5-flash
-      - claude-sonnet-4-5-20250929
-      - claude-sonnet-5-5
       - gpt-6.1-sol
+      - gemini-2.5-flash
+      - claude-sonnet-5-5
+      - claude-sonnet-4-5-20250929
+      - gpt-4o-2024-11-20
       - claude-opus-5-5
       - grok-4.7
       - gpt-6.1-terra

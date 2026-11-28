@@ -31,7 +31,7 @@ async function mockApi(page: Page, exports: string[]) {
     const method = route.request().method();
     if (url.pathname.endsWith("/runs")) return route.fulfill({ json: { runs: [RUN], next_before: null } });
     if (url.pathname.endsWith("/pins")) {
-      return route.fulfill({ json: { pins: [{ pin_id: "pin_1", title: "Sales by region", question_text: "Sales by region", run_id: RUN.run_id, version: 1, created_at: RUN.created_at }] } });
+      return route.fulfill({ json: { pins: [{ pin_id: "pin_1", title: "Sales by region", question_text: "Sales by region", run_id: RUN.run_id, version: 1, created_at: RUN.created_at, shown_run: { ...RUN, workspace_id: "default" }, latest_run_status: null, snapshot: null, newer_version: null }] } });
     }
     if (url.pathname.endsWith("/exports") && method === "POST") {
       exports.push(JSON.parse(route.request().postData() ?? "{}").format);

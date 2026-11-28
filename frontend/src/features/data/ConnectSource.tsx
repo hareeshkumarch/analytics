@@ -2,7 +2,7 @@
 
 import React, { useEffect, useId, useRef, useState } from "react";
 import { ConnectorLogo } from "@/components/ConnectorLogo";
-import { Badge, Details, Notice, Spinner, btn, cardCls, cx, inputCls } from "@/components/ui";
+import { Badge, Details, Notice, Spinner, btn, cardCls, cx, inputCls, sectionTitleCls } from "@/components/ui";
 import {
   CONNECTOR_BY_ID,
   ConnectorDef,
@@ -200,7 +200,7 @@ function SourceSetup({
         <div className="flex min-w-0 items-start gap-3">
           <ConnectorLogo id={def.id} size="md" />
           <div className="min-w-0">
-            <h2 className="font-display text-lg font-semibold leading-snug tracking-[-0.01em] text-ink">{def.label}</h2>
+            <h2 className={sectionTitleCls}>{def.label}</h2>
             <p className="mt-0.5 text-xs text-secondary">{def.sublabel}</p>
           </div>
         </div>
@@ -214,7 +214,7 @@ function SourceSetup({
           <Badge>{def.authSummary}</Badge>
           {def.basedOn && <Badge>via {def.basedOn}</Badge>}
         </div>
-        {def.note && <p className="text-[13px] leading-relaxed text-body">{def.note}</p>}
+        {def.note && <p className="text-sm leading-relaxed text-body">{def.note}</p>}
       </div>
 
       {reimport && flow.phase !== "done" && (
@@ -262,7 +262,7 @@ function SourceSetup({
         <form noValidate onSubmit={submitImport} className="space-y-4">
           {single ? (
             <div className="space-y-1.5">
-              <label htmlFor={nameId} className="block text-[12.5px] font-medium text-body">
+              <label htmlFor={nameId} className="block text-sm font-medium text-body">
                 Table name
               </label>
               <input
@@ -274,7 +274,7 @@ function SourceSetup({
                 aria-invalid={Boolean(renameError)}
                 aria-describedby={cx(`${nameId}-help`, renameError && `${nameId}-err`)}
                 onChange={(e) => setTableName(e.target.value)}
-                className={cx(inputCls, "font-mono text-[13px]", renameError && "border-err")}
+                className={cx(inputCls, "font-mono text-[16px] sm:text-sm", renameError && "border-err")}
               />
               <p id={`${nameId}-help`} className="text-xs text-secondary">
                 {flow.tables[0] ? `${tableMeta(flow.tables[0])}. ` : ""}Renaming here doesn&apos;t upload the file again.
@@ -360,7 +360,7 @@ export function ConnectSource({
         <div className="space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <h2 className="font-display text-lg font-semibold leading-snug tracking-[-0.01em] text-ink">Add data</h2>
+              <h2 className={sectionTitleCls}>Add data</h2>
               <p className="mt-1 text-xs text-secondary">
                 Pick a source. Each import becomes a read-only snapshot, and credentials are only used for that import.
               </p>
@@ -372,8 +372,8 @@ export function ConnectSource({
             )}
           </div>
           {offerSample && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-panel px-3.5 py-3">
-              <span className="min-w-0 flex-1 basis-[220px] text-[13px] text-body">No data handy? Import a small shop dataset with orders, refunds, fees and payouts.</span>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-panel px-3.5 py-3">
+              <span className="min-w-0 flex-1 basis-[220px] text-sm text-body">No data handy? Import a small shop dataset with orders, refunds, fees and payouts.</span>
               <SampleDataButton onImported={(snap) => onImported(snap.snapshot_id)} />
             </div>
           )}

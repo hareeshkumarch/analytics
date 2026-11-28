@@ -21,7 +21,9 @@ from app.adapters.orchestration.deep_agents_bridge import estimate_input_tokens
 from app.application.ports.providers import ModelRequest, ModelResponse, ToolDefinition
 from app.application.services.routing_service import RoutingService
 from app.domain.providers import AgentRole, RoutingPolicy
-from app.domain.limits import STEP_MAX_OUTPUT_TOKENS, TOKEN_HEADROOM_FACTOR
+from app.application.services.context_compiler import compact_older_tool_results
+from app.domain.errors import ProviderError
+from app.domain.limits import STEP_MAX_OUTPUT_TOKENS, TOKEN_HEADROOM_FACTOR, FINAL_ANSWER_ATTEMPT_RESERVE, WIND_DOWN_SECONDS
 
 _FINAL_TOOL_ROUND_PROMPT = (
     "The specialist tool-round limit is used up. Give your final answer now using only the results "
@@ -104,7 +106,11 @@ class GatewayChatModel(BaseChatModel):
     timeout_provider: Callable[[], int] | None = Field(default=None, exclude=True)
     response_observer: Callable[[ModelResponse], None] | None = Field(default=None, exclude=True)
     token_budget: int | None = None
+    # Model calls the run has left, and seconds until its deadline. Either one running low ends tool use early.
+    attempts_left: Callable[[], int] | None = Field(default=None, exclude=True)
+    seconds_left: Callable[[], float | None] | None = Field(default=None, exclude=True)
     _tool_rounds: int = PrivateAttr(default=0)
+    _pinned_model: str | None = PrivateAttr(default=None)
     _tokens_used: int = PrivateAttr(default=0)
     _tool_round_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
@@ -134,6 +140,15 @@ class GatewayChatModel(BaseChatModel):
         definitions = tuple(_tool_definition(tool) for tool in tools)
         return self.bind(tools=definitions, tool_choice=tool_choice, **kwargs)
 
+    def _must_wind_down(self) -> bool:
+        """True when this must be the step's last model call: one more round would leave no call or time for an answer."""
+        if self.attempts_left is not None and self.attempts_left() <= FINAL_ANSWER_ATTEMPT_RESERVE + 1:
+            return True
+        if self.seconds_left is not None:
+            left = self.seconds_left()
+            return left is not None and left <= WIND_DOWN_SECONDS
+        return False
+
     def _generate(
         self,
         messages: list[BaseMessage],
@@ -152,8 +167,14 @@ class GatewayChatModel(BaseChatModel):
         )
         tool_choice = kwargs.get("tool_choice")
         structured_schema = kwargs.get("structured_schema")
+        tools_requested = bool(raw_tools)
+        # Decide this before the per-call timeout, which raises once the deadline has passed.
+        winding_down = tools_requested and self._must_wind_down()
         timeout = self.timeout_provider() if self.timeout_provider else self.timeout_seconds
         gateway_messages = [_message_to_gateway(message) for message in messages]
+        # The newest round of tool results is read in full; earlier ones have already been used and are cut to their first rows.
+        newest_round = max((i for i, m in enumerate(gateway_messages) if m.get("role") == "assistant"), default=0)
+        compact_older_tool_results(gateway_messages, newest_round)
         estimated_input_tokens = estimate_input_tokens(tuple(gateway_messages), tools)
         max_output_tokens = int(kwargs.get("max_output_tokens", self.max_output_tokens))
         tool_rounds_exhausted = False
@@ -166,6 +187,7 @@ class GatewayChatModel(BaseChatModel):
                 self.routing_service.tokens_left(self.run_id)
                 < TOKEN_HEADROOM_FACTOR * (estimated_input_tokens + max_output_tokens)
             )
+        tool_rounds_exhausted = tool_rounds_exhausted or winding_down
         if tool_rounds_exhausted:
             gateway_messages.append({"role": "user", "content": _FINAL_TOOL_ROUND_PROMPT})
 
@@ -185,11 +207,26 @@ class GatewayChatModel(BaseChatModel):
                 else tool_choice if isinstance(tool_choice, str) else None
             ),
         )
-        response = self.routing_service.execute_step(
-            request=request,
-            policy=self.policy,
-            estimated_input_tokens=estimated_input_tokens,
-        )
+        try:
+            # Stay on the model that started this step: switching provider mid-conversation drops its
+            # reasoning state and can change how it reads its own earlier tool calls.
+            response = self.routing_service.execute_step(
+                request=request,
+                policy=self.policy,
+                estimated_input_tokens=estimated_input_tokens,
+                manual_model_id=self._pinned_model,
+            )
+        except ProviderError:
+            if self._pinned_model is None:
+                raise
+            # The pinned model is unavailable; finishing on another one beats losing the step.
+            self._pinned_model = None
+            response = self.routing_service.execute_step(
+                request=request,
+                policy=self.policy,
+                estimated_input_tokens=estimated_input_tokens,
+            )
+        self._pinned_model = response.model_id or None
         if response.tool_calls and tools:
             with self._tool_round_lock:
                 if tool_rounds_exhausted:

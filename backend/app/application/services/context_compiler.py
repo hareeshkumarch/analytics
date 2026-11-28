@@ -1,4 +1,6 @@
+import json
 from dataclasses import dataclass, field
+from typing import Any
 
 from app.domain.limits import CHARS_PER_TOKEN
 
@@ -92,12 +94,82 @@ def specialist_context(
     return compile_context(sections, budget_tokens)
 
 
-def composer_findings(findings: list[str], budget_tokens: int = COMPOSER_FINDINGS_TOKENS) -> CompiledContext:
-    sections = [
-        ContextSection(f"finding:{i}", text, priority=len(findings) - i, floor_chars=FINDING_FLOOR_CHARS)
+def _level(lengths: list[int], room: int) -> int:
+    """The common cap that makes `lengths` fit in `room`: short items stay whole, long ones share the cut."""
+    left, remaining = room, len(lengths)
+    for length in sorted(lengths):
+        if length * remaining <= left:
+            left -= length
+            remaining -= 1
+        else:
+            return max(0, left // remaining)
+    return max(lengths, default=0)
+
+
+def composer_findings(
+    findings: list[str],
+    budget_tokens: int = COMPOSER_FINDINGS_TOKENS,
+    review_indexes: frozenset[int] = frozenset(),
+) -> CompiledContext:
+    """Fit the findings into the composer's budget, cutting what the answer needs least first.
+
+    Reviewer notes go first: they judge the analysis but carry no figures of their own. If that is not
+    enough, the analytical findings are levelled to a common length, so the long ones share the cut and
+    no step is reduced to a stub while another is passed whole.
+    """
+    keep = [len(text) for text in findings]
+    over = sum(keep) - budget_tokens * CHARS_PER_TOKEN
+    order: list[int] = []
+    for i in sorted(i for i in review_indexes if i < len(findings)):
+        if over <= 0:
+            break
+        shorter = max(min(keep[i], FINDING_FLOOR_CHARS), keep[i] - over)
+        if shorter < keep[i]:
+            over -= keep[i] - shorter
+            keep[i] = shorter
+            order.append(i)
+    if over > 0:
+        analytical = [i for i in range(len(findings)) if i not in review_indexes]
+        room = budget_tokens * CHARS_PER_TOKEN - sum(keep[i] for i in range(len(findings)) if i in review_indexes)
+        cap = max(FINDING_FLOOR_CHARS, _level([keep[i] for i in analytical], room))
+        for i in analytical:
+            if keep[i] > cap:
+                keep[i] = cap
+                order.append(i)
+    sections = tuple(
+        ContextSection(
+            f"finding:{i}",
+            text if keep[i] >= len(text) else text[: max(0, keep[i] - len(TRIM_MARK))].rstrip() + TRIM_MARK,
+            floor_chars=FINDING_FLOOR_CHARS,
+        )
         for i, text in enumerate(findings)
-    ]
-    return compile_context(sections, budget_tokens)
+    )
+    return CompiledContext(sections, {s.name: _tokens(len(s.text)) for s in sections}, tuple(f"finding:{i}" for i in order))
+
+
+OLDER_RESULT_MAX_CHARS = 4_000
+OLDER_RESULT_ROWS = 10
+
+
+def compact_older_tool_results(messages: list[dict[str, Any]], keep_from: int) -> None:
+    """Shrink large tool results before `keep_from` to their first rows.
+
+    A result is needed in full only for the round that reads it; after that the model has drawn its
+    conclusion, and resending up to 64 KB per result every round only fills the context window.
+    """
+    for idx in range(keep_from):
+        m = messages[idx]
+        if m.get("role") != "tool" or m.get("compacted") or len(str(m.get("content", ""))) <= OLDER_RESULT_MAX_CHARS:
+            continue
+        try:
+            data = json.loads(m["content"])
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(data, dict) or not isinstance(data.get("rows"), list):
+            continue
+        rows = data["rows"][:OLDER_RESULT_ROWS]
+        data.update(rows=rows, rows_shown=len(rows), older_result_trimmed=True)
+        messages[idx] = {**m, "content": json.dumps(data, default=str), "compacted": True}
 
 
 def clip_statement(text: str, limit: int) -> str:

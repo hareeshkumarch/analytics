@@ -19,8 +19,11 @@ from app.domain.query_ir import (
     DistributionQueryIR,
     FilterOperator,
     FilterPredicate,
+    OutliersQueryIR,
+    PercentilesQueryIR,
     QueryIR,
     ReconciliationLookupQueryIR,
+    TrendQueryIR,
 )
 
 COMPILER_VERSION = "1.0.0"
@@ -241,6 +244,16 @@ class SqlGlotQueryCompiler:
                 clauses.append(f"{col_sql} {sql_op} ?")
         return " WHERE " + " AND ".join(clauses)
 
+    @staticmethod
+    def _require_numeric(schema: TableSchema, func: AggregateFunction, field_id: str, key: str) -> None:
+        """Catch a sum or average of text before it runs, so the model gets a named, free-to-fix error."""
+        if func in (AggregateFunction.SUM, AggregateFunction.AVG) and not _is_numeric(schema, field_id):
+            raise QueryValidationError(
+                f"{func.value} needs a numeric column, but {field_id!r} is {_arrow_type(schema, field_id) or 'not numeric'}. "
+                "Use count or count_distinct for text columns.",
+                failed_fields=(key,),
+            )
+
     def _compile_agg_expr(
         self, func: AggregateFunction, col_sql: str, alias: str
     ) -> str:
@@ -267,6 +280,7 @@ class SqlGlotQueryCompiler:
             select_parts = [self._validate_field(ir.table_id, g, schemas) for g in ir.group_by]
             for m in ir.metrics:
                 col_sql = self._validate_field(ir.table_id, m.field_id, schemas)
+                self._require_numeric(schemas[ir.table_id], m.func, m.field_id, "metrics")
                 select_parts.append(self._compile_agg_expr(m.func, col_sql, m.alias))
             where_sql = self._compile_filters(ir.table_id, ir.filters, schemas, params)
             group_sql = (
@@ -311,6 +325,7 @@ class SqlGlotQueryCompiler:
             if not _is_temporal(schemas[ir.table_id], ir.date_field):
                 date_sql = f"TRY_CAST({date_sql} AS TIMESTAMP)"
             metric_col = self._validate_field(ir.table_id, ir.metric.field_id, schemas)
+            self._require_numeric(schemas[ir.table_id], ir.metric.func, ir.metric.field_id, "metric")
             agg_fn = ir.metric.func.value.upper()
             if ir.metric.func == AggregateFunction.COUNT_DISTINCT:
                 raise QueryValidationError(
@@ -336,6 +351,7 @@ class SqlGlotQueryCompiler:
             tbl_sql = _quote_ident(ir.table_id)
             dim_sql = self._validate_field(ir.table_id, ir.dimension_field, schemas)
             metric_col = self._validate_field(ir.table_id, ir.metric.field_id, schemas)
+            self._require_numeric(schemas[ir.table_id], ir.metric.func, ir.metric.field_id, "metric")
             agg_sql = self._compile_agg_expr(ir.metric.func, metric_col, ir.metric.alias)
             where_sql = self._compile_filters(ir.table_id, ir.filters, schemas, params)
             sql = (
@@ -410,6 +426,85 @@ class SqlGlotQueryCompiler:
                 f"ON l.{l_key} = r.{r_key} LIMIT {limit}"
             )
             template_name = "reconciliation_lookup_v1"
+
+        elif isinstance(ir, TrendQueryIR):
+            schema = schemas.get(ir.table_id)
+            tbl_sql = _quote_ident(ir.table_id)
+            date_sql = self._validate_field(ir.table_id, ir.date_field, schemas)
+            assert schema is not None
+            if not _is_temporal(schema, ir.date_field):
+                date_sql = f"TRY_CAST({date_sql} AS TIMESTAMP)"
+            metric_col = self._validate_field(ir.table_id, ir.metric.field_id, schemas)
+            self._require_numeric(schema, ir.metric.func, ir.metric.field_id, "metric")
+            agg = (
+                f"COUNT(DISTINCT {metric_col})"
+                if ir.metric.func == AggregateFunction.COUNT_DISTINCT
+                else f"{ir.metric.func.value.upper()}({metric_col})"
+            )
+            where_sql = self._compile_filters(ir.table_id, ir.filters, schemas, params)
+            dated = f"{where_sql} AND {date_sql} IS NOT NULL" if where_sql else f" WHERE {date_sql} IS NOT NULL"
+            alias = _quote_ident(ir.metric.alias)
+            previous = "LAG(v) OVER (ORDER BY period)"
+            sql = (
+                f"WITH __trend AS (SELECT DATE_TRUNC('{ir.grain}', {date_sql}) AS period, {agg} AS v "
+                f"FROM {tbl_sql}{dated} GROUP BY 1) "
+                f"SELECT CAST(period AS DATE) AS period, v AS {alias}, "
+                f"AVG(v) OVER (ORDER BY period ROWS BETWEEN {int(ir.window) - 1} PRECEDING AND CURRENT ROW) AS moving_average, "
+                f"v - {previous} AS change, "
+                f"(v - {previous}) / NULLIF({previous}, 0) AS growth "
+                f"FROM __trend ORDER BY period LIMIT {limit}"
+            )
+            template_name = "trend_v1"
+
+        elif isinstance(ir, PercentilesQueryIR):
+            schema = schemas.get(ir.table_id)
+            tbl_sql = _quote_ident(ir.table_id)
+            col_sql = self._validate_field(ir.table_id, ir.field_id, schemas)
+            assert schema is not None
+            if not _is_numeric(schema, ir.field_id):
+                raise QueryValidationError(
+                    f"percentiles needs a numeric column, but {ir.field_id!r} is {_arrow_type(schema, ir.field_id) or 'not numeric'}",
+                    failed_fields=("field_id",),
+                )
+            group_cols = [self._validate_field(ir.table_id, g, schemas) for g in ir.group_by]
+            where_sql = self._compile_filters(ir.table_id, ir.filters, schemas, params)
+            cuts = ", ".join(
+                f"QUANTILE_CONT(CAST({col_sql} AS DOUBLE), {p}) AS {_quote_ident('p' + format(p * 100, 'g').replace('.', '_'))}"
+                for p in ir.percentiles
+            )
+            prefix = (", ".join(group_cols) + ", ") if group_cols else ""
+            grouping = (" GROUP BY " + ", ".join(group_cols) + " ORDER BY " + ", ".join(group_cols)) if group_cols else ""
+            sql = f"SELECT {prefix}{cuts}, COUNT({col_sql}) AS value_count FROM {tbl_sql}{where_sql}{grouping} LIMIT {limit}"
+            template_name = "percentiles_v1"
+
+        elif isinstance(ir, OutliersQueryIR):
+            schema = schemas.get(ir.table_id)
+            tbl_sql = _quote_ident(ir.table_id)
+            col_sql = self._validate_field(ir.table_id, ir.field_id, schemas)
+            assert schema is not None
+            if not _is_numeric(schema, ir.field_id):
+                raise QueryValidationError(
+                    f"outliers needs a numeric column, but {ir.field_id!r} is {_arrow_type(schema, ir.field_id) or 'not numeric'}",
+                    failed_fields=("field_id",),
+                )
+            if len(ir.group_by) > 1:
+                raise QueryValidationError("outliers accepts at most one group_by column", failed_fields=("group_by",))
+            group_sql = self._validate_field(ir.table_id, ir.group_by[0], schemas) if ir.group_by else "NULL"
+            where_sql = self._compile_filters(ir.table_id, ir.filters, schemas, params)
+            valued = f"{where_sql} AND {col_sql} IS NOT NULL" if where_sql else f" WHERE {col_sql} IS NOT NULL"
+            lower, upper = "b.q1 - 1.5 * (b.q3 - b.q1)", "b.q3 + 1.5 * (b.q3 - b.q1)"
+            group_select = "o.grp AS group_value, " if ir.group_by else ""
+            sql = (
+                f"WITH __vals AS (SELECT {group_sql} AS grp, CAST({col_sql} AS DOUBLE) AS v FROM {tbl_sql}{valued}), "
+                f"__bounds AS (SELECT grp, QUANTILE_CONT(v, 0.25) AS q1, QUANTILE_CONT(v, 0.75) AS q3 FROM __vals GROUP BY grp) "
+                f"SELECT {group_select}ANY_VALUE(b.q1) AS q1, ANY_VALUE(b.q3) AS q3, "
+                f"ANY_VALUE({lower}) AS lower_bound, ANY_VALUE({upper}) AS upper_bound, "
+                f"COUNT(*) FILTER (WHERE o.v < {lower} OR o.v > {upper}) AS outlier_count, COUNT(*) AS value_count, "
+                f"MIN(o.v) AS min_value, MAX(o.v) AS max_value "
+                f"FROM __vals o JOIN __bounds b ON o.grp IS NOT DISTINCT FROM b.grp "
+                f"GROUP BY o.grp ORDER BY outlier_count DESC LIMIT {limit}"
+            )
+            template_name = "outliers_v1"
         else:
             raise QueryValidationError(f"Unsupported QueryIR type: {type(ir).__name__}")
 

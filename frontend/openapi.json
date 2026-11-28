@@ -299,6 +299,22 @@
         "title": "ConnectorProbeRequest",
         "type": "object"
       },
+      "CreateDatasetNoteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "CreateDatasetNoteRequest",
+        "type": "object"
+      },
       "CreateExportRequest": {
         "additionalProperties": false,
         "properties": {
@@ -461,6 +477,36 @@
         "title": "CreateRunRequest",
         "type": "object"
       },
+      "CreateWorkspaceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CreateWorkspaceRequest",
+        "type": "object"
+      },
       "CriterionOut": {
         "additionalProperties": true,
         "properties": {
@@ -486,6 +532,7 @@
               "verified",
               "failed",
               "blocked",
+              "unreviewed",
               "not_applicable"
             ],
             "title": "Status",
@@ -497,6 +544,52 @@
           "status"
         ],
         "title": "CriterionOut",
+        "type": "object"
+      },
+      "DatasetNoteListOut": {
+        "additionalProperties": true,
+        "properties": {
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "notes": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetNoteOut"
+            },
+            "title": "Notes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "notes",
+          "limit"
+        ],
+        "title": "DatasetNoteListOut",
+        "type": "object"
+      },
+      "DatasetNoteOut": {
+        "additionalProperties": true,
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "note_id": {
+            "title": "Note Id",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "note_id",
+          "text",
+          "created_at"
+        ],
+        "title": "DatasetNoteOut",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -548,6 +641,53 @@
           "connector_id"
         ],
         "title": "ImportForm",
+        "type": "object"
+      },
+      "MetricDefinitionEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "metric_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Metric Id",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "metric_id",
+          "display_name"
+        ],
+        "title": "MetricDefinitionEdit",
         "type": "object"
       },
       "ModeUsageOut": {
@@ -841,6 +981,52 @@
         "title": "OpsSwitchOut",
         "type": "object"
       },
+      "PinAlertOut": {
+        "additionalProperties": true,
+        "properties": {
+          "direction": {
+            "enum": [
+              "above",
+              "below"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "direction",
+          "value"
+        ],
+        "title": "PinAlertOut",
+        "type": "object"
+      },
+      "PinAlertRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "enum": [
+              "above",
+              "below"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "direction",
+          "value"
+        ],
+        "title": "PinAlertRequest",
+        "type": "object"
+      },
       "PinListOut": {
         "additionalProperties": true,
         "properties": {
@@ -861,6 +1047,27 @@
       "PinOut": {
         "additionalProperties": true,
         "properties": {
+          "alert": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PinAlertOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "alert_triggered": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert Triggered"
+          },
           "auto_refresh": {
             "default": false,
             "title": "Auto Refresh",
@@ -869,6 +1076,17 @@
           "created_at": {
             "title": "Created At",
             "type": "string"
+          },
+          "headline_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headline Value"
           },
           "latest_run_id": {
             "anyOf": [
@@ -881,6 +1099,39 @@
             ],
             "title": "Latest Run Id"
           },
+          "latest_run_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Run Status"
+          },
+          "newer_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Newer Version"
+          },
+          "next_run_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run At"
+          },
           "pin_id": {
             "title": "Pin Id",
             "type": "string"
@@ -892,6 +1143,36 @@
           "run_id": {
             "title": "Run Id",
             "type": "string"
+          },
+          "schedule": {
+            "default": "off",
+            "enum": [
+              "off",
+              "daily",
+              "weekly"
+            ],
+            "title": "Schedule",
+            "type": "string"
+          },
+          "shown_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "title": {
             "title": "Title",
@@ -911,6 +1192,79 @@
           "created_at"
         ],
         "title": "PinOut",
+        "type": "object"
+      },
+      "PinRefreshBatchOut": {
+        "additionalProperties": true,
+        "properties": {
+          "failed": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PinRefreshFailureOut"
+            },
+            "title": "Failed",
+            "type": "array"
+          },
+          "refreshed": {
+            "items": {
+              "$ref": "#/components/schemas/PinRefreshOut"
+            },
+            "title": "Refreshed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "refreshed"
+        ],
+        "title": "PinRefreshBatchOut",
+        "type": "object"
+      },
+      "PinRefreshFailureOut": {
+        "additionalProperties": true,
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "pin_id": {
+            "title": "Pin Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pin_id",
+          "detail"
+        ],
+        "title": "PinRefreshFailureOut",
+        "type": "object"
+      },
+      "PinRefreshOut": {
+        "additionalProperties": true,
+        "properties": {
+          "already_running": {
+            "default": false,
+            "title": "Already Running",
+            "type": "boolean"
+          },
+          "pin_id": {
+            "title": "Pin Id",
+            "type": "string"
+          },
+          "refresh_run_id": {
+            "title": "Refresh Run Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pin_id",
+          "refresh_run_id",
+          "status"
+        ],
+        "title": "PinRefreshOut",
         "type": "object"
       },
       "PromptTemplateListOut": {
@@ -1028,6 +1382,28 @@
           "models"
         ],
         "title": "ProvidersOut",
+        "type": "object"
+      },
+      "RefreshPinsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "pin_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 200,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pin Ids"
+          }
+        },
+        "title": "RefreshPinsRequest",
         "type": "object"
       },
       "ReimportOut": {
@@ -1182,6 +1558,34 @@
               }
             ],
             "title": "Criteria"
+          },
+          "follow_ups": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Follow Ups"
+          },
+          "limitations": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limitations"
           },
           "outcome": {
             "anyOf": [
@@ -2058,14 +2462,62 @@
       "UpdatePinRequest": {
         "additionalProperties": false,
         "properties": {
+          "alert": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PinAlertRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "auto_refresh": {
-            "title": "Auto Refresh",
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Refresh"
+          },
+          "clear_alert": {
+            "default": false,
+            "title": "Clear Alert",
             "type": "boolean"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "enum": [
+                  "off",
+                  "daily",
+                  "weekly"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
           }
         },
-        "required": [
-          "auto_refresh"
-        ],
         "title": "UpdatePinRequest",
         "type": "object"
       },
@@ -2137,6 +2589,37 @@
         "title": "UpdateRoutingRequest",
         "type": "object"
       },
+      "UpdateSemanticsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricDefinitionEdit"
+            },
+            "maxItems": 200,
+            "title": "Metrics",
+            "type": "array"
+          },
+          "remove_metric_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Remove Metric Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "UpdateSemanticsRequest",
+        "type": "object"
+      },
       "UpdateWorkspaceSettingsRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2153,9 +2636,57 @@
         "title": "UpdateWorkspaceSettingsRequest",
         "type": "object"
       },
+      "UsageBucketOut": {
+        "additionalProperties": true,
+        "properties": {
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "string"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "tokens": {
+            "title": "Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start",
+          "runs",
+          "tokens",
+          "cost_usd"
+        ],
+        "title": "UsageBucketOut",
+        "type": "object"
+      },
       "UsageOut": {
         "additionalProperties": true,
         "properties": {
+          "buckets": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/UsageBucketOut"
+            },
+            "title": "Buckets",
+            "type": "array"
+          },
+          "matched_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Count"
+          },
           "models": {
             "items": {
               "$ref": "#/components/schemas/ModelUsageOut"
@@ -2301,6 +2832,58 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WorkspaceListOut": {
+        "additionalProperties": true,
+        "properties": {
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceOut"
+            },
+            "title": "Workspaces",
+            "type": "array"
+          }
+        },
+        "required": [
+          "workspaces"
+        ],
+        "title": "WorkspaceListOut",
+        "type": "object"
+      },
+      "WorkspaceOut": {
+        "additionalProperties": true,
+        "properties": {
+          "business_timezone": {
+            "default": "UTC",
+            "title": "Business Timezone",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "name"
+        ],
+        "title": "WorkspaceOut",
         "type": "object"
       },
       "WorkspaceSettingsOut": {
@@ -2467,6 +3050,60 @@
           }
         },
         "summary": "Ready"
+      }
+    },
+    "/api/v1/workspaces": {
+      "get": {
+        "operationId": "list_workspaces_api_v1_workspaces_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Workspaces"
+      },
+      "post": {
+        "operationId": "create_workspace_api_v1_workspaces_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkspaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Workspace"
       }
     },
     "/api/v1/workspaces/{workspace_id}/connectors/discover": {
@@ -2803,6 +3440,55 @@
           }
         },
         "summary": "Create Pin"
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/pins/refresh": {
+      "post": {
+        "operationId": "refresh_pins_api_v1_workspaces__workspace_id__pins_refresh_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshPinsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PinRefreshBatchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh Pins"
       }
     },
     "/api/v1/workspaces/{workspace_id}/pins/{pin_id}": {
@@ -3896,6 +4582,64 @@
           }
         },
         "summary": "Get Semantics"
+      },
+      "patch": {
+        "operationId": "update_semantics_api_v1_workspaces__workspace_id__semantics__snapshot_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSemanticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Semantics Api V1 Workspaces  Workspace Id  Semantics  Snapshot Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Semantics"
       }
     },
     "/api/v1/workspaces/{workspace_id}/semantics/{snapshot_id}/approve": {
@@ -4097,6 +4841,58 @@
         "summary": "Save Provider Key"
       }
     },
+    "/api/v1/workspaces/{workspace_id}/settings/provider-key/{provider_id}": {
+      "delete": {
+        "operationId": "delete_provider_key_api_v1_workspaces__workspace_id__settings_provider_key__provider_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "provider_id",
+            "required": true,
+            "schema": {
+              "title": "Provider Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Delete Provider Key Api V1 Workspaces  Workspace Id  Settings Provider Key  Provider Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Provider Key"
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/snapshots": {
       "get": {
         "operationId": "list_snapshots_api_v1_workspaces__workspace_id__snapshots_get",
@@ -4244,6 +5040,169 @@
           }
         },
         "summary": "Snapshot Diagnostics"
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}/notes": {
+      "get": {
+        "operationId": "list_dataset_notes_api_v1_workspaces__workspace_id__snapshots__snapshot_id__notes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetNoteListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Dataset Notes"
+      },
+      "post": {
+        "operationId": "add_dataset_note_api_v1_workspaces__workspace_id__snapshots__snapshot_id__notes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDatasetNoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetNoteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Dataset Note"
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}/notes/{note_id}": {
+      "delete": {
+        "operationId": "delete_dataset_note_api_v1_workspaces__workspace_id__snapshots__snapshot_id__notes__note_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "title": "Note Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Dataset Note Api V1 Workspaces  Workspace Id  Snapshots  Snapshot Id  Notes  Note Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Dataset Note"
       }
     },
     "/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}/preview": {
@@ -4459,6 +5418,141 @@
                 }
               ],
               "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "when",
+              "enum": [
+                "when",
+                "calls",
+                "tokens",
+                "cost"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "desc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Order",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bucket",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "enum": [
+                "hour",
+                "day"
+              ],
+              "title": "Bucket",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tz_offset_minutes",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 840,
+              "minimum": -840,
+              "title": "Tz Offset Minutes",
+              "type": "integer"
             }
           }
         ],

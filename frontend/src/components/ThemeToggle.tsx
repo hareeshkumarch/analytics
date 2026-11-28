@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useRef } from "react";
+import { Icon } from "@/components/Icon";
 import { ThemePreference, useTheme } from "@/lib/theme";
 
 const OPTIONS: { value: ThemePreference; label: string }[] = [
@@ -10,37 +11,7 @@ const OPTIONS: { value: ThemePreference; label: string }[] = [
 ];
 
 function ThemeIcon({ name, className = "h-[16px] w-[16px]" }: { name: ThemePreference; className?: string }) {
-  const props = {
-    className: `${className} shrink-0`,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.7,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-    "aria-hidden": true,
-  };
-  if (name === "light") {
-    return (
-      <svg {...props}>
-        <circle cx="12" cy="12" r="4" />
-        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-      </svg>
-    );
-  }
-  if (name === "dark") {
-    return (
-      <svg {...props}>
-        <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
-      </svg>
-    );
-  }
-  return (
-    <svg {...props}>
-      <rect x="3" y="4" width="18" height="12" />
-      <path d="M8 20h8M12 16v4" />
-    </svg>
-  );
+  return <Icon name={name === "light" ? "sun" : name === "dark" ? "moon" : "monitor"} className={className} />;
 }
 
 const NEXT: Record<ThemePreference, ThemePreference> = { system: "light", light: "dark", dark: "system" };
@@ -66,7 +37,7 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
         onClick={() => choose(NEXT[preference])}
         aria-label={`Theme: ${current}. Switch to ${NEXT[preference]}`}
         title={`Theme: ${current}`}
-        className="flex min-h-[40px] min-w-[40px] items-center justify-center border border-border bg-canvas text-secondary transition-colors hover:border-border-strong hover:text-ink"
+        className="flex h-8 w-8 items-center justify-center rounded-md text-secondary transition-colors hover:bg-ink/[0.05] hover:text-ink dark:hover:bg-ink/[0.08]"
       >
         <ThemeIcon name={preference} />
       </button>
@@ -74,7 +45,7 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
   }
 
   return (
-    <div role="radiogroup" aria-label="Theme" className="grid grid-cols-3 border border-border bg-canvas p-0.5">
+    <div role="radiogroup" aria-label="Theme" className="grid grid-cols-3 rounded-md bg-ink/[0.05] p-0.5">
       {OPTIONS.map((o, index) => {
         const active = preference === o.value;
         return (
@@ -89,8 +60,8 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
             tabIndex={active ? 0 : -1}
             onKeyDown={(e) => onRadioKey(e, index)}
             onClick={() => choose(o.value)}
-            className={`flex min-h-[32px] items-center justify-center gap-1.5 text-[12px] transition-colors ${
-              active ? "bg-surface font-medium text-ink shadow-card ring-1 ring-border" : "text-secondary hover:text-ink"
+            className={`flex h-7 items-center rounded justify-center gap-1.5 text-xs transition-colors ${
+              active ? "bg-popover font-medium text-ink shadow-[0_0_0_1px_rgb(var(--ink)/0.08)]" : "text-body hover:text-ink"
             }`}
           >
             <ThemeIcon name={o.value} className="h-[14px] w-[14px]" />

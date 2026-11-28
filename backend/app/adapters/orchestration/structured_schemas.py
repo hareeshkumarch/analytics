@@ -39,6 +39,8 @@ REPLAN_SCHEMA = _strict(
     }
 )
 
+FOLLOW_UP_SCHEMA = _strict({"follow_ups": _STRINGS})
+
 REVIEW_SCHEMA = _strict(
     {
         "approved": {"type": "boolean"},

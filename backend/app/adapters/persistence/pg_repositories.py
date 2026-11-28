@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.persistence.database import ensure_conversation, ensure_workspace
 from app.adapters.persistence.orm_models import (
+    DatasetNoteRow,
     BudgetReservationRow,
     CredentialRefRow,
     ExportArtifactRow,
@@ -232,6 +233,7 @@ class PgRunRepository:
                     last_event_sequence=1,
                     owner_generation=1,
                     answer_json={"question": question},
+                    question=question,
                     orchestration_json={"clarification_revision": 0},
                     created_at=now,
                 )
@@ -500,6 +502,55 @@ class PgRunRepository:
                 stmt = stmt.where(RunRow.created_at >= since)
             return [(str(r), str(m), str(s)) for r, m, s in db.execute(stmt).all()]
 
+    def usage_rows(self, workspace_id: str, since: datetime | None = None) -> list[dict[str, Any]]:
+        """One light row per run in the window: enough to filter, sort and bucket usage without loading answers."""
+        with self._sf() as db:
+            stmt = select(
+                RunRow.run_id,
+                RunRow.mode,
+                RunRow.status,
+                RunRow.created_at,
+                # Rows written before the column existed still carry the question only in the JSON.
+                func.coalesce(RunRow.question, RunRow.answer_json["question"].as_string()),
+                RunRow.answer_json["error"].as_string(),
+            ).where(RunRow.workspace_id == workspace_id)
+            if since is not None:
+                stmt = stmt.where(RunRow.created_at >= since)
+            return [
+                {
+                    "run_id": str(run_id),
+                    "mode": str(mode),
+                    "status": str(status),
+                    "created_at": created_at.isoformat(),
+                    "question": str(question or ""),
+                    "error": error or None,
+                }
+                for run_id, mode, status, created_at, question, error in db.execute(stmt).all()
+            ]
+
+    def get_runs_by_ids(self, run_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """Several runs in one query, keyed by id. Missing ids are simply absent."""
+        if not run_ids:
+            return {}
+        with self._sf() as db:
+            rows = db.scalars(select(RunRow).where(RunRow.run_id.in_(run_ids))).all()
+            return {
+                row.run_id: {
+                    "run_id": row.run_id,
+                    "workspace_id": row.workspace_id,
+                    "conversation_id": row.conversation_id,
+                    "mode": row.mode,
+                    "status": row.status,
+                    "outcome": row.outcome,
+                    "snapshot_id": row.snapshot_id,
+                    "question": (row.answer_json or {}).get("question", ""),
+                    "answer": row.answer_json or {},
+                    "error": (row.answer_json or {}).get("error"),
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in rows
+            }
+
     def run_ids_since(self, workspace_id: str, since: datetime) -> list[str]:
         with self._sf() as db:
             return list(
@@ -616,6 +667,7 @@ class PgRunRepository:
                             for c in answer.claims
                         ],
                         "charts": [asdict(chart) for chart in answer.charts],
+                        "follow_ups": list(answer.follow_ups),
                         "outcome": answer.outcome,
                         "route": answer.route,
                         "criteria": [
@@ -659,6 +711,20 @@ class PgCredentialRepository:
                             revoked=False,
                         )
                     )
+
+    def revoke_credential(self, workspace_id: str, provider: str) -> bool:
+        with self._sf() as db:
+            with db.begin():
+                res = db.execute(
+                    update(CredentialRefRow)
+                    .where(
+                        CredentialRefRow.workspace_id == workspace_id,
+                        CredentialRefRow.provider_or_source == provider,
+                        CredentialRefRow.revoked.is_(False),
+                    )
+                    .values(revoked=True)
+                )
+                return bool(res.rowcount)
 
     def list_active_credentials(self, workspace_id: str | None = None) -> list[dict[str, Any]]:
         with self._sf() as db:
@@ -858,6 +924,42 @@ class PgSnapshotRepository:
             )
             return res
 
+    def list_dataset_notes(self, workspace_id: str, source_id: str) -> list[dict[str, Any]]:
+        with self._sf() as db:
+            rows = db.scalars(
+                select(DatasetNoteRow)
+                .where(DatasetNoteRow.workspace_id == workspace_id, DatasetNoteRow.source_id == source_id)
+                .order_by(DatasetNoteRow.created_at, DatasetNoteRow.note_id)
+            ).all()
+            return [{"note_id": r.note_id, "text": r.text, "created_at": r.created_at.isoformat()} for r in rows]
+
+    def add_dataset_note(self, workspace_id: str, source_id: str, note_id: str, text: str, limit: int) -> dict[str, Any] | None:
+        """Save a note, or return None when the source already has `limit` of them."""
+        with self._sf() as db:
+            with db.begin():
+                ensure_workspace(db, workspace_id)
+                count = db.scalar(
+                    select(func.count())
+                    .select_from(DatasetNoteRow)
+                    .where(DatasetNoteRow.workspace_id == workspace_id, DatasetNoteRow.source_id == source_id)
+                )
+                if int(count or 0) >= limit:
+                    return None
+                row = DatasetNoteRow(note_id=note_id, workspace_id=workspace_id, source_id=source_id, text=text, created_at=datetime.now(timezone.utc))
+                db.add(row)
+                db.flush()
+                return {"note_id": row.note_id, "text": row.text, "created_at": row.created_at.isoformat()}
+
+    def delete_dataset_note(self, workspace_id: str, source_id: str, note_id: str) -> bool:
+        with self._sf() as db:
+            with db.begin():
+                res = db.execute(
+                    delete(DatasetNoteRow).where(
+                        DatasetNoteRow.workspace_id == workspace_id, DatasetNoteRow.source_id == source_id, DatasetNoteRow.note_id == note_id
+                    )
+                )
+                return bool(res.rowcount)
+
     def list_snapshots(self, workspace_id: str) -> list[dict[str, Any]]:
         with self._sf() as db:
             snaps = db.scalars(
@@ -967,6 +1069,70 @@ class PgSnapshotRepository:
         except IntegrityError as exc:
             raise VersionConflictError("Semantic version conflict") from exc
 
+    def update_semantics(
+        self,
+        snapshot_id: str,
+        expected_version: int,
+        metric_edits: list[dict[str, Any]],
+        *,
+        remove_metric_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Record an edited semantic version while preserving prior versions as history."""
+        edits_by_id = {str(e["metric_id"]): e for e in metric_edits}
+        removed = set(remove_metric_ids or ())
+        try:
+            with self._sf() as db:
+                with db.begin():
+                    current = db.scalars(
+                        select(SemanticVersionRow)
+                        .where(SemanticVersionRow.snapshot_id == snapshot_id)
+                        .order_by(SemanticVersionRow.version.desc())
+                    ).first()
+                    if not current:
+                        raise NotFoundError("Semantic version not found")
+                    if current.version != expected_version:
+                        raise VersionConflictError("Semantic version conflict")
+                    next_metrics: list[dict[str, Any]] = []
+                    for metric in current.definitions_json.get("metrics") or []:
+                        mid = str(metric.get("metric_id") or "")
+                        if mid in removed:
+                            continue
+                        updated = dict(metric)
+                        edit = edits_by_id.get(mid)
+                        if edit is not None:
+                            updated["display_name"] = edit["display_name"]
+                            if "unit" in edit and edit["unit"] is not None:
+                                updated["unit"] = edit["unit"]
+                            if "currency" in edit:
+                                updated["currency"] = edit["currency"]
+                        next_metrics.append(updated)
+                    next_version = current.version + 1
+                    next_defs = {
+                        **current.definitions_json,
+                        "metrics": next_metrics,
+                        "approved": False,
+                        "version": next_version,
+                    }
+                    edited = SemanticVersionRow(
+                        semantic_version_id=f"sem_{uuid.uuid4().hex[:10]}",
+                        workspace_id=current.workspace_id,
+                        snapshot_id=snapshot_id,
+                        version=next_version,
+                        approved=False,
+                        definitions_json=next_defs,
+                    )
+                    db.add(edited)
+                    db.flush()
+                    return {
+                        **next_defs,
+                        "semantic_version_id": edited.semantic_version_id,
+                        "snapshot_id": snapshot_id,
+                        "version": edited.version,
+                        "approved": False,
+                    }
+        except IntegrityError as exc:
+            raise VersionConflictError("Semantic version conflict") from exc
+
 
 class PgPinRepository:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
@@ -1034,17 +1200,46 @@ class PgPinRepository:
                     "created_at": p.created_at.isoformat(),
                     "auto_refresh": bool((p.artifact_json or {}).get("auto_refresh")),
                     "latest_run_id": (p.artifact_json or {}).get("latest_run_id"),
+                    "schedule": (p.artifact_json or {}).get("schedule") or "off",
+                    "next_run_at": (p.artifact_json or {}).get("next_run_at"),
+                    "alert": (p.artifact_json or {}).get("alert"),
                 }
                 for p in pins
             ]
 
+    def due_pins(self, now: datetime) -> list[dict[str, Any]]:
+        """Pins on a schedule whose next run time has passed, across every workspace."""
+        with self._sf() as db:
+            rows = db.scalars(select(PinRow)).all()
+            due = []
+            for p in rows:
+                state = p.artifact_json or {}
+                if state.get("schedule") in ("daily", "weekly") and state.get("next_run_at") and str(state["next_run_at"]) <= now.isoformat():
+                    due.append({"pin_id": p.pin_id, "workspace_id": p.workspace_id, "schedule": state["schedule"], "next_run_at": state["next_run_at"]})
+            return due
+
+    def claim_due_pin(self, pin_id: str, expected_next_run_at: str, new_next_run_at: str) -> bool:
+        """Move a due pin to its next slot. False when another process already took this slot."""
+        with self._sf() as db:
+            with db.begin():
+                pin = db.get(PinRow, pin_id, with_for_update=True)
+                if pin is None or (pin.artifact_json or {}).get("next_run_at") != expected_next_run_at:
+                    return False
+                pin.artifact_json = {**(pin.artifact_json or {}), "next_run_at": new_next_run_at}
+                return True
+
     def update_pin_state(self, workspace_id: str, pin_id: str, changes: dict[str, Any]) -> bool:
+        updates = dict(changes)
+        new_title = updates.pop("title", None)
         with self._sf() as db:
             with db.begin():
                 pin = db.get(PinRow, pin_id, with_for_update=True)
                 if pin is None or pin.workspace_id != workspace_id:
                     return False
-                pin.artifact_json = {**(pin.artifact_json or {}), **changes}
+                if new_title is not None:
+                    pin.title = str(new_title)
+                if updates:
+                    pin.artifact_json = {**(pin.artifact_json or {}), **updates}
                 return True
 
     def delete_pin(self, workspace_id: str, pin_id: str) -> bool:
@@ -1281,6 +1476,73 @@ class PgBudgetLedger:
             for run_id in run_ids
         }
 
+    @staticmethod
+    def _in_window(stmt: Any, workspace_id: str, since: datetime | None) -> Any:
+        """Restrict a budget query to one workspace's runs in a time window, by joining instead of listing run ids."""
+        stmt = stmt.join(RunRow, RunRow.run_id == BudgetReservationRow.run_id).where(RunRow.workspace_id == workspace_id)
+        return stmt.where(RunRow.created_at >= since) if since is not None else stmt
+
+    def usage_totals(self, workspace_id: str, since: datetime | None = None) -> dict[str, dict[str, object]]:
+        """Per-run attempts, tokens and cost for every run in the window, totalled by the database."""
+        stmt = self._in_window(
+            select(
+                BudgetReservationRow.run_id,
+                func.count(),
+                func.sum(func.coalesce(BudgetReservationRow.actual_tokens, BudgetReservationRow.reserved_tokens)),
+                func.sum(func.coalesce(BudgetReservationRow.actual_cost_usd, BudgetReservationRow.reserved_cost_usd, 0)),
+                func.max(case((BudgetReservationRow.settled.is_(False), 1), else_=0)),
+            ),
+            workspace_id,
+            since,
+        ).group_by(BudgetReservationRow.run_id)
+        with self._sf() as db:
+            rows = db.execute(stmt).all()
+        return {
+            run_id: {
+                "run_id": run_id,
+                "used_attempts": int(count),
+                "total_tokens": int(tokens or 0),
+                "total_cost_usd": str(cost or Decimal("0")),
+                "incomplete": bool(incomplete),
+            }
+            for run_id, count, tokens, cost, incomplete in rows
+        }
+
+    def usage_by_model(self, workspace_id: str, since: datetime | None = None) -> list[dict[str, object]]:
+        """Calls, tokens, cost and latency per model for the window, grouped by the database."""
+        provider = func.coalesce(BudgetReservationRow.provider_id, "unknown")
+        model = func.coalesce(BudgetReservationRow.model_id, "unknown")
+        stmt = self._in_window(
+            select(
+                provider,
+                model,
+                func.count(),
+                func.sum(case((BudgetReservationRow.settled.is_(False), 1), else_=0)),
+                func.sum(func.coalesce(BudgetReservationRow.actual_tokens, BudgetReservationRow.reserved_tokens, 0)),
+                func.sum(func.coalesce(BudgetReservationRow.actual_cost_usd, BudgetReservationRow.reserved_cost_usd, 0)),
+                func.max(case((BudgetReservationRow.cost_is_unknown.is_(True), 1), else_=0)),
+                func.avg(BudgetReservationRow.latency_ms),
+            ),
+            workspace_id,
+            since,
+        ).group_by(provider, model)
+        with self._sf() as db:
+            rows = db.execute(stmt).all()
+        usage = [
+            {
+                "provider_id": str(p),
+                "model_id": str(m),
+                "calls": int(calls),
+                "unsettled_calls": int(unsettled or 0),
+                "total_tokens": int(tokens or 0),
+                "total_cost_usd": str(Decimal(str(cost or 0))),
+                "cost_unknown": bool(unknown),
+                "avg_latency_ms": round(float(latency)) if latency is not None else None,
+            }
+            for p, m, calls, unsettled, tokens, cost, unknown, latency in rows
+        ]
+        return sorted(usage, key=lambda item: (-Decimal(str(item["total_cost_usd"])), -int(str(item["total_tokens"]))))
+
     def get_model_usage(self, run_ids: list[str]) -> list[dict[str, object]]:
         with self._sf() as db:
             rows = db.execute(
@@ -1339,6 +1601,45 @@ class PgToolExecutionLedger:
             with db.begin():
                 db.add(ToolExecutionRow(**asdict(execution)))
 
+    def usage_by_tool(self, workspace_id: str, since: datetime | None = None) -> list[dict[str, Any]]:
+        """Per-tool call counts and timings for the window, grouped by the database."""
+        row = ToolExecutionRow
+        stmt = (
+            select(
+                row.tool,
+                func.count(),
+                func.sum(case((row.status.in_(("failed", "denied")), 1), else_=0)),
+                func.sum(case((row.error_code == "INVALID_ARGUMENT", 1), else_=0)),
+                func.sum(case((row.error_code == "DUPLICATE_FAILED_CALL", 1), else_=0)),
+                func.sum(case((row.error_code == "TIMEOUT", 1), else_=0)),
+                func.sum(case((row.cache_hit.is_(True), 1), else_=0)),
+                func.avg(row.duration_ms),
+                func.count(func.distinct(row.run_id + ":" + row.task_id)),
+            )
+            .join(RunRow, RunRow.run_id == row.run_id)
+            .where(RunRow.workspace_id == workspace_id)
+            .group_by(row.tool)
+            .order_by(row.tool)
+        )
+        if since is not None:
+            stmt = stmt.where(RunRow.created_at >= since)
+        with self._sf() as db:
+            rows = db.execute(stmt).all()
+        return [
+            {
+                "tool": tool,
+                "calls": int(calls),
+                "failed_calls": int(failed or 0),
+                "invalid_calls": int(invalid or 0),
+                "duplicate_calls": int(duplicate or 0),
+                "timeouts": int(timeouts or 0),
+                "cache_hits": int(cache_hits or 0),
+                "avg_duration_ms": round(float(duration or 0)),
+                "calls_per_task": round(int(calls) / max(1, int(tasks)), 2),
+            }
+            for tool, calls, failed, invalid, duplicate, timeouts, cache_hits, duration, tasks in rows
+        ]
+
     def list_for_runs(self, run_ids: list[str]) -> list[ToolExecution]:
         if not run_ids:
             return []
@@ -1370,6 +1671,42 @@ class PgToolExecutionLedger:
 class PgWorkspaceSettings:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._sf = session_factory
+
+    def list_workspaces(self) -> list[dict[str, Any]]:
+        with self._sf() as db:
+            with db.begin():
+                ensure_workspace(db, "default")
+                rows = db.scalars(
+                    select(WorkspaceRow).order_by(WorkspaceRow.created_at.asc(), WorkspaceRow.workspace_id.asc())
+                ).all()
+                return [
+                    {
+                        "workspace_id": r.workspace_id,
+                        "name": r.name,
+                        "business_timezone": r.business_timezone or DEFAULT_BUSINESS_TIMEZONE,
+                        "created_at": r.created_at.isoformat(),
+                    }
+                    for r in rows
+                ]
+
+    def create_workspace(self, workspace_id: str | None, name: str) -> dict[str, Any]:
+        clean_name = " ".join(name.split())
+        if not clean_name:
+            raise ValidationError("Workspace name cannot be blank")
+        wid = (workspace_id or "").strip() or f"ws_{uuid.uuid4().hex[:8]}"
+        with self._sf() as db:
+            with db.begin():
+                if db.get(WorkspaceRow, wid) is not None:
+                    raise VersionConflictError(f"Workspace {wid!r} already exists")
+                row = WorkspaceRow(workspace_id=wid, name=clean_name)
+                db.add(row)
+                db.flush()
+                return {
+                    "workspace_id": row.workspace_id,
+                    "name": row.name,
+                    "business_timezone": row.business_timezone or DEFAULT_BUSINESS_TIMEZONE,
+                    "created_at": row.created_at.isoformat(),
+                }
 
     def get_business_timezone(self, workspace_id: str) -> str:
         with self._sf() as db:

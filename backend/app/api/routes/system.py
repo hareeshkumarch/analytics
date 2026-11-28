@@ -4,16 +4,17 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.responses import OpsSwitchListOut, OpsSwitchOut
-from app.api.schemas import SetOpsSwitchRequest
+from app.api.responses import OpsSwitchListOut, OpsSwitchOut, WorkspaceListOut, WorkspaceOut
+from app.api.schemas import CreateWorkspaceRequest, SetOpsSwitchRequest
 from app.application.runtime_settings import uses_celery
 from app.application.services.ops_controls import PROVIDER_PREFIX, RUNS_SWITCH
 from app.application.services.ops_metrics import render_prometheus
 from app.bootstrap.container import AppContainer
+from app.domain.errors import ValidationError, VersionConflictError
 from app.domain.limits import (
     DEEP_BUDGET_LIMITS,
     DEFAULT_DATA_LIMITS,
@@ -126,5 +127,25 @@ def register(ctx: ApiContext) -> APIRouter:
             raise _db_unavailable("save the operator switch") from exc
         logger.warning("Operator switch %s set to %s: %s", switch_id, "paused" if payload.paused else "resumed", payload.reason.strip())
         return changed
+
+    @router.get("/api/v1/workspaces", response_model=WorkspaceListOut)
+    def list_workspaces() -> dict[str, Any]:
+        try:
+            return {"workspaces": app.state.repo_workspace_settings.list_workspaces()}
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to load workspaces")
+            raise _db_unavailable("load workspaces") from exc
+
+    @router.post("/api/v1/workspaces", status_code=201, response_model=WorkspaceOut)
+    def create_workspace(payload: CreateWorkspaceRequest) -> dict[str, Any]:
+        try:
+            return app.state.repo_workspace_settings.create_workspace(payload.workspace_id, payload.name)
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except VersionConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except SQLAlchemyError as exc:
+            logger.exception("Failed to create workspace")
+            raise _db_unavailable("create workspace") from exc
 
     return router

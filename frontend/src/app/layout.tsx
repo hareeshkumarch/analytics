@@ -6,8 +6,15 @@ import { THEME_INIT_SCRIPT } from "@/lib/theme";
 
 const inter = localFont({
   src: "../../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2",
-  weight: "400 700",
+  weight: "200 800",
   variable: "--font-inter",
+  display: "swap",
+});
+
+const newsreader = localFont({
+  src: "../../node_modules/@fontsource-variable/newsreader/files/newsreader-latin-wght-normal.woff2",
+  weight: "200 800",
+  variable: "--font-display",
   display: "swap",
 });
 
@@ -18,14 +25,14 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#FAFAFA" },
-    { media: "(prefers-color-scheme: dark)", color: "#121214" },
+    { media: "(prefers-color-scheme: light)", color: "#F7F6F2" },
+    { media: "(prefers-color-scheme: dark)", color: "#191816" },
   ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning className={inter.variable}>
+    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${newsreader.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>

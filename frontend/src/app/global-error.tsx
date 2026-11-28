@@ -11,17 +11,20 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
     <html lang="en">
       <head>
         <meta name="color-scheme" content="light dark" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var t=null;try{t=localStorage.getItem("ledgerline.theme");}catch(e){}if(t!=="light"&&t!=="dark"){t=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";}document.documentElement.setAttribute("data-theme",t);})();`,
+          }}
+        />
         <style>{`
-          :root { --bg: #FAFAFA; --fg: #18181B; --muted: #696972; --btn-bg: #18181B; --btn-fg: #FFFFFF; --bd: #8C8C96; }
-          @media (prefers-color-scheme: dark) {
-            :root { --bg: #121214; --fg: #F4F4F5; --muted: #A1A1AA; --btn-bg: #F4F4F5; --btn-fg: #18181B; --bd: #71717A; }
-          }
-          body { background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif; margin: 0; padding: 4rem 1rem; }
+          :root { --bg: #F7F6F2; --fg: #111111; --muted: #787671; --btn-bg: #111111; --btn-fg: #FFFFFF; --bd: #8E8D88; --sec-bg: rgba(17,17,17,0.05); }
+          :root[data-theme="dark"] { --bg: #191816; --fg: #EFEEEA; --muted: #B0AEA8; --btn-bg: #EFEEEA; --btn-fg: #191816; --bd: #716F6A; --sec-bg: rgba(239,238,234,0.15); }
+          body { background: var(--bg); color: var(--fg); font-family: Inter, system-ui, sans-serif; font-size: 14px; margin: 0; padding: 4rem 1rem; }
           main { margin: 0 auto; max-width: 32rem; }
           .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
-          .btn { display: inline-flex; min-height: 40px; align-items: center; padding: 0 1.125rem; font-size: 0.875rem; font-weight: 500; text-decoration: none; cursor: pointer; border-radius: 0; }
+          .btn { display: inline-flex; min-height: 32px; align-items: center; padding: 0 0.75rem; font-size: 0.875rem; font-weight: 450; text-decoration: none; cursor: pointer; border-radius: 6px; }
           .btn-primary { background: var(--btn-bg); color: var(--btn-fg); border: 1px solid var(--btn-bg); }
-          .btn-secondary { background: transparent; color: var(--fg); border: 1px solid var(--bd); }
+          .btn-secondary { background: var(--sec-bg); color: var(--fg); border: 1px solid var(--bd); }
         `}</style>
       </head>
       <body>

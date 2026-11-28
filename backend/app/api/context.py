@@ -34,6 +34,7 @@ class ApiContext:
         self.create_run: Callable[..., Awaitable[Any]] = _unregistered
         self.approve_semantics: Callable[..., Awaitable[dict[str, Any]]] = _unregistered
         self.auto_refresh_pins: Callable[[str, str], Awaitable[list[str]]] = _unregistered
+        self.run_due_pins: Callable[[], Awaitable[list[str]]] = _unregistered
         self.execute_run_record: Callable[[dict[str, Any]], Coroutine[Any, Any, None]] = _unregistered
         self._bind_helpers()
 

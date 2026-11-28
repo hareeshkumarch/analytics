@@ -106,6 +106,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Workspaces */
+        get: operations["list_workspaces_api_v1_workspaces_get"];
+        put?: never;
+        /** Create Workspace */
+        post: operations["create_workspace_api_v1_workspaces_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/connectors/discover": {
         parameters: {
             query?: never;
@@ -203,6 +221,23 @@ export interface paths {
         put?: never;
         /** Create Pin */
         post: operations["create_pin_api_v1_workspaces__workspace_id__pins_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/pins/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Pins */
+        post: operations["refresh_pins_api_v1_workspaces__workspace_id__pins_refresh_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -499,7 +534,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update Semantics */
+        patch: operations["update_semantics_api_v1_workspaces__workspace_id__semantics__snapshot_id__patch"];
         trace?: never;
     };
     "/api/v1/workspaces/{workspace_id}/semantics/{snapshot_id}/approve": {
@@ -554,6 +590,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/settings/provider-key/{provider_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Provider Key */
+        delete: operations["delete_provider_key_api_v1_workspaces__workspace_id__settings_provider_key__provider_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/snapshots": {
         parameters: {
             query?: never;
@@ -600,6 +653,41 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Dataset Notes */
+        get: operations["list_dataset_notes_api_v1_workspaces__workspace_id__snapshots__snapshot_id__notes_get"];
+        put?: never;
+        /** Add Dataset Note */
+        post: operations["add_dataset_note_api_v1_workspaces__workspace_id__snapshots__snapshot_id__notes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/snapshots/{snapshot_id}/notes/{note_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Dataset Note */
+        delete: operations["delete_dataset_note_api_v1_workspaces__workspace_id__snapshots__snapshot_id__notes__note_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -772,6 +860,11 @@ export interface components {
             };
             family: components["schemas"]["ConnectorFamily"];
         };
+        /** CreateDatasetNoteRequest */
+        CreateDatasetNoteRequest: {
+            /** Text */
+            text: string;
+        };
         /** CreateExportRequest */
         CreateExportRequest: {
             /**
@@ -846,6 +939,13 @@ export interface components {
             /** Snapshot Id */
             snapshot_id?: string | null;
         };
+        /** CreateWorkspaceRequest */
+        CreateWorkspaceRequest: {
+            /** Name */
+            name: string;
+            /** Workspace Id */
+            workspace_id?: string | null;
+        };
         /** CriterionOut */
         CriterionOut: {
             /** Criterion */
@@ -864,7 +964,27 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "verified" | "failed" | "blocked" | "not_applicable";
+            status: "verified" | "failed" | "blocked" | "unreviewed" | "not_applicable";
+        } & {
+            [key: string]: unknown;
+        };
+        /** DatasetNoteListOut */
+        DatasetNoteListOut: {
+            /** Limit */
+            limit: number;
+            /** Notes */
+            notes: components["schemas"]["DatasetNoteOut"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** DatasetNoteOut */
+        DatasetNoteOut: {
+            /** Created At */
+            created_at: string;
+            /** Note Id */
+            note_id: string;
+            /** Text */
+            text: string;
         } & {
             [key: string]: unknown;
         };
@@ -881,6 +1001,17 @@ export interface components {
             values?: {
                 [key: string]: string | boolean | number;
             };
+        };
+        /** MetricDefinitionEdit */
+        MetricDefinitionEdit: {
+            /** Currency */
+            currency?: string | null;
+            /** Display Name */
+            display_name: string;
+            /** Metric Id */
+            metric_id: string;
+            /** Unit */
+            unit?: string | null;
         };
         /** ModeUsageOut */
         ModeUsageOut: {
@@ -991,6 +1122,28 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** PinAlertOut */
+        PinAlertOut: {
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "above" | "below";
+            /** Value */
+            value: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PinAlertRequest */
+        PinAlertRequest: {
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "above" | "below";
+            /** Value */
+            value: number;
+        };
         /** PinListOut */
         PinListOut: {
             /** Pins */
@@ -1000,6 +1153,9 @@ export interface components {
         };
         /** PinOut */
         PinOut: {
+            alert?: components["schemas"]["PinAlertOut"] | null;
+            /** Alert Triggered */
+            alert_triggered?: boolean | null;
             /**
              * Auto Refresh
              * @default false
@@ -1007,18 +1163,71 @@ export interface components {
             auto_refresh?: boolean;
             /** Created At */
             created_at: string;
+            /** Headline Value */
+            headline_value?: number | null;
             /** Latest Run Id */
             latest_run_id?: string | null;
+            /** Latest Run Status */
+            latest_run_status?: string | null;
+            /** Newer Version */
+            newer_version?: number | null;
+            /** Next Run At */
+            next_run_at?: string | null;
             /** Pin Id */
             pin_id: string;
             /** Question Text */
             question_text: string;
             /** Run Id */
             run_id: string;
+            /**
+             * Schedule
+             * @default off
+             * @enum {string}
+             */
+            schedule?: "off" | "daily" | "weekly";
+            shown_run?: components["schemas"]["RunOut"] | null;
+            snapshot?: components["schemas"]["SnapshotOut"] | null;
             /** Title */
             title: string;
             /** Version */
             version: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PinRefreshBatchOut */
+        PinRefreshBatchOut: {
+            /**
+             * Failed
+             * @default []
+             */
+            failed?: components["schemas"]["PinRefreshFailureOut"][];
+            /** Refreshed */
+            refreshed: components["schemas"]["PinRefreshOut"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** PinRefreshFailureOut */
+        PinRefreshFailureOut: {
+            /** Detail */
+            detail: string;
+            /** Pin Id */
+            pin_id: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PinRefreshOut */
+        PinRefreshOut: {
+            /**
+             * Already Running
+             * @default false
+             */
+            already_running?: boolean;
+            /** Pin Id */
+            pin_id: string;
+            /** Refresh Run Id */
+            refresh_run_id: string;
+            /** Status */
+            status: string;
         } & {
             [key: string]: unknown;
         };
@@ -1071,6 +1280,11 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** RefreshPinsRequest */
+        RefreshPinsRequest: {
+            /** Pin Ids */
+            pin_ids?: string[] | null;
+        };
         /** ReimportOut */
         ReimportOut: {
             /** Connector Id */
@@ -1115,6 +1329,10 @@ export interface components {
             charts?: components["schemas"]["ChartOut"][] | null;
             /** Criteria */
             criteria?: components["schemas"]["CriterionOut"][] | null;
+            /** Follow Ups */
+            follow_ups?: string[] | null;
+            /** Limitations */
+            limitations?: string[] | null;
             /** Outcome */
             outcome?: string | null;
             /** Route */
@@ -1381,8 +1599,18 @@ export interface components {
         };
         /** UpdatePinRequest */
         UpdatePinRequest: {
+            alert?: components["schemas"]["PinAlertRequest"] | null;
             /** Auto Refresh */
-            auto_refresh: boolean;
+            auto_refresh?: boolean | null;
+            /**
+             * Clear Alert
+             * @default false
+             */
+            clear_alert?: boolean;
+            /** Schedule */
+            schedule?: ("off" | "daily" | "weekly") | null;
+            /** Title */
+            title?: string | null;
         };
         /** UpdateRoutingRequest */
         UpdateRoutingRequest: {
@@ -1398,13 +1626,42 @@ export interface components {
                 [key: string]: string[];
             } | null;
         };
+        /** UpdateSemanticsRequest */
+        UpdateSemanticsRequest: {
+            /** Expected Version */
+            expected_version: number;
+            /** Metrics */
+            metrics?: components["schemas"]["MetricDefinitionEdit"][];
+            /** Remove Metric Ids */
+            remove_metric_ids?: string[];
+        };
         /** UpdateWorkspaceSettingsRequest */
         UpdateWorkspaceSettingsRequest: {
             /** Business Timezone */
             business_timezone: string;
         };
+        /** UsageBucketOut */
+        UsageBucketOut: {
+            /** Cost Usd */
+            cost_usd: string;
+            /** Runs */
+            runs: number;
+            /** Start */
+            start: string;
+            /** Tokens */
+            tokens: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** UsageOut */
         UsageOut: {
+            /**
+             * Buckets
+             * @default []
+             */
+            buckets?: components["schemas"]["UsageBucketOut"][];
+            /** Matched Count */
+            matched_count?: number | null;
             /** Models */
             models: components["schemas"]["ModelUsageOut"][];
             /** Run Count */
@@ -1460,6 +1717,29 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** WorkspaceListOut */
+        WorkspaceListOut: {
+            /** Workspaces */
+            workspaces: components["schemas"]["WorkspaceOut"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /** WorkspaceOut */
+        WorkspaceOut: {
+            /**
+             * Business Timezone
+             * @default UTC
+             */
+            business_timezone?: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Name */
+            name: string;
+            /** Workspace Id */
+            workspace_id: string;
+        } & {
+            [key: string]: unknown;
         };
         /** WorkspaceSettingsOut */
         WorkspaceSettingsOut: {
@@ -1612,6 +1892,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_workspaces_api_v1_workspaces_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceListOut"];
+                };
+            };
+        };
+    };
+    create_workspace_api_v1_workspaces_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWorkspaceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1849,6 +2182,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PinOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_pins_api_v1_workspaces__workspace_id__pins_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshPinsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PinRefreshBatchOut"];
                 };
             };
             /** @description Validation Error */
@@ -2575,6 +2943,44 @@ export interface operations {
             };
         };
     };
+    update_semantics_api_v1_workspaces__workspace_id__semantics__snapshot_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSemanticsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     approve_semantics_api_v1_workspaces__workspace_id__semantics__snapshot_id__approve_post: {
         parameters: {
             query?: never;
@@ -2716,6 +3122,40 @@ export interface operations {
             };
         };
     };
+    delete_provider_key_api_v1_workspaces__workspace_id__settings_provider_key__provider_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                provider_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_snapshots_api_v1_workspaces__workspace_id__snapshots_get: {
         parameters: {
             query?: never;
@@ -2790,6 +3230,109 @@ export interface operations {
             path: {
                 workspace_id: string;
                 snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_dataset_notes_api_v1_workspaces__workspace_id__snapshots__snapshot_id__notes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetNoteListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_dataset_note_api_v1_workspaces__workspace_id__snapshots__snapshot_id__notes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDatasetNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetNoteOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_dataset_note_api_v1_workspaces__workspace_id__snapshots__snapshot_id__notes__note_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                snapshot_id: string;
+                note_id: string;
             };
             cookie?: never;
         };
@@ -2927,6 +3470,15 @@ export interface operations {
         parameters: {
             query?: {
                 since?: string | null;
+                sort?: "when" | "calls" | "tokens" | "cost";
+                order?: "asc" | "desc";
+                status?: string | null;
+                mode?: string | null;
+                q?: string | null;
+                limit?: number | null;
+                offset?: number;
+                bucket?: "hour" | "day";
+                tz_offset_minutes?: number;
             };
             header?: never;
             path: {

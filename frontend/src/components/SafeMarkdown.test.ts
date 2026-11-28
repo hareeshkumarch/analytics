@@ -30,6 +30,14 @@ describe("SafeMarkdown", () => {
     expect(html).not.toContain('href="javascript:');
   });
 
+  it("parses level 5-6 headings and separates adjacent unlinked citations", () => {
+    const html = renderMd("##### Subhead\n\nTotal was 50 [ev_0123456789ab, ev_ba9876543210].", false);
+    expect(html).toContain("<h6");
+    expect(html).toContain(">Subhead<");
+    expect(html).toContain(">1,<");
+    expect(html).toContain(">2<");
+  });
+
   it("handles huge strings of unclosed delimiters in linear time", () => {
     const hostile = `${"[".repeat(20_000)} ${"*".repeat(20_000)} ${"`".repeat(20_000)}`;
     const start = performance.now();

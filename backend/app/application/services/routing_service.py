@@ -1,6 +1,7 @@
 from dataclasses import replace
 from decimal import Decimal
 import json
+import random
 import threading
 import time
 from typing import Any, Callable, Generator, cast
@@ -15,7 +16,7 @@ from app.application.ports.providers import BudgetLedger, ModelRequest, ModelRes
 from app.application.prompts import current_prompt
 from app.application.services.text_utils import clean_single_line
 from app.domain.errors import CircuitOpenError, ProviderError
-from app.domain.limits import CHARS_PER_TOKEN, DEFAULT_GLOBAL_LIMITS
+from app.domain.limits import CHARS_PER_TOKEN, DEFAULT_GLOBAL_LIMITS, RETRY_BACKOFF_BASE_SECONDS, RETRY_BACKOFF_MAX_SECONDS
 from app.domain.providers import (
     AgentRole,
     CircuitBreakerState,
@@ -197,7 +198,20 @@ class CircuitBreakerManager:
             return new_st
 
 
+
+def _backoff_seconds(retry: int, retry_after: float | None, timeout_seconds: int) -> float:
+    """How long to wait before trying the same model again: what the provider asked for, else exponential with jitter."""
+    ceiling = min(RETRY_BACKOFF_MAX_SECONDS, max(1.0, timeout_seconds / 2))
+    if retry_after is not None:
+        return min(max(retry_after, 0.0), ceiling)
+    return min(RETRY_BACKOFF_BASE_SECONDS * float(2 ** (retry - 1)) + random.uniform(0, 0.25), ceiling)
+
+
 class RoutingService:
+    def _sleep(self, seconds: float) -> None:
+        """Wait before retrying a rate-limited model. A method so tests can replace it."""
+        time.sleep(seconds)
+
     def __init__(
         self,
         providers: ProviderRegistry,
@@ -226,6 +240,9 @@ class RoutingService:
     def set_workspace_key(self, workspace_id: str, provider: ProviderId, api_key: str) -> None:
         self._workspace_keys[(workspace_id, provider)] = api_key
 
+    def clear_workspace_key(self, workspace_id: str, provider: ProviderId) -> None:
+        self._workspace_keys.pop((workspace_id, provider), None)
+
     def api_key_for(self, provider: ProviderId, workspace_id: str) -> str:
         return self._workspace_keys.get((workspace_id, provider)) or self._api_keys.get(provider, "")
 
@@ -234,6 +251,9 @@ class RoutingService:
 
     def set_budget_ledger(self, budget_ledger: BudgetLedger) -> None:
         self._ledger = budget_ledger
+
+    def attempts_used(self, run_id: str) -> int:
+        return int(str(self._ledger.get_run_totals(run_id).get("used_attempts", 0)))
 
     def tokens_left(self, run_id: str) -> int:
         return self._ledger.token_limit(run_id) - int(str(self._ledger.get_run_totals(run_id).get("total_tokens", 0)))
@@ -353,6 +373,9 @@ class RoutingService:
                 continue
 
             current_request = request
+            # With another model to fall back to, failing over is faster than waiting. Without one, waiting is all we have.
+            last_resort = idx == len(candidates) - 1 or not policy.fallback_enabled
+            transient_retries = 0
             while attempts_used < max_attempts:
                 attempts_used += 1
                 attempt_id = f"att_{uuid.uuid4().hex[:12]}"
@@ -434,7 +457,21 @@ class RoutingService:
                         span.set_attribute("llm.cached_input_tokens", resp.cached_input_tokens)
                 except ProviderError as exc:
                     last_error = exc
-                    self._ledger.release_unresolved(reservation.reservation_id, str(exc))
+                    if exc.billed_tokens:
+                        # The provider billed this reply before cutting it off, so it counts against the run.
+                        billed_in, billed_out = exc.billed_tokens
+                        self._ledger.settle(
+                            reservation.reservation_id,
+                            billed_in + billed_out,
+                            (
+                                (Decimal(billed_in) * model.input_price_per_1m + Decimal(billed_out) * model.output_price_per_1m)
+                                / Decimal("1000000")
+                                if model.input_price_per_1m and model.output_price_per_1m
+                                else None
+                            ),
+                        )
+                    else:
+                        self._ledger.release_unresolved(reservation.reservation_id, str(exc))
                     if exc.code == "schema_mismatch" and repairs_used < max_repairs and attempts_used < max_attempts:
                         repairs_used += 1
                         clean_err = clean_single_line(exc, limit=200)
@@ -453,6 +490,10 @@ class RoutingService:
                             timeout_seconds=request.timeout_seconds,
                             tool_choice=request.tool_choice,
                         )
+                        continue
+                    if exc.retryable and last_resort and attempts_used < max_attempts:
+                        transient_retries += 1
+                        self._sleep(_backoff_seconds(transient_retries, exc.retry_after, request.timeout_seconds))
                         continue
                     if exc.retryable:
                         self._circuits.record_transient_failure(cb_key)

@@ -22,8 +22,8 @@ from app.adapters.orchestration.deep_agents_bridge import (
 )
 from app.adapters.orchestration.deep_agent_runtime import DeepAgentTaskRunner
 from app.adapters.persistence.langgraph_checkpointer import open_langgraph_checkpointer
-from app.adapters.orchestration.structured_schemas import PLAN_SCHEMA, REPLAN_SCHEMA
-from app.application.runtime_settings import AgentRuntime, agent_runtime
+from app.adapters.orchestration.structured_schemas import FOLLOW_UP_SCHEMA, PLAN_SCHEMA, REPLAN_SCHEMA
+from app.application.runtime_settings import AgentRuntime, agent_runtime, follow_up_suggestions
 from app.application.services.context_compiler import (
     CLAIM_STATEMENT_CHARS,
     MAX_COMPLETION_CRITERIA,
@@ -34,6 +34,7 @@ from app.application.services.context_compiler import (
     REPLAN_FINDINGS_TOKENS,
     bounded_items,
     clip_statement,
+    compact_older_tool_results,
     composer_findings,
     fit_text,
     specialist_context,
@@ -81,8 +82,6 @@ logger = logging.getLogger(__name__)
 
 DEADLINE_MARGIN_SECONDS = 45
 FINAL_ROUND_MIN_TIMEOUT_SECONDS = 30
-OLDER_RESULT_MAX_CHARS = 4_000
-OLDER_RESULT_ROWS = 10
 COMPOSER_ATTEMPT_RESERVE = 1
 MIN_TOKENS_PER_STEP = 8_000
 PRIOR_TURNS = 3
@@ -96,6 +95,14 @@ TRIMMED_FINDINGS_LIMITATION = "Some step findings were shortened to fit the answ
 class _OrchestrationState(TypedDict):
     action: str
 
+FOLLOW_UP_LIMIT = 3
+FOLLOW_UP_CHARS = 140
+FOLLOW_UP_ANSWER_TOKENS = 1_200
+FOLLOW_UP_MAX_TABLES = 8
+FOLLOW_UP_MAX_COLUMNS = 30
+# Skip the suggestions when the run has this little time left.
+FOLLOW_UP_MIN_SECONDS = 20
+
 _TASK_TITLES = {
     "data_specialist": "Analysis",
     "reconciliation_specialist": "Reconciliation",
@@ -106,20 +113,7 @@ _TASK_TITLES = {
 
 
 
-def _compact_older_results(messages: list[dict[str, Any]], keep_from: int) -> None:
-    for idx in range(keep_from):
-        m = messages[idx]
-        if m.get("role") != "tool" or m.get("compacted") or len(str(m.get("content", ""))) <= OLDER_RESULT_MAX_CHARS:
-            continue
-        try:
-            data = json.loads(m["content"])
-        except (TypeError, ValueError):
-            continue
-        if not isinstance(data, dict) or not isinstance(data.get("rows"), list):
-            continue
-        rows = data["rows"][:OLDER_RESULT_ROWS]
-        data.update(rows=rows, rows_shown=len(rows), older_result_trimmed=True)
-        messages[idx] = {**m, "content": json.dumps(data, default=str), "compacted": True}
+_compact_older_results = compact_older_tool_results
 
 
 _TASK_ID_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9_]{0,47}")
@@ -675,6 +669,7 @@ class InvestigationOrchestrator:
             evidence_lookup=evidence_lookup,
             task_history_loader=task_history_loader,
             token_budget=token_budget,
+            max_model_attempts=max_model_attempts,
         )
 
     def _record_tool_execution(
@@ -847,18 +842,29 @@ class InvestigationOrchestrator:
                     "previous_turns": recent_turns,
                     "max_tasks": planner_task_limit,
                 }
-                with using_prompt(prompts.PLANNER):
-                    planner_text, planner_provider, planner_model = self._deep_agent_runner.run_control_agent(
-                        role=AgentRole.PLANNER,
-                        system_prompt=prompts.PLANNER.text,
-                        user_prompt=json.dumps(planner_input, ensure_ascii=False),
-                        run_id=run_id,
-                        policy=policy,
-                        toolbox=toolbox,
-                        on_tool=_tool_callback("planner"),
-                        deadline=deadline,
-                        should_cancel=_cancelled,
-                    )
+                planner_failed = False
+                try:
+                    with using_prompt(prompts.PLANNER):
+                        planner_text, planner_provider, planner_model = self._deep_agent_runner.run_control_agent(
+                            role=AgentRole.PLANNER,
+                            system_prompt=prompts.PLANNER.text,
+                            user_prompt=json.dumps(planner_input, ensure_ascii=False),
+                            run_id=run_id,
+                            policy=policy,
+                            toolbox=toolbox,
+                            on_tool=_tool_callback("planner"),
+                            deadline=deadline,
+                            should_cancel=_cancelled,
+                        )
+                except ClarificationRequired:
+                    raise
+                except Exception:  # noqa: BLE001
+                    if _cancelled():
+                        raise
+                    # A provider error on the first call should not sink the run: the standard plan still answers it.
+                    logger.warning("Planner call failed for run %s; using the standard plan", run_id, exc_info=True)
+                    planner_failed = True
+                    planner_text, planner_provider, planner_model = "", "none", "standard_plan"
                 _emit(
                     EventType.ROUTE_SELECTED,
                     {"task_id": "planner", "provider": planner_provider, "model": planner_model},
@@ -873,7 +879,7 @@ class InvestigationOrchestrator:
                     "clarification_answered": bool(clarification_answer),
                 }
                 plan, plan_fell_back, plan_notes = _plan_from_agent(planner_text, **plan_kwargs)
-                if plan_fell_back and _remaining_attempts() > attempt_reserve + MIN_ATTEMPTS_PER_TASK:
+                if plan_fell_back and not planner_failed and _remaining_attempts() > attempt_reserve + MIN_ATTEMPTS_PER_TASK:
                     try:
                         with using_prompt(prompts.PLAN_REPAIR):
                             repaired, _, _ = self._deep_agent_runner.run_structured(
@@ -884,6 +890,7 @@ class InvestigationOrchestrator:
                                 run_id=run_id,
                                 policy=policy,
                                 deadline=deadline,
+                                should_cancel=_cancelled,
                             )
                         plan, plan_fell_back, plan_notes = _plan_from_agent(json.dumps(repaired), **plan_kwargs)
                     except ClarificationRequired:
@@ -918,6 +925,7 @@ class InvestigationOrchestrator:
 
         collected_claims: list[Claim] = []
         summary_parts: list[str] = []
+        review_part_indexes: set[int] = set()
         findings: dict[str, str] = {}
         task_errors: list[str] = []
         flagged: set[str] = set()
@@ -939,6 +947,8 @@ class InvestigationOrchestrator:
                 text = str((record.result or {}).get("text") or "")
                 findings[task.task_id] = text
                 summary_parts.append(text)
+                if task.kind == TaskKind.EVIDENCE_REVIEWER:
+                    review_part_indexes.add(len(summary_parts) - 1)
                 restored = restored_claim(record)
                 if restored is not None and task.kind != TaskKind.EVIDENCE_REVIEWER:
                     collected_claims.append(restored)
@@ -1091,8 +1101,14 @@ class InvestigationOrchestrator:
                 if outcome.claim is not None and task.kind != TaskKind.EVIDENCE_REVIEWER:
                     collected_claims.append(outcome.claim)
                 text = str(outcome.attempt.payload["text"])
+                if outcome.attempt.payload.get("stopped_early"):
+                    budget_limitations.append(
+                        f"Step {task.task_id} stopped before it could write a conclusion; the evidence it gathered is kept."
+                    )
                 findings[task.task_id] = text
                 summary_parts.append(text)
+                if task.kind == TaskKind.EVIDENCE_REVIEWER:
+                    review_part_indexes.add(len(summary_parts) - 1)
                 _emit(
                     EventType.ROUTE_SELECTED,
                     {"task_id": task.task_id, "provider": outcome.provider, "model": outcome.model},
@@ -1138,7 +1154,19 @@ class InvestigationOrchestrator:
             else:
                 remediation_claims = {f"clm_{task_id}" for task_id, record in ledger.records.items() if record.plan_revision > 1}
                 evidence_verdict = _evidence_verdict(collected_claims, flagged, remediation_claims)
-                if latest_review_verdict is None:
+                review_skipped = latest_review_verdict is None and any(
+                    task.kind == TaskKind.EVIDENCE_REVIEWER
+                    and supervisor.state.task_statuses.get(task.task_id) == TaskStatus.FAILED
+                    for task in (supervisor.state.plan.tasks if supervisor.state.plan else ())
+                )
+                if review_skipped:
+                    # The review was cancelled by a failed step it depended on. That is "not reviewed",
+                    # never "approved": say so, and let the bounded remediation path try again.
+                    verdict = ReviewVerdict(
+                        approved=False,
+                        gaps=("The evidence review did not run because a step it depends on failed.", *evidence_verdict.gaps),
+                    )
+                elif latest_review_verdict is None:
                     verdict = evidence_verdict
                 else:
                     gaps = tuple(
@@ -1181,6 +1209,7 @@ class InvestigationOrchestrator:
                             run_id=run_id,
                             policy=policy,
                             deadline=deadline,
+                            should_cancel=_cancelled,
                         )
                     decision = _remediation_from_draft(replan_draft)
                 except Exception:  # noqa: BLE001
@@ -1308,7 +1337,9 @@ class InvestigationOrchestrator:
         ):
             answer_limitations.append("The review found unresolved gaps after the available remediation steps.")
         if use_deep_agents and summary_parts and not cancelled and not direct:
-            composer_context = composer_findings([_clean_text(text, strip=False) for text in summary_parts])
+            composer_context = composer_findings(
+                [_clean_text(text, strip=False) for text in summary_parts], review_indexes=frozenset(review_part_indexes)
+            )
             if composer_context.trimmed or composer_context.dropped:
                 logger.info("Run %s composer findings trimmed %s, dropped %s", run_id, composer_context.trimmed, composer_context.dropped)
                 answer_limitations.append(TRIMMED_FINDINGS_LIMITATION)
@@ -1363,6 +1394,7 @@ class InvestigationOrchestrator:
                         on_delta=_on_composer_delta,
                         on_reset=_on_composer_reset,
                         deadline=deadline,
+                        should_cancel=_cancelled,
                     )
                 _flush_stream()
                 known_ids = {evidence_id for claim in collected_claims for evidence_id in claim.evidence_ids}
@@ -1406,6 +1438,50 @@ class InvestigationOrchestrator:
         )
         if outcome == "needs_review":
             answer_limitations.append("Some figures could not be matched to the evidence they cite; check them before relying on this answer.")
+        follow_ups: tuple[str, ...] = ()
+        if (
+            follow_up_suggestions()
+            and use_deep_agents
+            # The direct route promises two model calls; suggestions are not worth slowing it down.
+            and not direct
+            and summary_parts
+            and run_evidence
+            and not cancelled
+            and not timed_out
+            and _remaining_attempts() >= 1
+            and deadline - time.monotonic() > FOLLOW_UP_MIN_SECONDS
+        ):
+            # A nicety, never a reason to fail or delay an answer: any problem here just means no suggestions.
+            try:
+                tables = [
+                    {"table": str(table.get("name")), "columns": [str(col.get("name")) for col in table.get("columns", [])][:FOLLOW_UP_MAX_COLUMNS]}
+                    for table in (snapshot or {}).get("table_details", [])[:FOLLOW_UP_MAX_TABLES]
+                ]
+                with using_prompt(prompts.FOLLOW_UPS):
+                    suggested, _, _ = self._deep_agent_runner.run_structured(
+                        # The assistant role routes to small, fast models; this call must stay cheap.
+                        role=AgentRole.SEMANTIC_ASSISTANT,
+                        system_prompt=prompts.FOLLOW_UPS.text,
+                        user_prompt=json.dumps(
+                            {"question": clean_question, "answer": fit_text(answer_markdown, FOLLOW_UP_ANSWER_TOKENS), "tables": tables},
+                            ensure_ascii=False,
+                        ),
+                        schema=FOLLOW_UP_SCHEMA,
+                        run_id=run_id,
+                        policy=policy,
+                        deadline=deadline,
+                        should_cancel=_cancelled,
+                    )
+                asked = clean_question.strip().lower()
+                follow_ups = tuple(
+                    dict.fromkeys(
+                        clip_statement(_clean_text(str(item)), FOLLOW_UP_CHARS)
+                        for item in (suggested.get("follow_ups") or [])
+                        if isinstance(item, str) and item.strip() and item.strip().lower() != asked
+                    )
+                )[:FOLLOW_UP_LIMIT]
+            except Exception:  # noqa: BLE001
+                logger.info("No follow-up suggestions for run %s", run_id, exc_info=True)
         answer = Answer(
             answer_id=f"ans_{uuid.uuid4().hex[:10]}",
             run_id=run_id,
@@ -1422,6 +1498,7 @@ class InvestigationOrchestrator:
             outcome=outcome,
             criteria=criteria,
             route=route.route.value,
+            follow_ups=follow_ups,
         )
         finished: dict[str, Any] = {"answer_id": answer.answer_id, "tool_calls": toolbox.budget.used, "route": route.route.value}
         if cancelled:
