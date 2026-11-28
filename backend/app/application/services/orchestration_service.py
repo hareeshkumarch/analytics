@@ -63,6 +63,7 @@ from app.application.prompts import using_prompt
 from app.application.services.analytics_tools import AnalyticsToolbox, ToolBudget, ToolErrorCode
 from app.application.services.charts import build_answer_charts
 from app.application.services.execution_router import ExecutionRoute, RouteDecision, choose_route
+from app.application.services.small_talk import small_talk_reply
 from app.application.services.text_utils import (
     EVIDENCE_ID_RE as _EVIDENCE_ID_RE,
     clean_single_line as _clean_objective,
@@ -70,12 +71,12 @@ from app.application.services.text_utils import (
     extract_json_object,
     strip_unknown_citations as _strip_unknown_citations,
 )
-from app.application.services.verification import assess_answer
+from app.application.services.verification import assess_answer, stated_figures
 from app.domain.errors import BudgetExhaustedError, ClarificationRequired, public_message
 from app.domain.events import EventType, RunEvent
 from app.domain.timezone import DEFAULT_BUSINESS_TIMEZONE
 from app.domain.limits import DEFAULT_GLOBAL_LIMITS, IDENTIFIER_CHARS, LONG_TEXT_CHARS, MAX_TOOL_ROUNDS, MIN_CALL_TIMEOUT_SECONDS, MODEL_CALL_TIMEOUT_SECONDS, PUBLIC_ERROR_CHARS, REPLAN_TASKS, STEP_MAX_OUTPUT_TOKENS, TOKEN_HEADROOM_FACTOR
-from app.domain.models import Answer, Claim, PlanDAG, RunMode, RunStatus, TaskBudget, TaskKind, TaskNode, TaskStatus
+from app.domain.models import Answer, Claim, PlanDAG, RunMode, RunOutcome, RunStatus, TaskBudget, TaskKind, TaskNode, TaskStatus
 from app.domain.providers import AgentRole, RoutingPolicy, role_for_kind
 
 logger = logging.getLogger(__name__)
@@ -126,15 +127,23 @@ def _call_timeout(deadline: float | None, final_round: bool = False) -> int:
     return max(floor, min(MODEL_CALL_TIMEOUT_SECONDS, int(deadline - time.monotonic())))
 
 
-def _evidence_verdict(claims: list[Claim], flagged: set[str], remediation_claims: set[str]) -> ReviewVerdict:
+def _evidence_verdict(
+    claims: list[Claim],
+    flagged: set[str],
+    remediation_claims: set[str],
+    findings: dict[str, str] | None = None,
+) -> ReviewVerdict:
     gaps: list[str] = []
     for claim in claims:
-        if claim.claim_id in flagged or claim.claim_id in remediation_claims:
+        if claim.claim_id in flagged or claim.claim_id in remediation_claims or claim.evidence_ids:
             continue
-        if not claim.evidence_ids:
-            flagged.add(claim.claim_id)
-            step = claim.claim_id.removeprefix("clm_")
-            gaps.append(f"step {step} gave figures without query evidence; re-derive them with run_query_ir and cite evidence ids")
+        step = claim.claim_id.removeprefix("clm_")
+        # A step that honestly reports no figures (a greeting, "the data has no such column") has nothing to
+        # re-derive. Read its full text, since the claim statement is clipped.
+        if not stated_figures((findings or {}).get(step) or claim.statement):
+            continue
+        flagged.add(claim.claim_id)
+        gaps.append(f"step {step} gave figures without query evidence; re-derive them with run_query_ir and cite evidence ids")
     return ReviewVerdict(approved=not gaps, gaps=tuple(gaps))
 
 
@@ -819,6 +828,39 @@ class InvestigationOrchestrator:
                 has_prior_turns=bool(recent_turns),
                 has_clarification=bool(clean_clarification),
             )
+        if route.route == ExecutionRoute.SMALL_TALK:
+            # A greeting or thanks: a fixed reply, recorded as a run like any other, with no plan, tools or model calls.
+            reply = small_talk_reply(clean_question, snapshot)
+            _emit(
+                EventType.PLAN_UPDATED,
+                {"revision": 1, "tasks": [], "fallback": False, "route": route.route.value, "route_reason": route.reason},
+            )
+            _emit(EventType.ANSWER_DELTA, {"text": reply, "draft_id": "final_answer"})
+            small_talk = Answer(
+                answer_id=f"ans_{uuid.uuid4().hex[:10]}",
+                run_id=run_id,
+                summary_markdown=reply,
+                claims=(),
+                charts=(),
+                limitations=(),
+                snapshot_id=snapshot_id,
+                semantic_version_id=semantic_version_id,
+                created_at=datetime.now(timezone.utc),
+                outcome=RunOutcome.ANSWERED.value,
+                route=route.route.value,
+            )
+            _emit(
+                EventType.RUN_FINISHED,
+                {
+                    "answer_id": small_talk.answer_id,
+                    "tool_calls": 0,
+                    "route": route.route.value,
+                    "status": RunStatus.COMPLETED.value,
+                    "outcome": small_talk.outcome,
+                    "criteria": [],
+                },
+            )
+            return small_talk
         direct = route.route == ExecutionRoute.DIRECT_QUERY
         attempt_reserve = COMPOSER_ATTEMPT_RESERVE if use_deep_agents and not direct else 0
 
@@ -1153,7 +1195,7 @@ class InvestigationOrchestrator:
                 verdict = replan_evaluator(collected_claims, supervisor.state.replan_count)
             else:
                 remediation_claims = {f"clm_{task_id}" for task_id, record in ledger.records.items() if record.plan_revision > 1}
-                evidence_verdict = _evidence_verdict(collected_claims, flagged, remediation_claims)
+                evidence_verdict = _evidence_verdict(collected_claims, flagged, remediation_claims, findings)
                 review_skipped = latest_review_verdict is None and any(
                     task.kind == TaskKind.EVIDENCE_REVIEWER
                     and supervisor.state.task_statuses.get(task.task_id) == TaskStatus.FAILED

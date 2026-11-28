@@ -382,7 +382,7 @@ class TestToolLoop(unittest.TestCase):
         from app.domain.models import Claim
 
         def claim(cid: str, ev: tuple[str, ...]) -> Claim:
-            return Claim(claim_id=cid, label="x", statement="s", value=None, unit=None, currency=None, evidence_ids=ev)
+            return Claim(claim_id=cid, label="x", statement="Revenue was $1,200.", value=None, unit=None, currency=None, evidence_ids=ev)
 
         flagged: set[str] = set()
         claims = [claim("clm_t1_analyze", ()), claim("clm_t1_reconcile", ("ev_1",)), claim("clm_t3_remediate", ())]

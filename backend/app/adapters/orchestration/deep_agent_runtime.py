@@ -14,7 +14,6 @@ from typing import Any, Literal
 from deepagents import (
     GeneralPurposeSubagentProfile,
     HarnessProfile,
-    SubAgent,
     create_deep_agent,
     register_harness_profile,
 )
@@ -62,9 +61,12 @@ from app.domain.limits import MAX_TOOL_ROUNDS, MODEL_CALL_TIMEOUT_SECONDS, STEP_
 
 logger = logging.getLogger(__name__)
 
+# Deep Agents adds `task` only when a step is given subagents, and steps never are: the general-purpose
+# subagent is disabled below and no step passes its own. Excluding it here as well keeps the tool off every
+# request even if that changes, as the manifest in tool_manifest.py requires.
 _TOOL_EXCLUSIONS = frozenset(
     {
-        *(FORBIDDEN_DEFAULT_TOOLS - {"task"}),
+        *FORBIDDEN_DEFAULT_TOOLS,
         "ls",
         "read_file",
         "write_file",
@@ -419,30 +421,6 @@ class DeepAgentTaskRunner:
         if context.trimmed or context.dropped:
             logger.info("Task %s context trimmed %s, dropped %s", task.task_id, context.trimmed, context.dropped)
         prompt = f"{harness['system_prompt']}\n\nTask {task.task_id}: {clean_task_obj}\nDataset snapshot: {task.snapshot_id}"
-        subagents: list[SubAgent] = []
-        if definitions:
-            delegate_name = {
-                AgentRole.RECONCILIATION_SPECIALIST: "reconciliation_checker",
-                AgentRole.EVIDENCE_REVIEWER: "evidence_auditor",
-            }.get(role, "query_analyst")
-            delegate_description = {
-                AgentRole.RECONCILIATION_SPECIALIST: (
-                    "Independently cross-check totals, joins, duplicates, and variances using the bound snapshot."
-                ),
-                AgentRole.EVIDENCE_REVIEWER: (
-                    "Audit a quantitative finding against the bound snapshot and its evidence IDs."
-                ),
-            }.get(
-                role,
-                "Solve one focused analytical subtask with typed queries and evidence-backed figures.",
-            )
-            subagents = [
-                {
-                    "name": delegate_name,
-                    "description": delegate_description,
-                    "system_prompt": prompts.DELEGATE.text,
-                }
-            ]
 
         trace: list[dict[str, Any]] = []
         evidence: list[dict[str, Any]] = []
@@ -497,18 +475,11 @@ class DeepAgentTaskRunner:
                 )
                 for definition in definitions
             ]
-            if subagents:
-                subagents[0]["tools"] = tools
-                prompt = (
-                    f"{prompt}\n\nYou may use the task tool to delegate a focused independent check when useful. "
-                    "Include the question, snapshot, relevant findings, and evidence IDs in the delegated task. "
-                    "Delegates share this run's read-only tools and tool budget."
-                )
             agent = create_deep_agent(
                 model=model,
                 tools=tools,
                 system_prompt=prompt,
-                subagents=subagents,
+                subagents=[],
                 checkpointer=self._checkpointer,
                 name=f"analytics_{role.value}",
             )

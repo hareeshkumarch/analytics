@@ -397,14 +397,17 @@ class PgRunRepository:
                     RunRow.created_at < current.created_at,
                 )
                 .order_by(RunRow.created_at.desc())
-                .limit(limit)
+                # Read a few extra rows so skipped small-talk turns don't shrink the context.
+                .limit(limit * 3)
             ).all()
+            # A "hi" or "thanks" turn carries no context, and counting it would make the next question a follow-up.
+            turns = [row for row in rows if (row.answer_json or {}).get("route") != "small_talk"][:limit]
             return [
                 {
                     "question": str((row.answer_json or {}).get("question", "")),
                     "answer": str((row.answer_json or {}).get("summary_markdown", "")),
                 }
-                for row in reversed(rows)
+                for row in reversed(turns)
             ]
 
     def get_orchestration_state(self, run_id: str) -> dict[str, Any]:

@@ -8,21 +8,30 @@ runs through evidence review and bounded remediation. `DeterministicSupervisor` 
 authority for DAG readiness and task/tool budgets; ready specialists run concurrently in a
 `ThreadPoolExecutor`.
 
+Before any of that, `choose_route()` (`execution_router.py`) picks the run's route. A message that is only
+a greeting, thanks or goodbye ("hi", "thanks so much", "bye") takes the `small_talk` route in Quick and
+Deep mode: a fixed reply that points the user to their data, recorded as a completed run with outcome
+`answered` and no plan, tool or model calls. The check (`small_talk.py`) is deterministic and narrow:
+every word must belong to a known phrase or a short filler list, so "hi, how many rows?", digits, other
+scripts and bare acknowledgements such as "ok" or "yes" stay on the normal path. Small-talk turns are left
+out of a follow-up's previous turns. Otherwise a short, single-step English Quick question on a single-table
+dataset with no earlier turns takes `direct_query`, other Quick questions `standard`, and Deep mode `deep`.
+
 The default path uses Deep Agents for planning, each specialist step, and final answer composition.
 The planner can inspect the bound schema and returns a validated, bounded `PlanDAG`; the supervisor
 still owns DAG readiness, task limits, and tool budgets. Model calls use the existing
 `RoutingService`, while analytics tools stay bound to `AnalyticsToolbox` and its typed QueryIR,
 read-only execution, evidence capture, and call limits.
 
-Each specialist may delegate one focused check through Deep Agents' `task` tool. Delegates inherit
-only the approved analytics tools and share the run's tool and model budgets. The general-purpose
-subagent, filesystem tools, shell, and interpreter remain disabled. The evidence reviewer returns
+Specialists are offered only the approved analytics tools (`inspect_schema`, `run_query_ir`,
+`calculate`). They get no subagents, so Deep Agents' `task` tool is never sent, and the harness profile
+excludes it along with the general-purpose subagent, filesystem tools, shell, and interpreter. The evidence reviewer returns
 a structured approval, gaps, and contradictions. When a review is rejected and the budget allows, the
 planner sees the gaps, contradictions and findings and decides the next step: one remediation task
 (a data or reconciliation specialist with its own objective) followed by an automatic re-review, or
 stopping with a reason that becomes an answer limitation. An unusable planner reply falls back to a
 data-specialist remediation, and any planner fallback is flagged in `plan.updated` (`fallback`) and in
-the answer's limitations. The replan decision uses the provider's native structured output (`REPLAN_SCHEMA`). The planner and reviewer keep their tool-using Deep Agents turn, because most models can't combine tools with structured output; when that reply isn't valid JSON, one structured repair call converts it with `PLAN_SCHEMA` or `REVIEW_SCHEMA` before the run falls back. The planner repair runs only when model calls remain for at least one task. A deterministic evidence check still blocks uncited claims. The answer composer streams: OpenAI, xAI, Anthropic, Groq, Kimi and NVIDIA NIM adapters implement `stream()` (Gemini uses the non-streaming call), the router streams text-only requests to streaming-capable models and calls `on_reset` before a fallback model if a stream failed part-way, and the orchestrator sends `answer.delta` events in batches of about 120 characters or 0.25 s, then replaces the text with the final version if citation filtering changed it. A provider that answers a streaming request with a normal JSON body is retried without streaming. The answer
+the answer's limitations. The replan decision uses the provider's native structured output (`REPLAN_SCHEMA`). The planner and reviewer keep their tool-using Deep Agents turn, because most models can't combine tools with structured output; when that reply isn't valid JSON, one structured repair call converts it with `PLAN_SCHEMA` or `REVIEW_SCHEMA` before the run falls back. The planner repair runs only when model calls remain for at least one task. A deterministic evidence check still blocks a step that states figures without citing query evidence; a step that reports no figures (read with the same figure rules as the answer's grounding check) is not sent back for remediation. The answer composer streams: OpenAI, xAI, Anthropic, Groq, Kimi and NVIDIA NIM adapters implement `stream()` (Gemini uses the non-streaming call), the router streams text-only requests to streaming-capable models and calls `on_reset` before a fallback model if a stream failed part-way, and the orchestrator sends `answer.delta` events in batches of about 120 characters or 0.25 s, then replaces the text with the final version if citation filtering changed it. A provider that answers a streaming request with a normal JSON body is retried without streaming. The answer
 composer receives only specialist findings and validated claims, and cannot access dataset tools.
 Set `AGENT_RUNTIME=legacy` to use the previous hand-written specialist loop with the bounded default
 plan and summary assembly.

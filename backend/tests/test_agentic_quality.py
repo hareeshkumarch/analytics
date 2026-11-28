@@ -264,8 +264,8 @@ class TestPromptsAndRouting(unittest.TestCase):
         for needle in ("in bold", "Copy every figure exactly", "language of the user's question", "Start with the direct answer"):
             self.assertIn(needle, text)
 
-    def test_reviewer_and_delegate_share_the_tool_rules_without_contradiction(self) -> None:
-        for template in (prompts.SPECIALIST, prompts.EVIDENCE_REVIEWER, prompts.DELEGATE):
+    def test_specialist_and_reviewer_share_the_tool_rules_without_contradiction(self) -> None:
+        for template in (prompts.SPECIALIST, prompts.EVIDENCE_REVIEWER):
             self.assertIn("business_timezone", template.text)
             self.assertIn("failed_fields", template.text)
             self.assertIn("rows_withheld", template.text)

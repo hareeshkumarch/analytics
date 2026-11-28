@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from app.application.services.small_talk import is_small_talk
 from app.domain.models import RunMode
 
 MAX_DIRECT_QUESTION_CHARS = 200
@@ -16,6 +17,8 @@ _MULTI_STEP = re.compile(
 
 
 class ExecutionRoute(str, Enum):
+    # A greeting, thanks or goodbye: answered with a fixed reply, no model or tool calls.
+    SMALL_TALK = "small_talk"
     DIRECT_QUERY = "direct_query"
     STANDARD = "standard"
     DEEP = "deep"
@@ -35,6 +38,10 @@ def choose_route(
     has_prior_turns: bool,
     has_clarification: bool,
 ) -> RouteDecision:
+    # Checked before the mode: a greeting needs no investigation, Quick or Deep. A clarification means the
+    # run is already part-way through answering a real question, so it never counts as small talk.
+    if not has_clarification and is_small_talk(question):
+        return RouteDecision(ExecutionRoute.SMALL_TALK, "A greeting or thanks with no question about the data.")
     if mode == RunMode.DEEP:
         return RouteDecision(ExecutionRoute.DEEP, "Deep mode was requested.")
     tables = (snapshot or {}).get("table_details") or []

@@ -113,6 +113,14 @@ def _matches(figure: _Figure, value: Decimal) -> bool:
     return False
 
 
+def stated_figures(markdown: str) -> list[str]:
+    """The figures a text states, read the same way as the grounding check: dates, years, list numbers and
+    evidence ids don't count."""
+    text = _LIST_MARKER.sub(" ", _DATE.sub(" ", markdown))
+    found = [figure.text for segment in _SEGMENT.split(text) for figure in _figures(_CITATION.sub(" ", segment))]
+    return list(dict.fromkeys(found))
+
+
 def ungrounded_figures(markdown: str, evidence: list[dict[str, Any]]) -> list[str]:
     values_by_id = {str(e.get("evidence_id")): _evidence_values(e) for e in evidence}
     every_value = [v for values in values_by_id.values() for v in values]
