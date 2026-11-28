@@ -225,9 +225,9 @@ export function RichSelect({
 
       {open && (
         <div
-          className={`absolute z-50 w-full min-w-[min(260px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-ink/[0.08] bg-popover p-1 shadow-pop ${
+          className={`absolute z-50 w-full min-w-[min(260px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] animate-pop-in overflow-hidden rounded-xl border border-ink/[0.08] bg-popover p-1 shadow-pop ${
             dropUp ? "bottom-full mb-1.5" : "top-full mt-1.5"
-          } ${alignRight ? "right-0" : "left-0"}`}
+          } ${alignRight ? "right-0" : "left-0"} ${dropUp ? (alignRight ? "origin-bottom-right" : "origin-bottom-left") : alignRight ? "origin-top-right" : "origin-top-left"}`}
         >
           {searchable && (
             <div className="border-b border-border p-1.5">

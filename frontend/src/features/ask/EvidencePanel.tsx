@@ -72,10 +72,10 @@ export function EvidencePanel({
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px]" />
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in" />
         <Dialog.Content
           aria-describedby={undefined}
-          className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[640px] flex-col border-l border-border bg-surface shadow-pop focus:outline-none"
+          className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[640px] flex-col border-l border-border bg-surface shadow-pop focus:outline-none data-[state=closed]:animate-drawer-out data-[state=open]:animate-drawer-in"
         >
           <header className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
             <div className="min-w-0">

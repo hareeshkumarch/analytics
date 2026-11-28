@@ -12,7 +12,7 @@ import { LogoMark } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { WorkspaceSwitcher } from "@/components/WorkspaceSwitcher";
 import { Toaster } from "@/components/Toaster";
-import { Notice, Spinner, btn } from "@/components/ui";
+import { Notice, Spinner, btn, cx } from "@/components/ui";
 import { useHealth, useReady, useServerDown } from "@/lib/workspace";
 
 // Order follows the user journey: ask, bring in data, keep answers, watch spend, configure.
@@ -42,6 +42,39 @@ function RailTip({ show, children }: { show: boolean; children: React.ReactNode 
       {children}
     </span>
   );
+}
+
+/**
+ * True from a click on a link to another page of the app until that page renders, so the shell can show progress
+ * at once. (A route-level loading.tsx would do this too, but it makes every static page stream a skeleton first.)
+ * Gives up after 10s in case the navigation never completes.
+ */
+function useNavigationPending(pathname: string | null): boolean {
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => setPending(false), [pathname]);
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      // Next's Link has already called preventDefault by now, so filter on what the click means instead.
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const link = (e.target as Element | null)?.closest?.("a[href]");
+      if (!(link instanceof HTMLAnchorElement) || (link.target && link.target !== "_self") || link.hasAttribute("download")) return;
+      const url = new URL(link.href, window.location.href);
+      if (url.origin !== window.location.origin || url.pathname === window.location.pathname) return;
+      setPending(true);
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, []);
+
+  useEffect(() => {
+    if (!pending) return;
+    const id = window.setTimeout(() => setPending(false), 10_000);
+    return () => window.clearTimeout(id);
+  }, [pending]);
+
+  return pending;
 }
 
 /** One explanation for the whole app when the API is unreachable, instead of an error per request. */
@@ -98,6 +131,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [animate, setAnimate] = useState(false);
   const [isMac, setIsMac] = useState(false);
   const isActive = (href: string) => pathname === href || Boolean(pathname?.startsWith(`${href}/`));
+  // When the user expands the sidebar, its labels fade in a beat behind the width so they don't pop in clipped.
+  // Only after a toggle: on a page load the labels are simply there.
+  const [fadeLabels, setFadeLabels] = useState(false);
+  const navPending = useNavigationPending(pathname);
+  const labelFade = fadeLabels ? "animate-fade-in [animation-delay:80ms]" : "";
 
   useEffect(() => {
     setIsMac(/Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent));
@@ -112,6 +150,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const toggle = () => {
     const next = !useUiStore.getState().sidebarCollapsed;
+    if (!next) setFadeLabels(true);
     setSidebarCollapsed(next);
     try {
       window.localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
@@ -139,6 +178,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         Skip to content
       </a>
+      {/* Thin bar across the top while the next page loads: quick at first, then easing as it waits. */}
+      {navPending && <div aria-hidden="true" className="pointer-events-none fixed inset-x-0 top-0 z-[80] h-0.5 origin-left animate-nav-progress bg-focus" />}
       <div className="flex min-h-screen flex-col bg-canvas text-ink md:flex-row">
         <header className="sticky top-0 z-30 border-b border-border bg-canvas/95 px-4 pb-2.5 pt-3 backdrop-blur-md md:hidden">
           <div className="flex items-center gap-2">
@@ -189,7 +230,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <LogoMark className="h-6 w-6" />
             {!collapsed && (
-              <span className="min-w-0">
+              <span className={cx("min-w-0", labelFade)}>
                 <span className="block font-display text-[19px] font-medium leading-none tracking-[-0.01em]">Ledgerline</span>
               </span>
             )}
@@ -217,7 +258,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <span className="text-ink">
                     <NavIcon name={item.icon} />
                   </span>
-                  {!collapsed && <span className="truncate">{item.label}</span>}
+                  {!collapsed && <span className={cx("truncate", labelFade)}>{item.label}</span>}
                   <RailTip show={collapsed}>{item.label}</RailTip>
                 </Link>
               );
@@ -245,8 +286,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Icon name="panel-left" className={`h-4 w-4 shrink-0 transition-transform duration-200 ${collapsed ? "rotate-180" : ""}`} />
               {!collapsed && (
                 <>
-                  <span className="flex-1 text-left">Collapse</span>
-                  <kbd className="rounded-sm border border-border bg-canvas px-1.5 py-0.5 font-sans text-2xs text-secondary">
+                  <span className={cx("flex-1 text-left", labelFade)}>Collapse</span>
+                  <kbd className={cx("rounded-sm border border-border bg-canvas px-1.5 py-0.5 font-sans text-2xs text-secondary", labelFade)}>
                     {isMac ? "⌘ B" : "Ctrl B"}
                   </kbd>
                 </>
@@ -263,7 +304,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         >
           <div className="mx-auto w-full max-w-[1480px]">
             <ServerDownNotice />
-            {children}
+            {/* Keyed by route so each page fades in on arrival; query-string changes within a page don't replay it. */}
+            <div key={pathname} className="animate-fade-in">
+              {children}
+            </div>
           </div>
         </main>
 

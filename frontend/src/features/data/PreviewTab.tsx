@@ -99,8 +99,8 @@ export function PreviewTab({ snapshot, table }: { snapshot: SnapshotSummary; tab
 
       <Dialog.Root open={Boolean(inspected)} onOpenChange={(open) => !open && setInspected(null)}>
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] dark:bg-black/65" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,560px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-ink/[0.08] bg-popover p-5 shadow-pop focus:outline-none dark:border-border-strong">
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in dark:bg-black/65" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,560px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-ink/[0.08] bg-popover p-5 shadow-pop focus:outline-none data-[state=closed]:animate-dialog-out data-[state=open]:animate-dialog-in dark:border-border-strong">
             <Dialog.Title className="font-mono text-sm font-semibold text-ink">{inspected?.column}</Dialog.Title>
             <Dialog.Description className="mt-0.5 text-xs text-secondary">
               Row {inspected ? inspected.rowIndex + 1 : 0} · {table}

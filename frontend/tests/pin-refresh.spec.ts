@@ -38,7 +38,15 @@ test("pins show their latest re-run and can opt into automatic re-runs", async (
   const fees = page.getByRole("listitem").filter({ hasText: "Fees" });
   await expect(fees.getByText("Updating")).toBeVisible();
   await expect(fees.getByText("Fees were 100.")).toBeVisible();
-  await expect(fees.getByRole("checkbox", { name: /Re-run automatically/ })).toBeChecked();
-  await revenue.getByRole("checkbox", { name: /Re-run automatically/ }).click();
+  // The setting lives in each card's More menu; an enabled one is also named on the card.
+  await expect(fees.getByText("Re-runs on new data")).toBeVisible();
+  await expect(revenue.getByText("Re-runs on new data")).toHaveCount(0);
+  await fees.getByRole("button", { name: "More actions" }).click();
+  await expect(page.getByRole("menuitemcheckbox", { name: /Auto re-run on new data/ })).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Escape");
+  await revenue.getByRole("button", { name: "More actions" }).click();
+  const toggle = page.getByRole("menuitemcheckbox", { name: /Auto re-run on new data/ });
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await toggle.click();
   await expect.poll(() => patches).toEqual([{ auto_refresh: true }]);
 });

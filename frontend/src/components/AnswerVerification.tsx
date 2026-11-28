@@ -28,6 +28,16 @@ export function AnswerVerification({ outcome, criteria }: { outcome: string | nu
   // Criteria nobody reviewed (Quick mode has no evidence review) are reported apart from the checks that ran.
   const unreviewed = criteria.filter((c) => c.status === "unreviewed").length;
   const checked = criteria.length - unreviewed;
+  // No criteria at all: the badge alone, rather than "0 of 0 checks passed" and an arrow that opens an empty list.
+  if (criteria.length === 0) {
+    return (
+      <section aria-label="Answer verification" className="mt-4 flex min-h-[32px] items-center">
+        <Badge tone={shown.tone} dot>
+          {shown.label}
+        </Badge>
+      </section>
+    );
+  }
   return (
     <section aria-label="Answer verification" className="mt-4">
       <details open={passed < checked || undefined} className="group text-sm">
@@ -41,7 +51,7 @@ export function AnswerVerification({ outcome, criteria }: { outcome: string | nu
           </span>
           <Icon name="chevron-down" className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
         </summary>
-        <ul className="mt-1.5 space-y-1">
+        <ul className="mt-1.5 animate-fade-in space-y-1">
           {criteria.map((c) => (
             <li key={c.criterion} className="flex gap-2">
               <span className={c.status === "verified" ? "text-ok" : c.status === "failed" ? "text-err" : "text-secondary"}>

@@ -841,7 +841,9 @@ export function AskView() {
   );
 
   return (
-    <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_260px]">
+    // History sits in a left column (DOM order keeps the question first for keyboard users); the conversation
+    // is one centred reading column.
+    <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[248px_minmax(0,1fr)] lg:gap-10">
       <Suspense fallback={null}>
         <AskUrlSync onRunParam={handleUrlRun} onDatasetParam={handleUrlDataset} />
       </Suspense>
@@ -849,9 +851,18 @@ export function AskView() {
         {liveMessage}
       </p>
       {active && <h1 className="sr-only">Ask Ledgerline</h1>}
-      <div className={cx("min-w-0", active ? "space-y-6" : "space-y-4")}>
+      <div
+        className={cx(
+          "mx-auto w-full min-w-0 max-w-[760px]",
+          // Before the first question the start screen fills the viewport left after the shell's chrome: centred
+          // from tablet up, and on phones the question box sits at the bottom within thumb reach.
+          active
+            ? "space-y-6"
+            : "flex min-h-[calc(100dvh-14rem)] flex-col gap-4 sm:min-h-[calc(100dvh-13rem)] sm:justify-center sm:pb-[6vh] md:min-h-[calc(100dvh-8rem)] lg:min-h-[calc(100dvh-4rem)]"
+        )}
+      >
         {!active && (
-          <header className="relative isolate flex flex-col items-center gap-3 pt-4 text-center sm:pt-[8vh]">
+          <header className="relative isolate flex flex-1 flex-col items-center justify-center gap-3 py-4 text-center sm:flex-none sm:pb-2 sm:pt-0">
             <div aria-hidden="true" className="bg-dot-grid pointer-events-none absolute -inset-x-6 -bottom-4 top-0 -z-10" />
             <h1 className="font-display text-[28px] font-[360] leading-[1.2] sm:text-[32px]">What would you like to know?</h1>
             <p className="max-w-[560px] text-base leading-relaxed text-secondary">
@@ -922,27 +933,23 @@ export function AskView() {
 
         {active && (
           <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3.5 py-2">
-              <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-secondary">
-                {activeDataset ? (
-                  <span className="truncate font-medium text-ink">
-                    {datasetLabel(activeDataset)} · v{activeDataset.version}
-                  </span>
-                ) : latestTurn?.snapshotId && !snapshotsQuery.isLoading ? (
-                  <Badge tone="neutral">Removed dataset</Badge>
-                ) : null}
-                <span>
-                  {activeThread.length} {activeThread.length === 1 ? "turn" : "turns"}
+            {/* One quiet line of context; "New question" lives at the top of the history column. */}
+            <div className="flex min-w-0 flex-wrap items-center gap-2 border-b border-border pb-3 text-xs text-secondary">
+              {activeDataset ? (
+                <span className="truncate font-medium text-ink">
+                  {datasetLabel(activeDataset)} · v{activeDataset.version}
                 </span>
-              </div>
-              <button type="button" onClick={startNew} className={cx(btn.ghost, "h-7 px-2.5 text-xs")}>
-                New question
-              </button>
+              ) : latestTurn?.snapshotId && !snapshotsQuery.isLoading ? (
+                <Badge tone="neutral">Removed dataset</Badge>
+              ) : null}
+              <span>
+                {activeThread.length} {activeThread.length === 1 ? "turn" : "turns"}
+              </span>
             </div>
 
             {pinError && <Notice tone="err" title={pinError} />}
 
-            <div className="space-y-6">
+            <div className="space-y-10">
               {activeThread.map((turn, idx) => (
                 <AskThreadTurn
                   key={turn.id}
@@ -986,7 +993,9 @@ export function AskView() {
             </div>
 
             {latestTurn && (
-              <div className="pt-1">
+              // Pinned to the bottom of the viewport (above the phone tab bar) so the next question is always in
+              // reach; the canvas-coloured fade lets the thread scroll underneath it.
+              <div className="sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-10 -mx-2 bg-gradient-to-t from-canvas from-80% to-canvas/0 px-2 pb-3 pt-5 sm:bottom-0 sm:pb-5">
                 {latestTurn.status === "completed" && latestTurn.runId ? (
                   <AskComposer
                     variant="followup"
@@ -1025,7 +1034,7 @@ export function AskView() {
         )}
       </div>
 
-      <aside className="order-first space-y-3 lg:sticky lg:top-8 lg:order-none">
+      <aside className="order-first space-y-3 lg:sticky lg:top-8">
         <div className="flex justify-end gap-2">
           <button type="button" onClick={startNew} className={cx(btn.secondary, "flex-1", !active && "max-lg:hidden")}>
             New question
@@ -1040,7 +1049,7 @@ export function AskView() {
             History{historyCounts.all ? ` (${historyCounts.all})` : ""}
           </button>
         </div>
-        <div id="ask-history" className={cx(historyOpen ? "block" : "hidden", "lg:block")}>
+        <div id="ask-history" className={cx(historyOpen ? "block animate-fade-in" : "hidden", "lg:block lg:animate-none")}>
           {history}
         </div>
       </aside>

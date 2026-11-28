@@ -150,7 +150,7 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
           role="menu"
           aria-label="Workspaces"
           className={cx(
-            "absolute z-40 mt-1.5 rounded-xl border border-ink/[0.08] bg-popover p-1.5 shadow-pop dark:border-border-strong",
+            "absolute z-40 mt-1.5 origin-top-left animate-pop-in rounded-xl border border-ink/[0.08] bg-popover p-1.5 shadow-pop dark:border-border-strong",
             collapsed ? "left-0 w-56" : "left-0 right-0 min-w-[200px]",
           )}
         >
@@ -207,8 +207,8 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
 
       <Dialog.Root open={createOpen} onOpenChange={setCreateOpen}>
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] dark:bg-black/65" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,400px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-ink/[0.08] bg-popover p-5 shadow-pop focus:outline-none dark:border-border-strong">
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[1px] data-[state=closed]:animate-fade-out data-[state=open]:animate-fade-in dark:bg-black/65" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,400px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-ink/[0.08] bg-popover p-5 shadow-pop focus:outline-none data-[state=closed]:animate-dialog-out data-[state=open]:animate-dialog-in dark:border-border-strong">
             <Dialog.Title className="text-base font-semibold text-ink">Create workspace</Dialog.Title>
             <Dialog.Description className="mt-1 text-sm text-secondary">
               Each workspace isolates its own datasets, runs, pinned answers, and model keys.

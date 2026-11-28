@@ -10,6 +10,7 @@ import { anyText, useUrlState } from "@/lib/url";
 import { ActionMenu } from "@/components/ActionMenu";
 import { AnswerCharts } from "@/components/AnswerCharts";
 import { ConnectorLogo, logoIdForFamily } from "@/components/ConnectorLogo";
+import { Icon } from "@/components/Icon";
 import { PageHeader } from "@/components/PageHeader";
 import { RichSelect, RichOption } from "@/components/RichSelect";
 import { Badge, EmptyState, FilterChips, Notice, SearchInput, Skeleton, Spinner, btn, btnSm, cardCls, cx, dangerConfirmBtnCls, inputCls } from "@/components/ui";
@@ -85,6 +86,7 @@ export function DashboardView() {
   const [alertDirection, setAlertDirection] = useState<"above" | "below">("above");
   const [alertValue, setAlertValue] = useState("");
   const [alertError, setAlertError] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const cancelUnpinRef = useRef<HTMLButtonElement>(null);
   const alertValueRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -204,6 +206,7 @@ export function DashboardView() {
   }
 
   const filtersActive = Boolean(q) || windowFilter !== "any" || dataset !== "all";
+  const activeFilterCount = Number(windowFilter !== "any") + Number(dataset !== "all") + Number(sort !== "newest");
 
   async function rerun(pin: PinItem) {
     setBusyPin(pin.pin_id);
@@ -300,7 +303,8 @@ export function DashboardView() {
         description="Answers you pinned, the dataset each one used, and whether newer data has arrived since."
         action={
           pins.length > 0 ? (
-            <Link href="/ask" className={btn.primary}>
+            // Phones reach Ask from the tab bar, so the button would only push the pins further down.
+            <Link href="/ask" className={cx(btn.primary, "max-sm:hidden")}>
               Ask a question
             </Link>
           ) : undefined
@@ -309,7 +313,22 @@ export function DashboardView() {
 
       {pins.length > 1 && (
         <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
-          <SearchInput dense className="lg:w-[280px]" label="Search pinned answers" placeholder="Search pinned answers" value={query} onChange={setQuery} />
+          <div className="flex gap-2 lg:contents">
+            <SearchInput dense className="flex-1 lg:w-[280px] lg:flex-none" label="Search pinned answers" placeholder="Search pinned answers" value={query} onChange={setQuery} />
+            {/* Below desktop width the filters fold behind one button so the pins start near the top. */}
+            <button
+              type="button"
+              className={cx(btn.secondary, "lg:hidden")}
+              aria-expanded={filtersOpen}
+              aria-controls="pin-filters"
+              onClick={() => setFiltersOpen((open) => !open)}
+            >
+              Filters
+              {activeFilterCount > 0 && <span className="tabular-nums text-secondary">· {activeFilterCount}</span>}
+              <Icon name="chevron-down" className={cx("h-3.5 w-3.5 transition-transform", filtersOpen && "rotate-180")} />
+            </button>
+          </div>
+          <div id="pin-filters" className={cx(filtersOpen ? "flex animate-fade-in" : "hidden", "flex-col gap-3 lg:contents")}>
           <FilterChips
             label="Pinned within"
             value={windowFilter}
@@ -327,6 +346,7 @@ export function DashboardView() {
             <div className="min-w-0 lg:w-[170px]">
               <RichSelect dense ariaLabel="Sort pins" value={sort} options={SORT_OPTIONS} onChange={setSort} />
             </div>
+          </div>
           </div>
         </div>
       )}
@@ -426,6 +446,18 @@ export function DashboardView() {
             const exportRunId = run?.status === "completed" ? run.run_id : null;
             const menuActions = [
               { label: "Rename title…", onSelect: () => openRename(pin) },
+              // Kept while the dataset is gone only so an existing setting can still be switched off.
+              ...(canRefresh || pin.auto_refresh
+                ? [
+                    {
+                      label: "Auto re-run on new data",
+                      hint: "Uses your newest imported snapshot, not live sources",
+                      checked: Boolean(pin.auto_refresh),
+                      separatorAbove: true,
+                      onSelect: () => void setAutoRefresh(pin, !pin.auto_refresh),
+                    },
+                  ]
+                : []),
               ...(canRefresh && schedule !== "daily"
                 ? [{ label: "Re-run every day", onSelect: () => void updatePin(pin, { schedule: "daily" }, "Scheduled daily against latest imported data.") }]
                 : []),
@@ -471,7 +503,15 @@ export function DashboardView() {
                       </button>
                     </form>
                   ) : (
-                    <h2 className="min-w-0 flex-1 text-md font-semibold leading-snug text-ink">{pin.title}</h2>
+                    // The title opens the answer, so the card needs no separate Open button.
+                    <h2 className="min-w-0 flex-1 text-md font-semibold leading-snug text-ink">
+                      <Link
+                        href={`/ask?run=${encodeURIComponent(run?.run_id ?? pin.run_id)}`}
+                        className="rounded-sm decoration-border-strong underline-offset-4 hover:underline"
+                      >
+                        {pin.title}
+                      </Link>
+                    </h2>
                   )}
                   {updating ? (
                     <Badge tone="info" dot pulse>
@@ -489,10 +529,6 @@ export function DashboardView() {
                     <Badge tone="warn" dot>
                       Newer data: v{newer}
                     </Badge>
-                  ) : snap ? (
-                    <Badge tone="ok" dot>
-                      Latest data
-                    </Badge>
                   ) : null}
                 </div>
                 {pin.question_text.trim() !== pin.title.trim() && <p className="text-sm leading-relaxed text-secondary">{pin.question_text}</p>}
@@ -502,14 +538,22 @@ export function DashboardView() {
                   {text || "The saved answer isn't available."}
                 </p>
                 {latestFailed && <p className="text-xs text-err">The latest re-run failed; showing the earlier answer.</p>}
-                {(schedule || pin.alert) && (
-                  <div className="flex flex-wrap items-center gap-1.5">
+                {(schedule || pin.auto_refresh || pin.alert) && (
+                  <div
+                    className="flex flex-wrap items-center gap-1.5"
+                    title={
+                      schedule || pin.auto_refresh
+                        ? "Re-runs query your latest imported snapshot; they don't pull from external sources."
+                        : undefined
+                    }
+                  >
                     {schedule && (
                       <Badge tone="neutral">
                         Re-runs {schedule}
                         {pin.next_run_at ? ` · next ${timeUntil(pin.next_run_at)}` : ""}
                       </Badge>
                     )}
+                    {pin.auto_refresh && <Badge tone="neutral">Re-runs on new data</Badge>}
                     {pin.alert && (
                       <Badge tone={pin.alert_triggered ? "err" : "neutral"} dot={Boolean(pin.alert_triggered)}>
                         {pin.alert_triggered ? "Alert: " : "Alert when "}
@@ -519,26 +563,14 @@ export function DashboardView() {
                     )}
                   </div>
                 )}
-                <p className="mt-auto text-xs text-secondary">
-                  {snap ? `${datasetLabel(snap)} v${snap.version} · ` : run ? "Removed dataset · " : ""}
-                  {run && run.run_id !== pin.run_id && run.created_at ? `updated ${relativeTime(run.created_at)} · ` : ""}
-                  pinned {relativeTime(pin.created_at)}
-                </p>
-                <div className="space-y-1.5 border-t border-border pt-3">
-                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                    <label
-                      title="Re-runs this question automatically whenever a newer version of its dataset is approved in Ledgerline."
-                      className={cx("flex min-h-[40px] cursor-pointer items-center gap-2 text-sm", canRefresh ? "text-body" : "cursor-not-allowed text-secondary opacity-60")}
-                    >
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 accent-focus"
-                        checked={Boolean(pin.auto_refresh)}
-                        disabled={!canRefresh || autoRefreshPin === pin.pin_id}
-                        onChange={(e) => void setAutoRefresh(pin, e.target.checked)}
-                      />
-                      Re-run automatically on new data
-                    </label>
+                {/* One footer row: where the figures came from on the left, the two actions on the right. */}
+                <div className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-border pt-3">
+                  {/* On phones the source line always takes its own row, so every card wraps the same way. */}
+                  <p className="min-w-0 text-xs text-secondary max-sm:basis-full">
+                    {snap ? `${datasetLabel(snap)} v${snap.version} · ` : run ? "Removed dataset · " : ""}
+                    {run && run.run_id !== pin.run_id && run.created_at ? `updated ${relativeTime(run.created_at)} · ` : ""}
+                    pinned {relativeTime(pin.created_at)}
+                  </p>
                   {confirmUnpin === pin.pin_id ? (
                     <span className="flex flex-wrap items-center gap-1.5">
                       <span className="text-sm text-body">Unpin this answer?</span>
@@ -568,17 +600,10 @@ export function DashboardView() {
                       </button>
                     </span>
                   ) : (
-                    <span id={`pin-actions-${pin.pin_id}`} className="flex flex-wrap items-center gap-1.5">
-                      <Link
-                        href={`/ask?run=${encodeURIComponent(run?.run_id ?? pin.run_id)}`}
-                        aria-label={`Open ${pin.title}`}
-                        className={btn.secondary}
-                      >
-                        Open
-                      </Link>
+                    <span id={`pin-actions-${pin.pin_id}`} className="ml-auto flex flex-wrap items-center gap-1.5">
                       <button
                         type="button"
-                        className={newer ? btn.primary : btn.secondary}
+                        className={newer ? btn.primary : btn.ghost}
                         onClick={() => void rerun(pin)}
                         disabled={busy || !canRefresh}
                         aria-label={`${newer ? "Re-run on new data" : "Re-run"} ${pin.title}`}
@@ -594,14 +619,6 @@ export function DashboardView() {
                         actions={menuActions}
                       />
                     </span>
-                  )}
-                  </div>
-                  {(schedule || pin.auto_refresh) && (
-                    <p className="text-2xs text-secondary">
-                      {schedule
-                        ? `Scheduled (${schedule}) and automatic re-runs query your latest imported snapshot — they do not pull from external sources.`
-                        : "Runs again whenever a new snapshot of this dataset is imported and approved."}
-                    </p>
                   )}
                 </div>
                 {alertPin === pin.pin_id && (

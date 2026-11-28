@@ -20,7 +20,16 @@ function readPreference(): ThemePreference {
 
 function applyPreference(pref: ThemePreference): void {
   const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  document.documentElement.setAttribute("data-theme", pref === "system" ? (systemDark ? "dark" : "light") : pref);
+  const next = pref === "system" ? (systemDark ? "dark" : "light") : pref;
+  if (document.documentElement.getAttribute("data-theme") === next) return;
+  // Switch every colour at once: without this, controls with colour transitions fade for 150ms while the rest of
+  // the page has already changed. Transitions come back two frames later, once the new colours are painted.
+  const freeze = document.createElement("style");
+  freeze.textContent = "*,*::before,*::after{transition:none!important}";
+  document.head.appendChild(freeze);
+  document.documentElement.setAttribute("data-theme", next);
+  void window.getComputedStyle(document.body).color;
+  window.requestAnimationFrame(() => window.requestAnimationFrame(() => freeze.remove()));
 }
 
 export function useTheme() {

@@ -66,6 +66,45 @@ const config: Config = {
         composer: "0 4px 20px rgb(0 0 0 / 0.075), inset 0 0 0 1px rgb(var(--ink) / 0.1)",
         pop: "0 8px 24px rgb(0 0 0 / 0.12), 0 2px 6px rgb(0 0 0 / 0.08)",
       },
+      /*
+       * Motion: short and quiet. Entrances ease out over 140-240ms, exits are faster. Keyframes use the
+       * individual `scale` and `translate` properties so they compose with an element's own transform (centred
+       * dialogs are positioned with translate classes). globals.css turns all of it off for reduced motion.
+       */
+      transitionTimingFunction: {
+        out: "cubic-bezier(0.2, 0, 0, 1)",
+      },
+      keyframes: {
+        "fade-in": { from: { opacity: "0" }, to: { opacity: "1" } },
+        "fade-out": { from: { opacity: "1" }, to: { opacity: "0" } },
+        "fade-up": { from: { opacity: "0", translate: "0 6px" }, to: { opacity: "1", translate: "0 0" } },
+        "pop-in": { from: { opacity: "0", scale: "0.97", translate: "0 -2px" }, to: { opacity: "1", scale: "1", translate: "0 0" } },
+        "dialog-in": { from: { opacity: "0", scale: "0.97" }, to: { opacity: "1", scale: "1" } },
+        "dialog-out": { from: { opacity: "1", scale: "1" }, to: { opacity: "0", scale: "0.98" } },
+        "drawer-in": { from: { translate: "100% 0" }, to: { translate: "0 0" } },
+        "drawer-out": { from: { translate: "0 0" }, to: { translate: "100% 0" } },
+        "toast-in": { from: { opacity: "0", scale: "0.98", translate: "0 -8px" }, to: { opacity: "1", scale: "1", translate: "0 0" } },
+        "toast-out": { from: { opacity: "1", scale: "1" }, to: { opacity: "0", scale: "0.98", translate: "0 -4px" } },
+        "check-in": { from: { opacity: "0", scale: "0.5" }, to: { opacity: "1", scale: "1" } },
+        "nav-progress": { from: { scale: "0 1" }, to: { scale: "0.9 1" } },
+        shimmer: { from: { backgroundPosition: "150% 0" }, to: { backgroundPosition: "-50% 0" } },
+      },
+      animation: {
+        "fade-in": "fade-in 180ms cubic-bezier(0.2, 0, 0, 1) backwards",
+        "fade-out": "fade-out 140ms ease-in both",
+        "fade-up": "fade-up 240ms cubic-bezier(0.2, 0, 0, 1) backwards",
+        "pop-in": "pop-in 140ms cubic-bezier(0.2, 0, 0, 1) backwards",
+        "dialog-in": "dialog-in 180ms cubic-bezier(0.2, 0, 0, 1) backwards",
+        "dialog-out": "dialog-out 120ms ease-in both",
+        "drawer-in": "drawer-in 260ms cubic-bezier(0.2, 0, 0, 1) backwards",
+        "drawer-out": "drawer-out 180ms ease-in both",
+        "toast-in": "toast-in 200ms cubic-bezier(0.2, 0, 0, 1) backwards",
+        "toast-out": "toast-out 150ms ease-in both",
+        "check-in": "check-in 220ms cubic-bezier(0.2, 0, 0, 1) backwards",
+        // Fast start, long ease toward 90%: reads as progress without claiming to know when the page arrives.
+        "nav-progress": "nav-progress 8s cubic-bezier(0.1, 0.7, 0.2, 1) both",
+        shimmer: "shimmer 1.6s ease-in-out infinite",
+      },
     },
   },
   plugins: [],

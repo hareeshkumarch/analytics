@@ -147,6 +147,29 @@ td {
   outline-offset: 1px;
 }
 
+/* Blinking caret after the last line of an answer that is still streaming in (AskThreadTurn). The markdown root
+   is the wrapper's only child; the caret goes after its last paragraph or heading, or its last list item. */
+.streaming-caret > div > :is(p, h1, h2, h3, h4):last-child::after,
+.streaming-caret > div > :is(ul, ol):last-child > li:last-child::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 3px;
+  vertical-align: -0.18em;
+  background: rgb(var(--ink) / 0.7);
+  animation: caret 1s steps(1) infinite;
+}
+@keyframes caret {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
 .overflow-x-auto:focus-visible,
 .overflow-x-auto :focus-visible,
 .overflow-y-auto:focus-visible,

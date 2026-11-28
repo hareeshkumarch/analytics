@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useId } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
@@ -15,7 +15,9 @@ export function cx(...parts: (string | false | null | undefined)[]): string {
  *           ghost has no fill until hovered. No coloured borders on hover.
  *   Text    14px at weight 450; small controls 13px.
  */
-const btnBase = "inline-flex shrink-0 items-center justify-center rounded-md font-medium transition-colors disabled:cursor-not-allowed";
+// A slight press (scale 0.98) on click; disabled controls don't move.
+const btnBase =
+  "inline-flex shrink-0 items-center justify-center rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 ease-out active:scale-[0.98] disabled:cursor-not-allowed disabled:scale-100";
 const btnMd = "min-h-[32px] gap-1.5 px-3 text-base";
 const btnSmSize = "min-h-[28px] gap-1.5 px-2.5 text-sm";
 const solid = "bg-accent text-on-accent hover:bg-accent-hover disabled:opacity-45";
@@ -64,8 +66,57 @@ export function Spinner({ className = "h-3.5 w-3.5" }: { className?: string }) {
   );
 }
 
+/** Loading placeholder: a soft highlight sweeps across instead of the whole block blinking. */
 export function Skeleton({ className }: { className: string }) {
-  return <div aria-hidden="true" className={`animate-pulse rounded-lg bg-panel ${className}`} />;
+  return (
+    <div
+      aria-hidden="true"
+      className={`animate-shimmer rounded-lg bg-panel bg-[linear-gradient(90deg,transparent_0%,rgb(var(--ink)/0.045)_50%,transparent_100%)] bg-[length:200%_100%] bg-no-repeat ${className}`}
+    />
+  );
+}
+
+type IndicatorBox = { left: number; top: number; width: number; height: number };
+
+/**
+ * A highlight that slides to the selected button of a group (`aria-pressed="true"`). It measures the button, so
+ * options may differ in width and wrap onto several rows. The container must be `relative`; until the first
+ * measurement the selected button keeps its own fill, and the slide only starts after it has been placed once.
+ */
+export function useSlidingIndicator<T extends HTMLElement>(key: string) {
+  const ref = useRef<T>(null);
+  const [box, setBox] = useState<IndicatorBox | null>(null);
+  const [placed, setPlaced] = useState(false);
+
+  useEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    const measure = () => {
+      const el = root.querySelector<HTMLElement>('[aria-pressed="true"]');
+      setBox(el ? { left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight } : null);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [key]);
+
+  useEffect(() => {
+    if (!box || placed) return;
+    const id = window.requestAnimationFrame(() => setPlaced(true));
+    return () => window.cancelAnimationFrame(id);
+  }, [box, placed]);
+
+  const indicator = (className: string) =>
+    box ? (
+      <span
+        aria-hidden="true"
+        className={cx("pointer-events-none absolute", placed && "transition-[left,top,width,height] duration-200 ease-out", className)}
+        style={box}
+      />
+    ) : null;
+  return { ref, ready: Boolean(box), indicator };
 }
 
 /** Placeholder for a list or table while it loads. */
@@ -218,8 +269,10 @@ export function FilterChips<T extends string>({
   /** Tighter padding and equal-width chips for narrow columns. Height, shape and border stay the same. */
   fill?: boolean;
 }) {
+  const slide = useSlidingIndicator<HTMLDivElement>(`${value}|${options.map((o) => `${o.label}:${o.count ?? ""}`).join(",")}`);
   return (
-    <div role="group" aria-label={label} className={cx("flex", fill ? "flex-nowrap gap-1" : "flex-wrap gap-1.5", className)}>
+    <div ref={slide.ref} role="group" aria-label={label} className={cx("relative flex", fill ? "flex-nowrap gap-1" : "flex-wrap gap-1.5", className)}>
+      {slide.indicator("rounded-md bg-ink/[0.07] dark:bg-ink/[0.15]")}
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -229,9 +282,11 @@ export function FilterChips<T extends string>({
             aria-pressed={active}
             onClick={() => onChange(o.value)}
             className={cx(
-              "inline-flex min-h-[28px] items-center gap-1.5 whitespace-nowrap rounded-md transition-colors",
+              "relative inline-flex min-h-[28px] items-center gap-1.5 whitespace-nowrap rounded-md transition-colors",
               fill ? "flex-auto justify-center px-1.5 text-xs" : "px-2.5 text-sm",
-              active ? "bg-ink/[0.07] font-medium text-ink dark:bg-ink/[0.15]" : "text-secondary hover:bg-ink/[0.05] hover:text-ink"
+              active
+                ? cx("font-medium text-ink", !slide.ready && "bg-ink/[0.07] dark:bg-ink/[0.15]")
+                : "text-secondary hover:bg-ink/[0.05] hover:text-ink"
             )}
           >
             {o.label}
@@ -280,7 +335,8 @@ export function Details({ summary, children, className = "" }: { summary: string
         <Icon name="chevron-right" className="h-3 w-3 transition-transform group-open:rotate-90" />
         {summary}
       </summary>
-      <div className="mt-2">{children}</div>
+      {/* Replays each time the section opens, since the content goes from hidden to shown. */}
+      <div className="mt-2 animate-fade-in">{children}</div>
     </details>
   );
 }

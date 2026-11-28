@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ConnectorLogo, logoIdForFamily } from "@/components/ConnectorLogo";
 import { Icon } from "@/components/Icon";
 import { RichSelect } from "@/components/RichSelect";
-import { Badge, Spinner, btnSm, cx } from "@/components/ui";
+import { Badge, Spinner, btnSm, cx, useSlidingIndicator } from "@/components/ui";
 import type { SnapshotOut } from "@/lib/api/types";
 import { PRESET_SUMMARY } from "@/lib/routing";
 import type { RunMode } from "@/lib/types";
@@ -64,6 +64,7 @@ export function AskComposer({
 }: AskComposerProps) {
   const localRef = useRef<HTMLTextAreaElement>(null);
   const resolvedRef = textareaRef ?? localRef;
+  const modeSlide = useSlidingIndicator<HTMLDivElement>(runMode);
 
   useEffect(() => {
     const el = resolvedRef.current;
@@ -139,7 +140,13 @@ export function AskComposer({
 
         <div className="flex items-end justify-between gap-2.5">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-            <div role="group" aria-label="Run mode" className="inline-flex min-h-[32px] items-center rounded-md bg-ink/[0.05] p-[2px] dark:bg-ink/[0.08]">
+            <div
+              ref={modeSlide.ref}
+              role="group"
+              aria-label="Run mode"
+              className="relative inline-flex min-h-[32px] items-center rounded-md bg-ink/[0.05] p-[2px] dark:bg-ink/[0.08]"
+            >
+              {modeSlide.indicator("rounded bg-popover shadow-[0_0_0_1px_rgb(var(--ink)/0.08)]")}
               {(["quick", "deep"] as const).map((mode) => (
                 <button
                   key={mode}
@@ -148,8 +155,10 @@ export function AskComposer({
                   onClick={() => onRunModeChange(mode)}
                   title={mode === "quick" ? "One focused analysis step" : "Plans several steps and reviews the evidence"}
                   className={cx(
-                    "min-h-[28px] rounded px-2.5 text-sm font-medium capitalize transition-colors",
-                    runMode === mode ? "bg-popover text-ink shadow-[0_0_0_1px_rgb(var(--ink)/0.08)]" : "text-secondary hover:text-ink",
+                    "relative min-h-[28px] rounded px-2.5 text-sm font-medium capitalize transition-colors",
+                    runMode === mode
+                      ? cx("text-ink", !modeSlide.ready && "bg-popover shadow-[0_0_0_1px_rgb(var(--ink)/0.08)]")
+                      : "text-secondary hover:text-ink",
                   )}
                 >
                   {mode}
@@ -209,7 +218,7 @@ export function AskComposer({
               type="submit"
               aria-label={submitLabel}
               disabled={!canSend}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand text-on-accent transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand text-on-accent transition-[background-color,opacity,transform] duration-150 ease-out hover:bg-brand-hover enabled:active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {submitting ? <Spinner className="h-4 w-4" /> : <Icon name="arrow-up" className="h-[17px] w-[17px]" />}
             </button>
